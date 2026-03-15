@@ -489,7 +489,7 @@ class EarClip {
     // - epsilon) has satisfied the Delaunay condition.
     scalar EarCost(scalar epsilon, IdxCollider& collider) const {
       vec2 openSide = left->pos - right->pos;
-      const vec2 center = (scalar)0.5 * (left->pos + right->pos);
+      const vec2 center = 0.5 * (left->pos + right->pos);
       const scalar scale = 4 / la::dot(openSide, openSide);
       const scalar radius = la::length(openSide) / 2;
       openSide = la::normalize(openSide);

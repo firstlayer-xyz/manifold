@@ -258,15 +258,15 @@ TEST(Smooth, Torus) {
       const vec3 edge = v1 - v;
       if (edge.z == 0) {
         vec3 tan(v.y, -v.x, 0);
-        tan *= la::dot(tan, edge) < 0 ? (scalar)-1.0 : (scalar)1.0;
+        tan *= la::dot(tan, edge) < 0 ? -1.0 : 1.0;
         tangent = CircularTangent(tan, edge);
       } else if (std::abs(la::determinant(mat2(vec2(v), vec2(edge)))) < 1e-5) {
         const scalar theta = std::asin(v.z);
         vec2 xy(v);
         const scalar r = la::length(xy);
-        xy = xy / r * v.z * (r > 2 ? (scalar)-1.0 : (scalar)1.0);
+        xy = xy / r * v.z * (r > 2 ? -1.0 : 1.0);
         vec3 tan(xy.x, xy.y, std::cos(theta));
-        tan *= la::dot(tan, edge) < 0 ? (scalar)-1.0 : (scalar)1.0;
+        tan *= la::dot(tan, edge) < 0 ? -1.0 : 1.0;
         tangent = CircularTangent(tan, edge);
       } else {
         tangent = {0, 0, 0, -1};
@@ -287,7 +287,7 @@ TEST(Smooth, Torus) {
     vec3 v(out.vertProperties[i], out.vertProperties[i + 1],
            out.vertProperties[i + 2]);
     vec3 p(v.x, v.y, 0);
-    p = la::normalize(p) * (scalar)2.0;
+    p = la::normalize(p) * 2.0;
     scalar r = la::length(v - p);
     ASSERT_NEAR(r, 1, 0.006);
     maxMeanCurvature =

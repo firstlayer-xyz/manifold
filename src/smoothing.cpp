@@ -53,7 +53,7 @@ vec4 CircularTangent(const vec3& tangent, const vec3& edgeVec) {
 
   scalar weight = std::max((scalar)0.5, la::dot(dir, SafeNormalize(edgeVec)));
   // Quadratic weighted bezier for circular interpolation
-  const vec4 bz2 = vec4(dir * (scalar)0.5 * la::length(edgeVec), weight);
+  const vec4 bz2 = vec4(dir * 0.5 * la::length(edgeVec), weight);
   // Equivalent cubic weighted bezier
   const vec4 bz3 = la::lerp(vec4(0, 0, 0, 1), bz2, (scalar)(2 / 3.0));
   // Convert from homogeneous form to geometric form
@@ -119,7 +119,7 @@ struct InterpTri {
       return la::lerp(x, z, a);  // for numerical stability
     } else {
       scalar angle = std::acos(cosTheta);
-      return ((scalar)std::sin(((scalar)1.0 - a) * angle) * x + (scalar)std::sin(a * angle) * z) /
+      return (std::sin((1.0 - a) * angle) * x + std::sin(a * angle) * z) /
              (scalar)std::sin(angle);
     }
   }
@@ -807,7 +807,7 @@ void Manifold::Impl::CreateTangents(int normalIdx) {
                                      vertPos_[halfedge_[halfedge].startVert];
                 const vec3 dir = la::cross(here.normal, next.normal);
                 tangent[halfedge] = CircularTangent(
-                    (la::dot(dir, edgeVec) < 0 ? (scalar)-1.0 : (scalar)1.0) * dir, edgeVec);
+                    (la::dot(dir, edgeVec) < 0 ? -1.0 : 1.0) * dir, edgeVec);
               } else {
                 tangent[halfedge] = TangentFromNormal(here.normal, halfedge);
               }

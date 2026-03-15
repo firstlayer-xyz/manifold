@@ -186,7 +186,7 @@ struct Box {
   /**
    * Returns the center point of the Box.
    */
-  constexpr vec3 Center() const { return (scalar)0.5 * (max + min); }
+  constexpr vec3 Center() const { return 0.5 * (max + min); }
 
   /**
    * Returns the absolute-largest coordinate value of any contained
@@ -358,7 +358,7 @@ struct Rect {
   /**
    * Returns the center point of the rectangle.
    */
-  constexpr vec2 Center() const { return (scalar)0.5 * (max + min); }
+  constexpr vec2 Center() const { return 0.5 * (max + min); }
 
   /**
    * Does this rectangle contain (includes on border) the given point?

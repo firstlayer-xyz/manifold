@@ -146,9 +146,9 @@ inline mat3 JacobiEigenAnalysis(Symmetric3x3 S) {
     JacobiConjugation(1, 2, 0, S, q);
     JacobiConjugation(2, 0, 1, S, q);
   }
-  return mat3({(scalar)1.0 - (scalar)2.0 * (q.y * q.y + q.z * q.z),  //
-               (scalar)2.0 * (q.x * q.y + +q.w * q.z),       //
-               (scalar)2.0 * (q.x * q.z + -q.w * q.y)},      //
+  return mat3({1 - 2 * (q.y * q.y + q.z * q.z),  //
+               2 * (q.x * q.y + +q.w * q.z),       //
+               2 * (q.x * q.z + -q.w * q.y)},      //
               {2 * (q.x * q.y + -q.w * q.z),         //
                1 - 2 * (q.x * q.x + q.z * q.z),      //
                2 * (q.y * q.z + q.w * q.x)},         //

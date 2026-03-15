@@ -26,7 +26,7 @@ struct Gyroid {
 };
 
 Manifold RhombicDodecahedron(scalar size) {
-  Manifold box = Manifold::Cube(size * (scalar)la::sqrt(2.0) * vec3(1, 1, 2), true);
+  Manifold box = Manifold::Cube(size * la::sqrt(2.0) * vec3(1, 1, 2), true);
   Manifold result = box.Rotate(90, 45) ^ box.Rotate(90, 45, 90);
   return result ^ box.Rotate(0, 0, 45);
 }

@@ -61,7 +61,7 @@ inline mat2x3 GetAxisAlignedProjection(vec3 normal) {
                         {0.0, 0.0, 1.0});
     xyzMax = normal.x;
   }
-  if (xyzMax < 0) projection[0] *= (scalar)-1.0;
+  if (xyzMax < 0) projection[0] *= -1.0;
   return la::transpose(projection);
 }
 

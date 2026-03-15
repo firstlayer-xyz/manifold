@@ -1456,6 +1456,33 @@ constexpr auto operator*(const A& a, const B& b) {
   return mul(a, b);
 }
 
+// Mixed-type overloads: allow double literals to multiply float vec/mat
+// (and vice versa) by narrowing the scalar to match the vec/mat element type.
+template <class T, int M, class S,
+          class = std::enable_if_t<!std::is_same_v<T, S> &&
+                                   std::is_arithmetic_v<S>>>
+constexpr vec<T, M> operator*(const S& s, const vec<T, M>& v) {
+  return mul(T(s), v);
+}
+template <class T, int M, class S,
+          class = std::enable_if_t<!std::is_same_v<T, S> &&
+                                   std::is_arithmetic_v<S>>>
+constexpr vec<T, M> operator*(const vec<T, M>& v, const S& s) {
+  return mul(v, T(s));
+}
+template <class T, int M, int N, class S,
+          class = std::enable_if_t<!std::is_same_v<T, S> &&
+                                   std::is_arithmetic_v<S>>>
+constexpr mat<T, M, N> operator*(const S& s, const mat<T, M, N>& m) {
+  return mul(T(s), m);
+}
+template <class T, int M, int N, class S,
+          class = std::enable_if_t<!std::is_same_v<T, S> &&
+                                   std::is_arithmetic_v<S>>>
+constexpr mat<T, M, N> operator*(const mat<T, M, N>& m, const S& s) {
+  return mul(m, T(s));
+}
+
 // Binary assignment operators a $= b is always defined as though it were
 // explicitly written a = a $ b
 template <class A, class B>

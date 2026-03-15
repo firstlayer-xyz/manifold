@@ -473,7 +473,7 @@ Manifold Manifold::Mirror(vec3 normal) const {
     return Manifold();
   }
   auto n = la::normalize(normal);
-  auto m = mat3x4(mat3(la::identity) - (scalar)2.0 * la::outerprod(n, n), vec3());
+  auto m = mat3x4(mat3(la::identity) - 2.0 * la::outerprod(n, n), vec3());
   return Manifold(pNode_->Transform(m));
 }
 
