@@ -32,22 +32,29 @@ namespace manifold {
  *  @{
  */
 namespace la = linalg;
-using vec2 = la::vec<double, 2>;
-using vec3 = la::vec<double, 3>;
-using vec4 = la::vec<double, 4>;
+
+#ifdef MANIFOLD_USE_FLOAT
+using scalar = float;
+#else
+using scalar = double;
+#endif
+
+using vec2 = la::vec<scalar, 2>;
+using vec3 = la::vec<scalar, 3>;
+using vec4 = la::vec<scalar, 4>;
 using bvec4 = la::vec<bool, 4>;
-using mat2 = la::mat<double, 2, 2>;
-using mat3x2 = la::mat<double, 3, 2>;
-using mat4x2 = la::mat<double, 4, 2>;
-using mat2x3 = la::mat<double, 2, 3>;
-using mat3 = la::mat<double, 3, 3>;
-using mat4x3 = la::mat<double, 4, 3>;
-using mat3x4 = la::mat<double, 3, 4>;
-using mat4 = la::mat<double, 4, 4>;
+using mat2 = la::mat<scalar, 2, 2>;
+using mat3x2 = la::mat<scalar, 3, 2>;
+using mat4x2 = la::mat<scalar, 4, 2>;
+using mat2x3 = la::mat<scalar, 2, 3>;
+using mat3 = la::mat<scalar, 3, 3>;
+using mat4x3 = la::mat<scalar, 4, 3>;
+using mat3x4 = la::mat<scalar, 3, 4>;
+using mat4 = la::mat<scalar, 4, 4>;
 using ivec2 = la::vec<int, 2>;
 using ivec3 = la::vec<int, 3>;
 using ivec4 = la::vec<int, 4>;
-using quat = la::vec<double, 4>;
+using quat = la::vec<scalar, 4>;
 /** @} */
 
 /** @addtogroup Scalar
@@ -56,23 +63,23 @@ using quat = la::vec<double, 4>;
  *  @{
  */
 
-constexpr double kPi = 3.14159265358979323846264338327950288;
-constexpr double kTwoPi = 6.28318530717958647692528676655900576;
-constexpr double kHalfPi = 1.57079632679489661923132169163975144;
+constexpr scalar kPi = 3.14159265358979323846264338327950288;
+constexpr scalar kTwoPi = 6.28318530717958647692528676655900576;
+constexpr scalar kHalfPi = 1.57079632679489661923132169163975144;
 
 /**
  * Convert degrees to radians.
  *
  * @param a Angle in degrees.
  */
-constexpr double radians(double a) { return a * kPi / 180; }
+constexpr scalar radians(scalar a) { return a * kPi / 180; }
 
 /**
  * Convert radians to degrees.
  *
  * @param a Angle in radians.
  */
-constexpr double degrees(double a) { return a * 180 / kPi; }
+constexpr scalar degrees(scalar a) { return a * 180 / kPi; }
 
 /**
  * Performs smooth Hermite interpolation between 0 and 1 when edge0 < x < edge1.
@@ -81,8 +88,8 @@ constexpr double degrees(double a) { return a * 180 / kPi; }
  * @param edge1 Specifies the value of the upper edge of the Hermite function.
  * @param a Specifies the source value for interpolation.
  */
-constexpr double smoothstep(double edge0, double edge1, double a) {
-  const double x = la::clamp((a - edge0) / (edge1 - edge0), 0, 1);
+constexpr scalar smoothstep(scalar edge0, scalar edge1, scalar a) {
+  const scalar x = la::clamp((a - edge0) / (edge1 - edge0), 0, 1);
   return x * x * (3 - 2 * x);
 }
 
@@ -91,11 +98,11 @@ constexpr double smoothstep(double edge0, double edge1, double a) {
  *
  * @param x Angle in degrees.
  */
-inline double sind(double x) {
+inline scalar sind(scalar x) {
   if (!la::isfinite(x)) return sin(x);
   if (x < 0.0) return -sind(-x);
   int quo;
-  x = remquo(fabs(x), 90.0, &quo);
+  x = remquo(fabs(x), (scalar)90.0, &quo);
   switch (quo % 4) {
     case 0:
       return sin(radians(x));
@@ -114,7 +121,7 @@ inline double sind(double x) {
  *
  * @param x Angle in degrees.
  */
-inline double cosd(double x) { return sind(x + 90.0); }
+inline scalar cosd(scalar x) { return sind(x + 90.0); }
 /** @} */
 
 /** @addtogroup Structs
@@ -148,15 +155,15 @@ struct Smoothness {
   /// A value between 0 and 1, where 0 is sharp and 1 is the default and the
   /// curvature is interpolated between these values. The two paired halfedges
   /// can have different values while maintaining C-1 continuity (except for 0).
-  double smoothness;
+  scalar smoothness;
 };
 
 /**
  * @brief Axis-aligned 3D box, primarily for bounding.
  */
 struct Box {
-  vec3 min = vec3(std::numeric_limits<double>::infinity());
-  vec3 max = vec3(-std::numeric_limits<double>::infinity());
+  vec3 min = vec3(std::numeric_limits<scalar>::infinity());
+  vec3 max = vec3(-std::numeric_limits<scalar>::infinity());
 
   /**
    * Default constructor is an infinite box that contains all space.
@@ -179,13 +186,13 @@ struct Box {
   /**
    * Returns the center point of the Box.
    */
-  constexpr vec3 Center() const { return 0.5 * (max + min); }
+  constexpr vec3 Center() const { return (scalar)0.5 * (max + min); }
 
   /**
    * Returns the absolute-largest coordinate value of any contained
    * point.
    */
-  constexpr double Scale() const {
+  constexpr scalar Scale() const {
     vec3 absMax = la::max(la::abs(min), la::abs(max));
     return la::max(absMax.x, la::max(absMax.y, absMax.z));
   }
@@ -305,8 +312,8 @@ struct Box {
  * @brief Axis-aligned 2D box, primarily for bounding.
  */
 struct Rect {
-  vec2 min = vec2(std::numeric_limits<double>::infinity());
-  vec2 max = vec2(-std::numeric_limits<double>::infinity());
+  vec2 min = vec2(std::numeric_limits<scalar>::infinity());
+  vec2 max = vec2(-std::numeric_limits<scalar>::infinity());
 
   /**
    * Default constructor is an empty rectangle..
@@ -334,7 +341,7 @@ struct Rect {
   /**
    * Return the area of the rectangle.
    */
-  constexpr double Area() const {
+  constexpr scalar Area() const {
     auto sz = Size();
     return sz.x * sz.y;
   }
@@ -343,7 +350,7 @@ struct Rect {
    * Returns the absolute-largest coordinate value of any contained
    * point.
    */
-  constexpr double Scale() const {
+  constexpr scalar Scale() const {
     vec2 absMax = la::max(la::abs(min), la::abs(max));
     return la::max(absMax.x, absMax.y);
   }
@@ -351,7 +358,7 @@ struct Rect {
   /**
    * Returns the center point of the rectangle.
    */
-  constexpr vec2 Center() const { return 0.5 * (max + min); }
+  constexpr vec2 Center() const { return (scalar)0.5 * (max + min); }
 
   /**
    * Does this rectangle contain (includes on border) the given point?
@@ -473,8 +480,8 @@ struct Rect {
 enum class OpType : char { Add, Subtract, Intersect };
 
 constexpr int DEFAULT_SEGMENTS = 0;
-constexpr double DEFAULT_ANGLE = 10.0;
-constexpr double DEFAULT_LENGTH = 1.0;
+constexpr scalar DEFAULT_ANGLE = 10.0;
+constexpr scalar DEFAULT_LENGTH = 1.0;
 /**
  * @brief These static properties control how circular shapes are quantized by
  * default on construction.
@@ -488,10 +495,10 @@ constexpr double DEFAULT_LENGTH = 1.0;
 class Quality {
  private:
  public:
-  static void SetMinCircularAngle(double angle);
-  static void SetMinCircularEdgeLength(double length);
+  static void SetMinCircularAngle(scalar angle);
+  static void SetMinCircularEdgeLength(scalar length);
   static void SetCircularSegments(int number);
-  static int GetCircularSegments(double radius);
+  static int GetCircularSegments(scalar radius);
   static void ResetToDefaults();
 };
 /** @} */

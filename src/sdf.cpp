@@ -26,9 +26,9 @@ constexpr int kCrossing = -2;
 constexpr int kNone = -1;
 constexpr ivec4 kVoxelOffset(1, 1, 1, 0);
 // Maximum fraction of spacing that a vert can move.
-constexpr double kS = 0.25;
+constexpr scalar kS = 0.25;
 // Corresponding approximate distance ratio bound.
-constexpr double kD = 1 / kS - 1;
+constexpr scalar kD = 1 / kS - 1;
 // Maximum number of opposed verts (of 7) to allow collapse.
 constexpr int kMaxOpposed = 3;
 
@@ -115,15 +115,15 @@ ivec4 DecodeIndex(uint64_t idx, ivec3 gridPow) {
 }
 
 vec3 Position(ivec4 gridIndex, vec3 origin, vec3 spacing) {
-  return origin + spacing * (vec3(gridIndex) + (gridIndex.w == 1 ? 0.0 : -0.5));
+  return origin + spacing * (vec3(gridIndex) + (gridIndex.w == 1 ? (scalar)0.0 : (scalar)-0.5));
 }
 
 vec3 Bound(vec3 pos, vec3 origin, vec3 spacing, ivec3 gridSize) {
   return min(max(pos, origin), origin + spacing * (vec3(gridSize) - 1));
 }
 
-double BoundedSDF(ivec4 gridIndex, vec3 origin, vec3 spacing, ivec3 gridSize,
-                  double level, std::function<double(vec3)> sdf) {
+scalar BoundedSDF(ivec4 gridIndex, vec3 origin, vec3 spacing, ivec3 gridSize,
+                  scalar level, std::function<scalar(vec3)> sdf) {
   const ivec3 xyz(gridIndex);
   const int lowerBoundDist = minelem(xyz);
   const int upperBoundDist = minelem(gridSize - xyz);
@@ -132,14 +132,14 @@ double BoundedSDF(ivec4 gridIndex, vec3 origin, vec3 spacing, ivec3 gridSize,
   if (boundDist < 0) {
     return 0.0;
   }
-  const double d = sdf(Position(gridIndex, origin, spacing)) - level;
-  return boundDist == 0 ? std::min(d, 0.0) : d;
+  const scalar d = sdf(Position(gridIndex, origin, spacing)) - level;
+  return boundDist == 0 ? std::min(d, (scalar)0.0) : d;
 }
 
 // Simplified ITP root finding algorithm - same worst-case performance as
 // bisection, better average performance.
-inline vec3 FindSurface(vec3 pos0, double d0, vec3 pos1, double d1, double tol,
-                        double level, std::function<double(vec3)> sdf) {
+inline vec3 FindSurface(vec3 pos0, scalar d0, vec3 pos1, scalar d1, scalar tol,
+                        scalar level, std::function<scalar(vec3)> sdf) {
   if (d0 == 0) {
     return pos0;
   } else if (d1 == 0) {
@@ -148,17 +148,17 @@ inline vec3 FindSurface(vec3 pos0, double d0, vec3 pos1, double d1, double tol,
 
   // Sole tuning parameter, k: (0, 1) - smaller value gets better median
   // performance, but also hits the worst case more often.
-  const double k = 0.1;
-  const double check = 2 * tol / la::length(pos0 - pos1);
-  double frac = 1;
-  double biFrac = 1;
+  const scalar k = 0.1;
+  const scalar check = 2 * tol / la::length(pos0 - pos1);
+  scalar frac = 1;
+  scalar biFrac = 1;
   while (frac > check) {
-    const double t = la::lerp(d0 / (d0 - d1), 0.5, k);
-    const double r = biFrac / frac - 0.5;
-    const double x = la::abs(t - 0.5) < r ? t : 0.5 - r * (t < 0.5 ? 1 : -1);
+    const scalar t = la::lerp(d0 / (d0 - d1), 0.5, k);
+    const scalar r = biFrac / frac - 0.5;
+    const scalar x = la::abs(t - 0.5) < r ? t : 0.5 - r * (t < 0.5 ? 1 : -1);
 
     const vec3 mid = la::lerp(pos0, pos1, x);
-    const double d = sdf(mid) - level;
+    const scalar d = sdf(mid) - level;
 
     if ((d > 0) == (d0 > 0)) {
       d0 = d;
@@ -182,13 +182,13 @@ inline vec3 FindSurface(vec3 pos0, double d0, vec3 pos1, double d1, double tol,
  * contributes only a single movedVert and all crossing edgeVerts refer to that.
  */
 struct GridVert {
-  double distance = NAN;
+  scalar distance = NAN;
   int movedVert = kNone;
   int edgeVerts[7] = {kNone, kNone, kNone, kNone, kNone, kNone, kNone};
 
   inline bool HasMoved() const { return movedVert >= 0; }
 
-  inline bool SameSide(double dist) const {
+  inline bool SameSide(scalar dist) const {
     return (dist > 0) == (distance > 0);
   }
 
@@ -203,14 +203,14 @@ struct NearSurface {
   VecView<vec3> vertPos;
   VecView<int> vertIndex;
   HashTableD<GridVert> gridVerts;
-  VecView<const double> voxels;
-  const std::function<double(vec3)> sdf;
+  VecView<const scalar> voxels;
+  const std::function<scalar(vec3)> sdf;
   const vec3 origin;
   const ivec3 gridSize;
   const ivec3 gridPow;
   const vec3 spacing;
-  const double level;
-  const double tol;
+  const scalar level;
+  const scalar tol;
 
   inline void operator()(uint64_t index) {
     ZoneScoped;
@@ -224,13 +224,13 @@ struct NearSurface {
     gridVert.distance = voxels[EncodeIndex(gridIndex + kVoxelOffset, gridPow)];
 
     bool keep = false;
-    double vMax = 0;
+    scalar vMax = 0;
     int closestNeighbor = -1;
     int opposedVerts = 0;
     for (int i = 0; i < 7; ++i) {
-      const double val =
+      const scalar val =
           voxels[EncodeIndex(Neighbor(gridIndex, i) + kVoxelOffset, gridPow)];
-      const double valOp = voxels[EncodeIndex(
+      const scalar valOp = voxels[EncodeIndex(
           Neighbor(gridIndex, i + 7) + kVoxelOffset, gridPow)];
 
       if (!gridVert.SameSide(val)) {
@@ -286,14 +286,14 @@ struct ComputeVerts {
   VecView<vec3> vertPos;
   VecView<int> vertIndex;
   HashTableD<GridVert> gridVerts;
-  VecView<const double> voxels;
-  const std::function<double(vec3)> sdf;
+  VecView<const scalar> voxels;
+  const std::function<scalar(vec3)> sdf;
   const vec3 origin;
   const ivec3 gridSize;
   const ivec3 gridPow;
   const vec3 spacing;
-  const double level;
-  const double tol;
+  const scalar level;
+  const scalar tol;
 
   void operator()(int idx) {
     ZoneScoped;
@@ -314,7 +314,7 @@ struct ComputeVerts {
       const ivec4 neighborIndex = Neighbor(gridIndex, i);
       const GridVert& neighbor = gridVerts[EncodeIndex(neighborIndex, gridPow)];
 
-      const double val =
+      const scalar val =
           std::isfinite(neighbor.distance)
               ? neighbor.distance
               : voxels[EncodeIndex(neighborIndex + kVoxelOffset, gridPow)];
@@ -453,11 +453,11 @@ namespace manifold {
  * This allows bindings use LevelSet despite being compiled with MANIFOLD_PAR
  * active.
  */
-Manifold Manifold::LevelSet(std::function<double(vec3)> sdf, Box bounds,
-                            double edgeLength, double level, double tolerance,
+Manifold Manifold::LevelSet(std::function<scalar(vec3)> sdf, Box bounds,
+                            scalar edgeLength, scalar level, scalar tolerance,
                             bool canParallel) {
   if (tolerance <= 0) {
-    tolerance = std::numeric_limits<double>::infinity();
+    tolerance = std::numeric_limits<scalar>::infinity();
   }
 
   auto pImpl_ = std::make_shared<Impl>();
@@ -477,7 +477,7 @@ Manifold Manifold::LevelSet(std::function<double(vec3)> sdf, Box bounds,
   const auto pol = canParallel ? autoPolicy(maxIndex) : ExecutionPolicy::Seq;
 
   const vec3 origin = bounds.min;
-  Vec<double> voxels(maxIndex);
+  Vec<scalar> voxels(maxIndex);
   for_each_n(
       pol, countAt(0_uz), maxIndex,
       [&voxels, sdf, level, origin, spacing, gridSize, gridPow](uint64_t idx) {
@@ -500,7 +500,7 @@ Manifold Manifold::LevelSet(std::function<double(vec3)> sdf, Box bounds,
       const vec3 lastVert = vertPos[index[0] - 1];
       const uint64_t lastIndex =
           EncodeIndex(ivec4(ivec3((lastVert - origin) / spacing), 1), gridPow);
-      const double ratio = static_cast<double>(maxIndex) / lastIndex;
+      const scalar ratio = static_cast<scalar>(maxIndex) / lastIndex;
 
       if (ratio > 1000)  // do not trust the ratio if it is too large
         tableSize *= 2;

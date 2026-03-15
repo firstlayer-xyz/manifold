@@ -39,7 +39,7 @@ struct ManifoldParamGuard {
   ~ManifoldParamGuard() { ManifoldParams() = params; }
 };
 
-Polygons SquareHole(double xOffset = 0.0);
+Polygons SquareHole(scalar xOffset = 0.0);
 MeshGL Csaszar();
 Manifold Gyroid();
 MeshGL TetGL();

@@ -2549,11 +2549,11 @@ linalg::vec<T, 4> linalg::rotation_quat(const vec<T, 3>& orig,
     if (length2(axis) < std::numeric_limits<T>::epsilon())
       axis = cross(vec<T, 3>(1, 0, 0), orig);
     return rotation_quat(normalize(axis),
-                         3.14159265358979323846264338327950288);
+                         T(3.14159265358979323846264338327950288));
   }
   vec<T, 3> axis = cross(orig, dest);
   T s = std::sqrt((1 + cosTheta) * 2);
-  return {axis * (1 / s), s * 0.5};
+  return {axis * (1 / s), s * T(0.5)};
 }
 
 template <class T>

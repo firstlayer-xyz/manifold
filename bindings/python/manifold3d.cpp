@@ -246,7 +246,7 @@ NB_MODULE(manifold3d, m) {
       .def("scale", &Manifold::Scale, nb::arg("v"), manifold__scale__v)
       .def(
           "scale",
-          [](const Manifold& self, double s) { self.Scale({s, s, s}); },
+          [](const Manifold& self, scalar s) { self.Scale({s, s, s}); },
           nb::arg("s"),
           "Scale this Manifold in space. This operation can be chained. "
           "Transforms are combined and applied lazily.\n\n"
@@ -272,7 +272,7 @@ NB_MODULE(manifold3d, m) {
             // need a wrapper because python cant modify a reference in-place
             return self.WarpBatch([&warp_func](VecView<vec3> v) {
               auto tmp = warp_func(v);
-              nb::ndarray<double, nb::shape<-1, 3>, nanobind::c_contig> tmpnd;
+              nb::ndarray<scalar, nb::shape<-1, 3>, nanobind::c_contig> tmpnd;
               if (!nb::try_cast(tmp, tmpnd) || tmpnd.ndim() != 2)
                 throw std::runtime_error(
                     "Invalid vector shape, expected (:, 3)");
@@ -285,18 +285,18 @@ NB_MODULE(manifold3d, m) {
           "set_properties",
           [](const Manifold& self, int newNumProp,
              const std::function<nb::object(
-                 vec3, const nb::ndarray<nb::numpy, const double,
+                 vec3, const nb::ndarray<nb::numpy, const scalar,
                                          nb::c_contig>&)>& f) {
             const int oldNumProp = self.NumProp();
             return self.SetProperties(newNumProp, [newNumProp, oldNumProp, &f](
-                                                      double* newProps, vec3 v,
-                                                      const double* oldProps) {
+                                                      scalar* newProps, vec3 v,
+                                                      const scalar* oldProps) {
               auto result =
-                  f(v, nb::ndarray<nb::numpy, const double, nb::c_contig>(
+                  f(v, nb::ndarray<nb::numpy, const scalar, nb::c_contig>(
                            oldProps, {static_cast<unsigned long>(oldNumProp)},
                            nb::handle()));
-              nb::ndarray<double, nb::shape<-1>> array;
-              std::vector<double> vec;
+              nb::ndarray<scalar, nb::shape<-1>> array;
+              std::vector<scalar> vec;
               if (nb::try_cast(result, array)) {
                 if (array.ndim() != 1 ||
                     array.shape(0) != static_cast<size_t>(newNumProp))
@@ -374,7 +374,7 @@ NB_MODULE(manifold3d, m) {
            nb::arg("other"), manifold__minkowski_difference__other)
       .def(
           "slice",
-          [](const Manifold& self, double height) {
+          [](const Manifold& self, scalar height) {
             return CrossSection(self.Slice(height));
           },
           nb::arg("height"), manifold__slice__height)
@@ -397,7 +397,7 @@ NB_MODULE(manifold3d, m) {
       .def_static(
           "smooth",
           [](const MeshGL& mesh, std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
+             std::vector<scalar> edge_smoothness) {
             if (sharpened_edges.size() != edge_smoothness.size()) {
               throw std::runtime_error(
                   "sharpened_edges.size() != edge_smoothness.size()");
@@ -414,7 +414,7 @@ NB_MODULE(manifold3d, m) {
       .def_static(
           "smooth",
           [](const MeshGL64& mesh, std::vector<size_t> sharpened_edges,
-             std::vector<double> edge_smoothness) {
+             std::vector<scalar> edge_smoothness) {
             if (sharpened_edges.size() != edge_smoothness.size()) {
               throw std::runtime_error(
                   "sharpened_edges.size() != edge_smoothness.size()");
@@ -446,8 +446,8 @@ NB_MODULE(manifold3d, m) {
                   nb::arg("center") = false, manifold__cube__size__center)
       .def_static(
           "extrude",
-          [](const CrossSection& crossSection, double height, int nDivisions,
-             double twistDegrees, vec2 scaleTop) {
+          [](const CrossSection& crossSection, scalar height, int nDivisions,
+             scalar twistDegrees, vec2 scaleTop) {
             return Manifold::Extrude(crossSection.ToPolygons(), height,
                                      nDivisions, twistDegrees, scaleTop);
           },
@@ -458,7 +458,7 @@ NB_MODULE(manifold3d, m) {
       .def_static(
           "revolve",
           [](const CrossSection& crossSection, int circularSegments,
-             double revolveDegrees) {
+             scalar revolveDegrees) {
             return Manifold::Revolve(crossSection.ToPolygons(),
                                      circularSegments, revolveDegrees);
           },
@@ -467,14 +467,14 @@ NB_MODULE(manifold3d, m) {
           manifold__revolve__cross_section__circular_segments__revolve_degrees)
       .def_static(
           "level_set",
-          [](const std::function<double(double, double, double)>& f,
-             std::vector<double> bounds, double edgeLength, double level = 0.0,
-             double tolerance = -1) {
+          [](const std::function<scalar(scalar, scalar, scalar)>& f,
+             std::vector<scalar> bounds, scalar edgeLength, scalar level = 0.0,
+             scalar tolerance = -1) {
             // Same format as Manifold.bounding_box
             Box bound = {vec3(bounds[0], bounds[1], bounds[2]),
                          vec3(bounds[3], bounds[4], bounds[5])};
 
-            std::function<double(vec3)> cppToPython = [&f](vec3 v) {
+            std::function<scalar(vec3)> cppToPython = [&f](vec3 v) {
               return f(v.x, v.y, v.z);
             };
             return Manifold::LevelSet(cppToPython, bound, edgeLength, level,
@@ -797,7 +797,7 @@ NB_MODULE(manifold3d, m) {
            cross_section__scale__scale)
       .def(
           "scale",
-          [](const CrossSection& self, double s) { self.Scale({s, s}); },
+          [](const CrossSection& self, scalar s) { self.Scale({s, s}); },
           nb::arg("s"),
           "Scale this CrossSection in space. This operation can be chained. "
           "Transforms are combined and applied lazily."
@@ -824,7 +824,7 @@ NB_MODULE(manifold3d, m) {
             // need a wrapper because python cant modify a reference in-place
             return self.WarpBatch([&warp_func](VecView<vec2> v) {
               auto tmp = warp_func(v);
-              nb::ndarray<double, nb::shape<-1, 2>, nanobind::c_contig> tmpnd;
+              nb::ndarray<scalar, nb::shape<-1, 2>, nanobind::c_contig> tmpnd;
               if (!nb::try_cast(tmp, tmpnd) || tmpnd.ndim() != 2)
                 throw std::runtime_error(
                     "Invalid vector shape, expected (:, 2)");
@@ -863,8 +863,8 @@ NB_MODULE(manifold3d, m) {
       .def("to_polygons", &CrossSection::ToPolygons, cross_section__to_polygons)
       .def(
           "extrude",
-          [](const CrossSection& self, double height, int nDivisions,
-             double twistDegrees, vec2 scaleTop) {
+          [](const CrossSection& self, scalar height, int nDivisions,
+             scalar twistDegrees, vec2 scaleTop) {
             return Manifold::Extrude(self.ToPolygons(), height, nDivisions,
                                      twistDegrees, scaleTop);
           },
@@ -875,7 +875,7 @@ NB_MODULE(manifold3d, m) {
       .def(
           "revolve",
           [](const CrossSection& self, int circularSegments,
-             double revolveDegrees) {
+             scalar revolveDegrees) {
             return Manifold::Revolve(self.ToPolygons(), circularSegments,
                                      revolveDegrees);
           },

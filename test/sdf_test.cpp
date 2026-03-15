@@ -18,17 +18,17 @@
 using namespace manifold;
 
 struct CubeVoid {
-  double operator()(vec3 p) const {
+  scalar operator()(vec3 p) const {
     const vec3 min = p + vec3(1);
     const vec3 max = vec3(1) - p;
-    const double min3 = std::min(min.x, std::min(min.y, min.z));
-    const double max3 = std::min(max.x, std::min(max.y, max.z));
+    const scalar min3 = std::min(min.x, std::min(min.y, min.z));
+    const scalar max3 = std::min(max.x, std::min(max.y, max.z));
     return -1.0 * std::min(min3, max3);
   }
 };
 
 struct Layers {
-  double operator()(vec3 p) const {
+  scalar operator()(vec3 p) const {
     int a = std::fmod(std::round(2 * p.z), 4.0);
     return a == 0 ? 1 : (a == 2 ? -1 : 0);
   }
@@ -37,7 +37,7 @@ struct Layers {
 TEST(SDF, SphereShell) {
   Manifold sphere = Manifold::LevelSet(
       [](vec3 pos) {
-        const double r = la::length(pos);
+        const scalar r = la::length(pos);
         return la::min(1 - r, r - 0.995f);
       },
       {vec3(-1.1), vec3(1.1)}, 0.01, 0, 0.0001);
@@ -61,18 +61,18 @@ TEST(SDF, CubeVoid) {
 }
 
 TEST(SDF, Bounds) {
-  const double size = 4;
-  const double edgeLength = 1;
+  const scalar size = 4;
+  const scalar edgeLength = 1;
 
   Manifold cubeVoid = Manifold::LevelSet(
       CubeVoid(), {vec3(-size / 2), vec3(size / 2)}, edgeLength);
   Box bounds = cubeVoid.BoundingBox();
-  const double epsilon = cubeVoid.GetEpsilon();
+  const scalar epsilon = cubeVoid.GetEpsilon();
   if (options.exportModels) WriteTestOBJ("cubeVoid.obj", cubeVoid);
 
   EXPECT_EQ(cubeVoid.Status(), Manifold::Error::NoError);
   EXPECT_EQ(cubeVoid.Genus(), -1);
-  const double outerBound = size / 2;
+  const scalar outerBound = size / 2;
   EXPECT_NEAR(bounds.min.x, -outerBound, epsilon);
   EXPECT_NEAR(bounds.min.y, -outerBound, epsilon);
   EXPECT_NEAR(bounds.min.z, -outerBound, epsilon);
@@ -82,18 +82,18 @@ TEST(SDF, Bounds) {
 }
 
 TEST(SDF, Bounds2) {
-  const double size = 4;
-  const double edgeLength = 1;
+  const scalar size = 4;
+  const scalar edgeLength = 1;
 
   Manifold cubeVoid = Manifold::LevelSet(
       CubeVoid(), {vec3(-size / 2), vec3(size / 2)}, edgeLength);
   Box bounds = cubeVoid.BoundingBox();
-  const double epsilon = cubeVoid.GetEpsilon();
+  const scalar epsilon = cubeVoid.GetEpsilon();
   if (options.exportModels) WriteTestOBJ("cubeVoid2.obj", cubeVoid);
 
   EXPECT_EQ(cubeVoid.Status(), Manifold::Error::NoError);
   EXPECT_EQ(cubeVoid.Genus(), -1);
-  const double outerBound = size / 2;
+  const scalar outerBound = size / 2;
   EXPECT_NEAR(bounds.min.x, -outerBound, epsilon);
   EXPECT_NEAR(bounds.min.y, -outerBound, epsilon);
   EXPECT_NEAR(bounds.min.z, -outerBound, epsilon);
@@ -103,7 +103,7 @@ TEST(SDF, Bounds2) {
 }
 
 TEST(SDF, Bounds3) {
-  const double radius = 1.2;
+  const scalar radius = 1.2;
   Manifold sphere =
       Manifold::LevelSet([radius](vec3 pos) { return radius - length(pos); },
                          {vec3(-1), vec3(1)}, 0.1);
@@ -111,7 +111,7 @@ TEST(SDF, Bounds3) {
 
   EXPECT_EQ(sphere.Status(), Manifold::Error::NoError);
   EXPECT_EQ(sphere.Genus(), 0);
-  const double epsilon = sphere.GetEpsilon();
+  const scalar epsilon = sphere.GetEpsilon();
   Box bounds = sphere.BoundingBox();
   EXPECT_NEAR(bounds.min.x, -1, epsilon);
   EXPECT_NEAR(bounds.min.y, -1, epsilon);
@@ -122,8 +122,8 @@ TEST(SDF, Bounds3) {
 }
 
 TEST(SDF, Void) {
-  const double size = 4;
-  const double edgeLength = 0.5;
+  const scalar size = 4;
+  const scalar edgeLength = 0.5;
 
   Manifold cubeVoid = Manifold::LevelSet(
       CubeVoid(), {vec3(-size / 2), vec3(size / 2)}, edgeLength);
@@ -131,7 +131,7 @@ TEST(SDF, Void) {
   Manifold cube = Manifold::Cube(vec3(size), true);
   cube -= cubeVoid;
   Box bounds = cube.BoundingBox();
-  const double epsilon = cube.GetEpsilon();
+  const scalar epsilon = cube.GetEpsilon();
   if (options.exportModels) WriteTestOBJ("cube.obj", cube);
 
   EXPECT_EQ(cubeVoid.Status(), Manifold::Error::NoError);
@@ -147,13 +147,13 @@ TEST(SDF, Void) {
 }
 
 TEST(SDF, Resize) {
-  const double size = 20;
+  const scalar size = 20;
   Manifold layers = Manifold::LevelSet(Layers(), {vec3(0.0), vec3(size)}, 1);
   if (options.exportModels) WriteTestOBJ("layers.obj", layers);
 
   EXPECT_EQ(layers.Status(), Manifold::Error::NoError);
   EXPECT_EQ(layers.Genus(), -8);
-  const double epsilon = layers.GetEpsilon();
+  const scalar epsilon = layers.GetEpsilon();
   Box bounds = layers.BoundingBox();
   EXPECT_NEAR(bounds.min.x, 0, epsilon);
   EXPECT_NEAR(bounds.min.y, 0, epsilon);
@@ -167,7 +167,7 @@ TEST(SDF, SineSurface) {
   Manifold surface =
       Manifold::LevelSet(
           [](vec3 p) {
-            double mid = la::sin(p.x) + la::sin(p.y);
+            scalar mid = la::sin(p.x) + la::sin(p.y);
             return (p.z > mid - 0.5 && p.z < mid + 0.5) ? 1.0f : -1.0f;
           },
           {vec3(-1.75 * kPi), vec3(1.75 * kPi)}, 1)
@@ -183,7 +183,7 @@ TEST(SDF, SineSurface) {
 }
 
 TEST(SDF, Blobs) {
-  const double blend = 1;
+  const scalar blend = 1;
   std::vector<vec4> balls = {{0, 0, 0, 2},     //
                              {1, 2, 3, 2},     //
                              {-2, 2, -2, 1},   //
@@ -196,7 +196,7 @@ TEST(SDF, Blobs) {
                              {-4, -3, -2, 1}};
   Manifold blobs = Manifold::LevelSet(
       [&balls, blend](vec3 p) {
-        double d = 0;
+        scalar d = 0;
         for (const auto& ball : balls) {
           d += (ball.w > 0 ? 1 : -1) *
                smoothstep(-blend, blend,

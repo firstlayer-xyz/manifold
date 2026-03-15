@@ -18,7 +18,7 @@ namespace {
 
 using namespace manifold;
 
-void Fractal(std::vector<Manifold>& holes, Manifold& hole, double w,
+void Fractal(std::vector<Manifold>& holes, Manifold& hole, scalar w,
              vec2 position, int depth, int maxDepth) {
   w /= 3;
   holes.push_back(hole.Scale({w, w, 1.0}).Translate(vec3(position, 0.0)));

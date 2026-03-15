@@ -26,35 +26,35 @@
 
 namespace manifold {
 
-double defaultEps() { return 0.0000001; }
+scalar defaultEps() { return 0.0000001; }
 
-inline double getSquaredDistanceBetweenPointAndRay(const vec3& p,
+inline scalar getSquaredDistanceBetweenPointAndRay(const vec3& p,
                                                    const Ray& r) {
   const vec3 s = p - r.S;
-  double t = la::dot(s, r.V);
+  scalar t = la::dot(s, r.V);
   return la::dot(s, s) - t * t * r.VInvLengthSquared;
 }
 
-inline double getSquaredDistance(const vec3& p1, const vec3& p2) {
+inline scalar getSquaredDistance(const vec3& p1, const vec3& p2) {
   return la::dot(p1 - p2, p1 - p2);
 }
 // Note that the unit of distance returned is relative to plane's normal's
 // length (divide by N.getNormalized() if needed to get the "real" distance).
-inline double getSignedDistanceToPlane(const vec3& v, const Plane& p) {
+inline scalar getSignedDistanceToPlane(const vec3& v, const Plane& p) {
   return la::dot(p.N, v) + p.D;
 }
 
 inline vec3 getTriangleNormal(const vec3& a, const vec3& b, const vec3& c) {
   // We want to get (a-c).crossProduct(b-c) without constructing temp vectors
-  double x = a.x - c.x;
-  double y = a.y - c.y;
-  double z = a.z - c.z;
-  double rhsx = b.x - c.x;
-  double rhsy = b.y - c.y;
-  double rhsz = b.z - c.z;
-  double px = y * rhsz - z * rhsy;
-  double py = z * rhsx - x * rhsz;
-  double pz = x * rhsy - y * rhsx;
+  scalar x = a.x - c.x;
+  scalar y = a.y - c.y;
+  scalar z = a.z - c.z;
+  scalar rhsx = b.x - c.x;
+  scalar rhsy = b.y - c.y;
+  scalar rhsz = b.z - c.z;
+  scalar px = y * rhsz - z * rhsy;
+  scalar py = z * rhsx - x * rhsz;
+  scalar pz = x * rhsy - y * rhsx;
   return la::normalize(vec3(px, py, pz));
 }
 
@@ -223,7 +223,7 @@ HalfEdgeMesh::HalfEdgeMesh(const MeshBuilder& builderObject,
 /*
  * Implementation of the algorithm
  */
-std::pair<SharedVec<Halfedge>, Vec<vec3>> QuickHull::buildMesh(double epsilon) {
+std::pair<SharedVec<Halfedge>, Vec<vec3>> QuickHull::buildMesh(scalar epsilon) {
   if (originalVertexData.size() == 0) {
     return {SharedVec<Halfedge>(), Vec<vec3>()};
   }
@@ -386,7 +386,7 @@ void QuickHull::createConvexHalfedgeMesh() {
       } else {
         const Plane& P = pvf.P;
         pvf.visibilityCheckedOnIteration = iter;
-        const double d = la::dot(P.N, activePoint) + P.D;
+        const scalar d = la::dot(P.N, activePoint) + P.D;
         if (d > 0) {
           pvf.isVisibleFaceOnCurrentIteration = 1;
           pvf.horizonEdgesOnCurrentIteration = 0;
@@ -572,7 +572,7 @@ void QuickHull::createConvexHalfedgeMesh() {
 
 std::array<size_t, 6> QuickHull::getExtremeValues() {
   std::array<size_t, 6> outIndices{0, 0, 0, 0, 0, 0};
-  double extremeVals[6] = {originalVertexData[0].x, originalVertexData[0].x,
+  scalar extremeVals[6] = {originalVertexData[0].x, originalVertexData[0].x,
                            originalVertexData[0].y, originalVertexData[0].y,
                            originalVertexData[0].z, originalVertexData[0].z};
   const size_t vCount = originalVertexData.size();
@@ -630,11 +630,11 @@ bool QuickHull::reorderHorizonEdges(VecView<size_t>& horizonEdges) {
   return true;
 }
 
-double QuickHull::getScale(const std::array<size_t, 6>& extremeValuesInput) {
-  double s = 0;
+scalar QuickHull::getScale(const std::array<size_t, 6>& extremeValuesInput) {
+  scalar s = 0;
   for (size_t i = 0; i < 6; i++) {
-    const double* v =
-        (const double*)(&originalVertexData[extremeValuesInput[i]]);
+    const scalar* v =
+        (const scalar*)(&originalVertexData[extremeValuesInput[i]]);
     v += i / 2;
     auto a = std::abs(*v);
     if (a > s) {
@@ -667,13 +667,13 @@ void QuickHull::setupInitialTetrahedron() {
   }
 
   // Find two most distant extreme points.
-  double maxD = epsilonSquared;
+  scalar maxD = epsilonSquared;
   std::pair<size_t, size_t> selectedPoints;
   for (size_t i = 0; i < 6; i++) {
     for (size_t j = i + 1; j < 6; j++) {
       // I found a function for squaredDistance but i can't seem to include it
       // like this for some reason
-      const double d = getSquaredDistance(originalVertexData[extremeValues[i]],
+      const scalar d = getSquaredDistance(originalVertexData[extremeValues[i]],
                                           originalVertexData[extremeValues[j]]);
       if (d > maxD) {
         maxD = d;
@@ -697,7 +697,7 @@ void QuickHull::setupInitialTetrahedron() {
   size_t maxI = std::numeric_limits<size_t>::max();
   const size_t vCount = originalVertexData.size();
   for (size_t i = 0; i < vCount; i++) {
-    const double distToRay =
+    const scalar distToRay =
         getSquaredDistanceBetweenPointAndRay(originalVertexData[i], r);
     if (distToRay > maxD) {
       maxD = distToRay;
@@ -736,7 +736,7 @@ void QuickHull::setupInitialTetrahedron() {
                         baseTriangleVertices[2]);
   Plane trianglePlane(N, baseTriangleVertices[0]);
   for (size_t i = 0; i < vCount; i++) {
-    const double d = std::abs(
+    const scalar d = std::abs(
         getSignedDistanceToPlane(originalVertexData[i], trianglePlane));
     if (d > maxD) {
       maxD = d;
@@ -808,7 +808,7 @@ void QuickHull::reclaimToIndexVectorPool(std::unique_ptr<Vec<size_t>>& ptr) {
 
 bool QuickHull::addPointToFace(typename MeshBuilder::Face& f,
                                size_t pointIndex) {
-  const double D =
+  const scalar D =
       getSignedDistanceToPlane(originalVertexData[pointIndex], f.P);
   if (D > 0 && D * D > epsilonSquared * f.P.sqrNLength) {
     if (!f.pointsOnPositiveSide) {

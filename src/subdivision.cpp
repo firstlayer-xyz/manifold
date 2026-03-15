@@ -163,7 +163,7 @@ class Partition {
         const vec4 nextBary = partition.vertBary[(i + 1) % 4];
         for (int j = 1; j < n[i]; ++j) {
           partition.vertBary.push_back(
-              la::lerp(partition.vertBary[i], nextBary, (double)j / n[i]));
+              la::lerp(partition.vertBary[i], nextBary, (scalar)j / n[i]));
         }
       }
       PartitionQuad(partition.triVert, partition.vertBary, {0, 1, 2, 3},
@@ -176,12 +176,12 @@ class Partition {
         const vec4 nextBary = partition.vertBary[(i + 1) % 3];
         for (int j = 1; j < n[i]; ++j) {
           partition.vertBary.push_back(
-              la::lerp(partition.vertBary[i], nextBary, (double)j / n[i]));
+              la::lerp(partition.vertBary[i], nextBary, (scalar)j / n[i]));
         }
       }
       const ivec3 edgeOffsets = {3, 3 + n[0] - 1, 3 + n[0] - 1 + n[1] - 1};
 
-      const double f = n[2] * n[2] + n[0] * n[0];
+      const scalar f = n[2] * n[2] + n[0] * n[0];
       if (n[1] == 1) {
         if (n[0] == 1) {
           partition.triVert.push_back({0, 1, 2});
@@ -207,7 +207,7 @@ class Partition {
         const vec4 middleBary = partition.vertBary[edgeOffsets[0] + ns - 1];
         for (int j = 1; j < nh; ++j) {
           partition.vertBary.push_back(
-              la::lerp(partition.vertBary[2], middleBary, (double)j / nh));
+              la::lerp(partition.vertBary[2], middleBary, (scalar)j / nh));
         }
 
         partition.triVert.push_back({edgeOffsets[1] - 1, 1, edgeOffsets[1]});
@@ -337,7 +337,7 @@ class Partition {
       const int nextOffset1 = GetEdgeVert(1, cornerOffset1 + 1);
       const int nextOffset3 = GetEdgeVert(3, cornerOffset3 + 1);
       const int added = std::round(la::lerp(
-          (double)edgeAdded[0], (double)edgeAdded[2], (double)i / partitions));
+          (scalar)edgeAdded[0], (scalar)edgeAdded[2], (scalar)i / partitions));
 
       newCornerVerts[1] = GetEdgeVert(1, cornerOffset1);
       newCornerVerts[2] = GetEdgeVert(3, cornerOffset3);
@@ -350,7 +350,7 @@ class Partition {
       for (int j = 0; j < added; ++j) {
         vertBary.push_back(la::lerp(vertBary[newCornerVerts[1]],
                                     vertBary[newCornerVerts[2]],
-                                    (j + 1.0) / (added + 1.0)));
+                                    (scalar)(j + 1.0) / (scalar)(added + 1.0)));
       }
 
       PartitionQuad(triVert, vertBary, newCornerVerts, newEdgeOffsets,
@@ -577,7 +577,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
                if (indices.tri < 0) {
                  return;  // inside quad
                }
-               const double frac = 1.0 / (n + 1);
+               const scalar frac = 1.0 / (n + 1);
 
                for (int i = 0; i < n; ++i) {
                  vec4 uvw(0.0);
@@ -699,7 +699,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
     // duplicate the prop verts along all new edges even though this is
     // unnecessary for edges that share the same prop verts. The duplicates will
     // be removed by CompactProps.
-    Vec<double> prop(numProp_ * (numPropVert + addedVerts + totalEdgeAdded));
+    Vec<scalar> prop(numProp_ * (numPropVert + addedVerts + totalEdgeAdded));
 
     // copy retained prop verts
     copy(properties_.begin(), properties_.end(), prop.begin());
@@ -743,7 +743,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
                  const int offset = edgeOffset[i] + propOffset + addedVerts;
                  const int numProp = NumProp();
 
-                 const double frac = 1.0 / (n + 1);
+                 const scalar frac = 1.0 / (n + 1);
                  const int halfedgeIdx =
                      halfedge_[edges[i].halfedgeIdx].pairedHalfedge;
                  const int prop0 = halfedge_[halfedgeIdx].propVert;

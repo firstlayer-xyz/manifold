@@ -119,14 +119,11 @@ Manifold Manifold::Impl::Minkowski(const Impl& other, bool inset) const {
 
       for_each_n(
           autoPolicy(numTriB, 100), countAt(0), numTriB, [&](const int bFace) {
-            // Tolerance for detecting coplanar faces (skip degenerate hull
-            // cases)
-            constexpr double kCoplanarTol = 1e-12;
             vec3 nB = bImpl->faceNormal_[bFace];
-            double dotSame = linalg::dot(nA, nB);
-            double dotOpp = linalg::dot(nA, -nB);
-            const bool coplanar = (std::abs(dotSame - 1.0) < kCoplanarTol) ||
-                                  (std::abs(dotOpp - 1.0) < kCoplanarTol);
+            scalar dotSame = linalg::dot(nA, nB);
+            scalar dotOpp = linalg::dot(nA, -nB);
+            const bool coplanar = (std::abs(dotSame - 1.0) < kPrecision) ||
+                                  (std::abs(dotOpp - 1.0) < kPrecision);
             if (coplanar) return;
 
             vec3 b1 =

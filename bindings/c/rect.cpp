@@ -19,8 +19,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-ManifoldRect* manifold_rect(void* mem, double x1, double y1, double x2,
-                            double y2) {
+ManifoldRect* manifold_rect(void* mem, ManifoldScalar x1, ManifoldScalar y1,
+                            ManifoldScalar x2, ManifoldScalar y2) {
   auto p1 = vec2(x1, y1);
   auto p2 = vec2(x2, y2);
   auto rect = new (mem) Rect(p1, p2);
@@ -45,9 +45,12 @@ ManifoldVec2 manifold_rect_center(ManifoldRect* r) {
   return {v.x, v.y};
 }
 
-double manifold_rect_scale(ManifoldRect* r) { return from_c(r)->Scale(); }
+ManifoldScalar manifold_rect_scale(ManifoldRect* r) {
+  return from_c(r)->Scale();
+}
 
-int manifold_rect_contains_pt(ManifoldRect* r, double x, double y) {
+int manifold_rect_contains_pt(ManifoldRect* r, ManifoldScalar x,
+                               ManifoldScalar y) {
   auto rect = *from_c(r);
   auto p = vec2(x, y);
   return rect.Contains(p);
@@ -59,7 +62,8 @@ int manifold_rect_contains_rect(ManifoldRect* a, ManifoldRect* b) {
   return outer.Contains(inner);
 }
 
-void manifold_rect_include_pt(ManifoldRect* r, double x, double y) {
+void manifold_rect_include_pt(ManifoldRect* r, ManifoldScalar x,
+                               ManifoldScalar y) {
   auto& rect = *from_c(r);
   auto p = vec2(x, y);
   rect.Union(p);
@@ -70,23 +74,24 @@ ManifoldRect* manifold_rect_union(void* mem, ManifoldRect* a, ManifoldRect* b) {
   return to_c(new (mem) Rect(rect));
 }
 
-ManifoldRect* manifold_rect_transform(void* mem, ManifoldRect* r, double x1,
-                                      double y1, double x2, double y2,
-                                      double x3, double y3) {
+ManifoldRect* manifold_rect_transform(void* mem, ManifoldRect* r,
+                                      ManifoldScalar x1, ManifoldScalar y1,
+                                      ManifoldScalar x2, ManifoldScalar y2,
+                                      ManifoldScalar x3, ManifoldScalar y3) {
   auto mat = mat2x3({x1, y1}, {x2, y2}, {x3, y3});
   auto transformed = from_c(r)->Transform(mat);
   return to_c(new (mem) Rect(transformed));
 }
 
-ManifoldRect* manifold_rect_translate(void* mem, ManifoldRect* r, double x,
-                                      double y) {
+ManifoldRect* manifold_rect_translate(void* mem, ManifoldRect* r,
+                                      ManifoldScalar x, ManifoldScalar y) {
   auto p = vec2(x, y);
   auto translated = (*from_c(r)) + p;
   return to_c(new (mem) Rect(translated));
 }
 
-ManifoldRect* manifold_rect_mul(void* mem, ManifoldRect* r, double x,
-                                double y) {
+ManifoldRect* manifold_rect_mul(void* mem, ManifoldRect* r, ManifoldScalar x,
+                                ManifoldScalar y) {
   auto p = vec2(x, y);
   auto scaled = (*from_c(r)) * p;
   return to_c(new (mem) Rect(scaled));

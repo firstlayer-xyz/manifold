@@ -19,7 +19,7 @@
 using namespace manifold;
 
 // Check if the mesh remains convex after adding new faces
-bool isMeshConvex(Manifold hullManifold, double epsilon = 0.0000001) {
+bool isMeshConvex(Manifold hullManifold, scalar epsilon = 0.0000001) {
   // Get the mesh from the manifold
   MeshGL64 mesh = hullManifold.GetMeshGL64();
 
@@ -30,9 +30,12 @@ bool isMeshConvex(Manifold hullManifold, double epsilon = 0.0000001) {
   for (size_t t = 0; t < numTri; ++t) {
     // Get the vertices of the triangle
     auto tri = mesh.GetTriVerts(t);
-    vec3 v0 = mesh.GetVertPos(tri[0]);
-    vec3 v1 = mesh.GetVertPos(tri[1]);
-    vec3 v2 = mesh.GetVertPos(tri[2]);
+    auto v0_64 = mesh.GetVertPos(tri[0]);
+    vec3 v0((scalar)v0_64.x, (scalar)v0_64.y, (scalar)v0_64.z);
+    auto v1_64 = mesh.GetVertPos(tri[1]);
+    vec3 v1((scalar)v1_64.x, (scalar)v1_64.y, (scalar)v1_64.z);
+    auto v2_64 = mesh.GetVertPos(tri[2]);
+    vec3 v2((scalar)v2_64.x, (scalar)v2_64.y, (scalar)v2_64.z);
 
     // Compute the normal of the triangle
     vec3 normal = la::normalize(la::cross(v1 - v0, v2 - v0));
@@ -43,10 +46,11 @@ bool isMeshConvex(Manifold hullManifold, double epsilon = 0.0000001) {
         continue;  // Skip vertices of the current triangle
 
       // Get the vertex
-      vec3 v = mesh.GetVertPos(i);
+      auto vi_64 = mesh.GetVertPos(i);
+      vec3 v((scalar)vi_64.x, (scalar)vi_64.y, (scalar)vi_64.z);
 
       // Compute the signed distance from the plane
-      double distance = la::dot(normal, v - v0);
+      scalar distance = la::dot(normal, v - v0);
 
       // If any vertex lies on the opposite side of the normal direction
       if (distance > epsilon) {
@@ -62,10 +66,10 @@ bool isMeshConvex(Manifold hullManifold, double epsilon = 0.0000001) {
 }
 
 TEST(Hull, Tictac) {
-  const double tictacRad = 100;
-  const double tictacHeight = 500;
+  const scalar tictacRad = 100;
+  const scalar tictacHeight = 500;
   const int tictacSeg = 500;
-  const double tictacMid = tictacHeight - 2 * tictacRad;
+  const scalar tictacMid = tictacHeight - 2 * tictacRad;
   const auto sphere = Manifold::Sphere(tictacRad, tictacSeg);
   const std::vector<Manifold> spheres{sphere,
                                       sphere.Translate({0, 0, tictacMid})};
@@ -79,7 +83,7 @@ TEST(Hull, Tictac) {
 TEST(Hull, Hollow) {
   auto sphere = Manifold::Sphere(100, 360);
   auto hollow = sphere - sphere.Scale({0.8, 0.8, 0.8});
-  const double sphere_vol = sphere.Volume();
+  const scalar sphere_vol = sphere.Volume();
   EXPECT_FLOAT_EQ(hollow.Hull().Volume(), sphere_vol);
 }
 

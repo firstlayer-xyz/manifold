@@ -19,9 +19,9 @@ namespace {
 
 using namespace manifold;
 
-Manifold Base(double width, double radius, double decorRadius,
-              double twistRadius, int nDecor, double innerRadius,
-              double outerRadius, double cut, int nCut, int nDivision) {
+Manifold Base(scalar width, scalar radius, scalar decorRadius,
+              scalar twistRadius, int nDecor, scalar innerRadius,
+              scalar outerRadius, scalar cut, int nCut, int nDivision) {
   Manifold base = Manifold::Cylinder(width, radius + twistRadius / 2);
 
   CrossSection circle =
@@ -35,7 +35,7 @@ Manifold Base(double width, double radius, double decorRadius,
   }
 
   Polygons stretch(1);
-  double dPhiRad = 2 * kPi / nCut;
+  scalar dPhiRad = 2 * kPi / nCut;
   vec2 p0(outerRadius, 0.0);
   vec2 p1(innerRadius, -cut);
   vec2 p2(innerRadius, cut);
@@ -72,15 +72,15 @@ namespace manifold {
  * @param nCut The number of cuts that enable stretching.
  * @param nDivision the number of divisions along the width.
  */
-Manifold StretchyBracelet(double radius, double height, double width,
-                          double thickness, int nDecor, int nCut,
+Manifold StretchyBracelet(scalar radius, scalar height, scalar width,
+                          scalar thickness, int nDecor, int nCut,
                           int nDivision) {
-  double twistRadius = kPi * radius / nDecor;
-  double decorRadius = twistRadius * 1.5;
-  double outerRadius = radius + (decorRadius + twistRadius) * 0.5;
-  double innerRadius = outerRadius - height;
-  double cut = 0.5 * (kPi * 2 * innerRadius / nCut - thickness);
-  double adjThickness = 0.5 * thickness * height / cut;
+  scalar twistRadius = kPi * radius / nDecor;
+  scalar decorRadius = twistRadius * 1.5;
+  scalar outerRadius = radius + (decorRadius + twistRadius) * 0.5;
+  scalar innerRadius = outerRadius - height;
+  scalar cut = 0.5 * (kPi * 2 * innerRadius / nCut - thickness);
+  scalar adjThickness = 0.5 * thickness * height / cut;
 
   return Base(width, radius, decorRadius, twistRadius, nDecor,
               innerRadius + thickness, outerRadius + adjThickness,

@@ -34,24 +34,24 @@ namespace manifold {
  *  @{
  */
 
-Manifold TorusKnot(int p, int q, double majorRadius, double minorRadius,
-                   double threadRadius, int circularSegments = 0,
+Manifold TorusKnot(int p, int q, scalar majorRadius, scalar minorRadius,
+                   scalar threadRadius, int circularSegments = 0,
                    int linearSegments = 0);
 
-Manifold StretchyBracelet(double radius = 30.0, double height = 8.0,
-                          double width = 15.0, double thickness = 0.4,
+Manifold StretchyBracelet(scalar radius = 30.0, scalar height = 8.0,
+                          scalar width = 15.0, scalar thickness = 0.4,
                           int nDecor = 20, int nCut = 27, int nDivision = 30);
 
 Manifold MengerSponge(int n = 3);
 
-Manifold RoundedFrame(double edgeLength, double radius,
+Manifold RoundedFrame(scalar edgeLength, scalar radius,
                       int circularSegments = 0);
 
-Manifold TetPuzzle(double edgeLength, double gap, int nDivisions);
+Manifold TetPuzzle(scalar edgeLength, scalar gap, int nDivisions);
 
 Manifold Scallop();
 
-Manifold GyroidModule(double size = 20, int n = 20);
+Manifold GyroidModule(scalar size = 20, int n = 20);
 
 Manifold CondensedMatter(int fn = 16);
 /** @} */  // end of Samples

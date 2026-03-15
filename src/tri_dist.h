@@ -55,13 +55,13 @@ inline void EdgeEdgeDist(vec3& x, vec3& y,  // closest points
   // Compute t for the closest point on ray (p, a) to ray (q, b)
   const auto Denom = ADotA * BDotB - ADotB * ADotB;
 
-  double t;  // We will clamp result so t is on the segment (p, a)
+  scalar t;  // We will clamp result so t is on the segment (p, a)
   t = Denom != 0.0
           ? la::clamp((ADotT * BDotB - BDotT * ADotB) / Denom, 0.0, 1.0)
           : 0.0;
 
   // find u for point on ray (q, b) closest to point at t
-  double u;
+  scalar u;
   if (BDotB != 0.0) {
     u = (t * ADotB - BDotT) / BDotB;
 
@@ -107,7 +107,7 @@ inline auto DistanceTriangleTriangleSquared(const std::array<vec3, 3>& p,
 
   bool shown_disjoint = false;
 
-  auto mindd = std::numeric_limits<double>::max();
+  auto mindd = std::numeric_limits<scalar>::max();
 
   for (uint32_t i = 0; i < 3; i++) {
     for (uint32_t j = 0; j < 3; j++) {
@@ -221,6 +221,6 @@ inline auto DistanceTriangleTriangleSquared(const std::array<vec3, 3>& p,
     }
   }
 
-  return shown_disjoint ? mindd : 0.0;
+  return shown_disjoint ? mindd : (scalar)0.0;
 };
 }  // namespace manifold

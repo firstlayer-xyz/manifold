@@ -40,16 +40,18 @@ TEST(CBIND, sphere) {
 }
 
 TEST(CBIND, warp_translation) {
-  ManifoldVec3 (*warp)(double, double, double, void*) = [](double x, double y,
-                                                           double z, void*) {
-    ManifoldVec3 v = {x + 15.0, y, z};
+  ManifoldVec3 (*warp)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                       void*) = [](ManifoldScalar x, ManifoldScalar y,
+                                   ManifoldScalar z, void*) {
+    ManifoldVec3 v = {x + (ManifoldScalar)15.0, y, z};
     return v;
   };
-  double* context = (double*)malloc(1 * sizeof(double));
+  ManifoldScalar* context = (ManifoldScalar*)malloc(1 * sizeof(ManifoldScalar));
   context[0] = 15.0;
-  ManifoldVec3 (*warpcontext)(double, double, double, void*) =
-      [](double x, double y, double z, void* ctx) {
-        ManifoldVec3 v = {x + ((double*)ctx)[0], y, z};
+  ManifoldVec3 (*warpcontext)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                              void*) =
+      [](ManifoldScalar x, ManifoldScalar y, ManifoldScalar z, void* ctx) {
+        ManifoldVec3 v = {x + ((ManifoldScalar*)ctx)[0], y, z};
         return v;
       };
   ManifoldManifold* sphere = manifold_sphere(alloc_manifold_buffer(), 1.0, 100);
@@ -165,36 +167,39 @@ TEST(CBIND, obj_round_trip) {
 
 TEST(CBIND, level_set) {
   // can't convert lambda with captures to funptr
-  double (*sdf)(double, double, double, void*) = [](double x, double y,
-                                                    double z, void* ctx) {
-    const double radius = 15;
-    const double xscale = 3;
-    const double yscale = 1;
-    const double zscale = 1;
-    double xs = x / xscale;
-    double ys = y / yscale;
-    double zs = z / zscale;
+  ManifoldScalar (*sdf)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                        void*) = [](ManifoldScalar x, ManifoldScalar y,
+                                    ManifoldScalar z, void* ctx) {
+    const ManifoldScalar radius = 15;
+    const ManifoldScalar xscale = 3;
+    const ManifoldScalar yscale = 1;
+    const ManifoldScalar zscale = 1;
+    ManifoldScalar xs = x / xscale;
+    ManifoldScalar ys = y / yscale;
+    ManifoldScalar zs = z / zscale;
     return radius - sqrtf(xs * xs + ys * ys + zs * zs);
   };
-  double* context = (double*)malloc(4 * sizeof(double));
+  ManifoldScalar* context =
+      (ManifoldScalar*)malloc(4 * sizeof(ManifoldScalar));
   context[0] = 15.0;
   context[1] = 3.0;
   context[2] = 1.0;
   context[3] = 1.0;
-  double (*sdfcontext)(double, double, double,
-                       void*) = [](double x, double y, double z, void* ctx) {
-    double* context = (double*)ctx;
-    const double radius = context[0];
-    const double xscale = context[1];
-    const double yscale = context[2];
-    const double zscale = context[3];
-    double xs = x / xscale;
-    double ys = y / yscale;
-    double zs = z / zscale;
-    return radius - sqrtf(xs * xs + ys * ys + zs * zs);
-  };
+  ManifoldScalar (*sdfcontext)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                               void*) =
+      [](ManifoldScalar x, ManifoldScalar y, ManifoldScalar z, void* ctx) {
+        ManifoldScalar* context = (ManifoldScalar*)ctx;
+        const ManifoldScalar radius = context[0];
+        const ManifoldScalar xscale = context[1];
+        const ManifoldScalar yscale = context[2];
+        const ManifoldScalar zscale = context[3];
+        ManifoldScalar xs = x / xscale;
+        ManifoldScalar ys = y / yscale;
+        ManifoldScalar zs = z / zscale;
+        return radius - sqrtf(xs * xs + ys * ys + zs * zs);
+      };
 
-  const double bb = 30;  // (radius * 2)
+  const ManifoldScalar bb = 30;  // (radius * 2)
   // bounding box scaled according to factors used in *sdf
   ManifoldBox* bounds = manifold_box(alloc_box_buffer(), -bb * 3, -bb * 1,
                                      -bb * 1, bb * 3, bb * 1, bb * 1);
@@ -220,16 +225,17 @@ TEST(CBIND, level_set) {
   EXPECT_EQ(manifold_status(sdf_man_context), MANIFOLD_NO_ERROR);
 
   // Analytic calculations for volume and surface area
-  double a = context[0] * context[1];
-  double b = context[0] * context[2];
-  double c = context[0] * context[3];
-  constexpr double kPi = 3.14159265358979323846264338327950288;
-  double s = 4.0 * kPi *
-             std::pow(((std::pow(a * b, 1.6) + std::pow(a * c, 1.6) +
-                        std::pow(b * c, 1.6)) /
-                       3.0),
-                      1.0 / 1.6);
-  double v = 4.0 * kPi / 3.0 * a * b * c;
+  ManifoldScalar a = context[0] * context[1];
+  ManifoldScalar b = context[0] * context[2];
+  ManifoldScalar c = context[0] * context[3];
+  constexpr ManifoldScalar kPi = 3.14159265358979323846264338327950288;
+  ManifoldScalar s =
+      4.0 * kPi *
+      std::pow(((std::pow(a * b, 1.6) + std::pow(a * c, 1.6) +
+                 std::pow(b * c, 1.6)) /
+                3.0),
+               1.0 / 1.6);
+  ManifoldScalar v = 4.0 * kPi / 3.0 * a * b * c;
 
   // Assert that numerical properties are equal to each other and +/- 0.5% of
   // analytical
@@ -252,36 +258,39 @@ TEST(CBIND, level_set) {
 
 TEST(CBIND, level_set_64) {
   // can't convert lambda with captures to funptr
-  double (*sdf)(double, double, double, void*) = [](double x, double y,
-                                                    double z, void* ctx) {
-    const double radius = 15;
-    const double xscale = 3;
-    const double yscale = 1;
-    const double zscale = 1;
-    double xs = x / xscale;
-    double ys = y / yscale;
-    double zs = z / zscale;
+  ManifoldScalar (*sdf)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                        void*) = [](ManifoldScalar x, ManifoldScalar y,
+                                    ManifoldScalar z, void* ctx) {
+    const ManifoldScalar radius = 15;
+    const ManifoldScalar xscale = 3;
+    const ManifoldScalar yscale = 1;
+    const ManifoldScalar zscale = 1;
+    ManifoldScalar xs = x / xscale;
+    ManifoldScalar ys = y / yscale;
+    ManifoldScalar zs = z / zscale;
     return radius - sqrtf(xs * xs + ys * ys + zs * zs);
   };
-  double* context = (double*)malloc(4 * sizeof(double));
+  ManifoldScalar* context =
+      (ManifoldScalar*)malloc(4 * sizeof(ManifoldScalar));
   context[0] = 15.0;
   context[1] = 3.0;
   context[2] = 1.0;
   context[3] = 1.0;
-  double (*sdfcontext)(double, double, double,
-                       void*) = [](double x, double y, double z, void* ctx) {
-    double* context = (double*)ctx;
-    const double radius = context[0];
-    const double xscale = context[1];
-    const double yscale = context[2];
-    const double zscale = context[3];
-    double xs = x / xscale;
-    double ys = y / yscale;
-    double zs = z / zscale;
-    return radius - sqrtf(xs * xs + ys * ys + zs * zs);
-  };
+  ManifoldScalar (*sdfcontext)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                               void*) =
+      [](ManifoldScalar x, ManifoldScalar y, ManifoldScalar z, void* ctx) {
+        ManifoldScalar* context = (ManifoldScalar*)ctx;
+        const ManifoldScalar radius = context[0];
+        const ManifoldScalar xscale = context[1];
+        const ManifoldScalar yscale = context[2];
+        const ManifoldScalar zscale = context[3];
+        ManifoldScalar xs = x / xscale;
+        ManifoldScalar ys = y / yscale;
+        ManifoldScalar zs = z / zscale;
+        return radius - sqrtf(xs * xs + ys * ys + zs * zs);
+      };
 
-  const double bb = 30;  // (radius * 2)
+  const ManifoldScalar bb = 30;  // (radius * 2)
   // bounding box scaled according to factors used in *sdf
   ManifoldBox* bounds = manifold_box(alloc_box_buffer(), -bb * 3, -bb * 1,
                                      -bb * 1, bb * 3, bb * 1, bb * 1);
@@ -296,16 +305,17 @@ TEST(CBIND, level_set_64) {
   EXPECT_EQ(manifold_status(sdf_man_context), MANIFOLD_NO_ERROR);
 
   // Analytic calculations for volume and surface area
-  double a = context[0] * context[1];
-  double b = context[0] * context[2];
-  double c = context[0] * context[3];
-  constexpr double kPi = 3.14159265358979323846264338327950288;
-  double s = 4.0 * kPi *
-             std::pow(((std::pow(a * b, 1.6) + std::pow(a * c, 1.6) +
-                        std::pow(b * c, 1.6)) /
-                       3.0),
-                      1.0 / 1.6);
-  double v = 4.0 * kPi / 3.0 * a * b * c;
+  ManifoldScalar a = context[0] * context[1];
+  ManifoldScalar b = context[0] * context[2];
+  ManifoldScalar c = context[0] * context[3];
+  constexpr ManifoldScalar kPi = 3.14159265358979323846264338327950288;
+  ManifoldScalar s =
+      4.0 * kPi *
+      std::pow(((std::pow(a * b, 1.6) + std::pow(a * c, 1.6) +
+                 std::pow(b * c, 1.6)) /
+                3.0),
+               1.0 / 1.6);
+  ManifoldScalar v = 4.0 * kPi / 3.0 * a * b * c;
 
   // Assert that numerical properties are equal to each other and +/- 0.5% of
   // analytical
@@ -327,24 +337,26 @@ TEST(CBIND, level_set_64) {
 }
 
 TEST(CBIND, properties) {
-  void (*props)(double*, ManifoldVec3, const double*,
-                void*) = [](double* new_prop, ManifoldVec3 position,
-                            const double* old_prop, void* ctx) {
+  void (*props)(ManifoldScalar*, ManifoldVec3, const ManifoldScalar*,
+                void*) = [](ManifoldScalar* new_prop, ManifoldVec3 position,
+                            const ManifoldScalar* old_prop, void* ctx) {
     new_prop[0] =
         std::sqrt(std::sqrt(position.x * position.x + position.y * position.y) +
                   position.z * position.z) *
         5.0;
   };
-  double* context = (double*)malloc(1 * sizeof(double));
+  ManifoldScalar* context = (ManifoldScalar*)malloc(1 * sizeof(ManifoldScalar));
   context[0] = 5.0;
-  void (*propscontext)(double*, ManifoldVec3, const double*,
-                       void*) = [](double* new_prop, ManifoldVec3 position,
-                                   const double* old_prop, void* ctx) {
-    new_prop[0] =
-        std::sqrt(std::sqrt(position.x * position.x + position.y * position.y) +
-                  position.z * position.z) *
-        ((double*)ctx)[0];
-  };
+  void (*propscontext)(ManifoldScalar*, ManifoldVec3, const ManifoldScalar*,
+                       void*) =
+      [](ManifoldScalar* new_prop, ManifoldVec3 position,
+         const ManifoldScalar* old_prop, void* ctx) {
+        new_prop[0] =
+            std::sqrt(
+                std::sqrt(position.x * position.x + position.y * position.y) +
+                position.z * position.z) *
+            ((ManifoldScalar*)ctx)[0];
+      };
 
   ManifoldManifold* cube =
       manifold_cube(alloc_manifold_buffer(), 1.0, 1.0, 1.0, 1);

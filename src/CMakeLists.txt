@@ -90,6 +90,9 @@ if(MANIFOLD_PAR)
 else()
   target_compile_options(manifold PUBLIC -DMANIFOLD_PAR=-1)
 endif()
+if(MANIFOLD_USE_FLOAT)
+  target_compile_options(manifold PUBLIC -DMANIFOLD_USE_FLOAT)
+endif()
 
 target_include_directories(
   manifold

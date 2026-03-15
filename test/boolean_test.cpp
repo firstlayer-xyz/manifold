@@ -205,7 +205,7 @@ TEST(Boolean, MixedNumProp) {
   Manifold m0(cubeUV);
   Manifold m1 = Manifold::Cube();
   Manifold result =
-      m0 + m1.SetProperties(1, [](double* prop, vec3 p, const double* n) {
+      m0 + m1.SetProperties(1, [](scalar* prop, vec3 p, const scalar* n) {
                prop[0] = 1;
              }).Translate(vec3(0.5));
   EXPECT_EQ(result.NumProp(), 2);
@@ -217,7 +217,7 @@ TEST(Boolean, PropsMismatch) {
   Manifold mb =
       Manifold::Cube()
           .Translate({50, 0, 0})
-          .SetProperties(1, [](double* newProp, vec3 pos, const double* _) {
+          .SetProperties(1, [](scalar* newProp, vec3 pos, const scalar* _) {
             newProp[0] = pos.x;
           });
 
@@ -228,8 +228,8 @@ TEST(Boolean, PropsMismatch) {
 TEST(Boolean, UnionDifference) {
   Manifold block = Manifold::Cube({1, 1, 1}, true) - Manifold::Cylinder(1, 0.5);
   Manifold result = block + block.Translate({0, 0, 1});
-  double resultsize = result.Volume();
-  double blocksize = block.Volume();
+  scalar resultsize = result.Volume();
+  scalar blocksize = block.Volume();
   EXPECT_NEAR(resultsize, blocksize * 2, 0.0001);
 }
 
@@ -243,7 +243,7 @@ TEST(Boolean, TreeTransforms) {
 
 TEST(Boolean, CreatePropertiesSlow) {
   Manifold a = Manifold::Sphere(10, 1024).SetProperties(
-      3, [](double* newprop, vec3 pos, const double* old) {
+      3, [](scalar* newprop, vec3 pos, const scalar* old) {
         for (int i = 0; i < 3; i++) newprop[i] = 0;
       });
   Manifold b = Manifold::Sphere(10, 1024).Translate({5, 0, 0});
@@ -360,7 +360,7 @@ TEST(Boolean, Perturb3) {
   // https://github.com/BrunoLevy/thingiCSG/blob/main/DATABASE/Basic/nasty_gear_1.scad
 
   const int N = 16;  // Number of rotations for the gear pattern
-  const double alpha = 90.0 / N;
+  const scalar alpha = 90.0 / N;
 
   // Create outer gear - many rotated cubes unioned together
   std::vector<Manifold> outerCubes;
@@ -489,7 +489,7 @@ TEST(Boolean, SplitByPlane60) {
   cube = cube.Translate({0.0, 1.0, 0.0});
   cube = cube.Rotate(0.0, 0.0, -60.0);
   cube = cube.Translate({2.0, 0.0, 0.0});
-  double phi = 30.0;
+  scalar phi = 30.0;
   std::pair<Manifold, Manifold> splits =
       cube.SplitByPlane({sind(phi), -cosd(phi), 0.0}, 1.0);
   CheckStrictly(splits.first);
@@ -498,18 +498,18 @@ TEST(Boolean, SplitByPlane60) {
 }
 
 TEST(Boolean, ConvexConvexMinkowski) {
-  double r = 0.1;
-  double w = 2.0;
+  scalar r = 0.1;
+  scalar w = 2.0;
   Manifold sphere = Manifold::Sphere(r, 20);
   Manifold cube = Manifold::Cube({w, w, w});
   Manifold sum = cube.MinkowskiSum(sphere);
   // Analytical volume of rounded cuboid: cube + 6 slabs + 12 quarter-cylinders
   // + 8 sphere octants = w³ + 6w²r + 3πwr² + (4/3)πr³
-  double analyticalVolume = w * w * w + 6 * w * w * r + 3 * kPi * w * r * r +
+  scalar analyticalVolume = w * w * w + 6 * w * w * r + 3 * kPi * w * r * r +
                             (4.0 / 3) * kPi * r * r * r;
   // Analytical surface area: 6 faces + 12 quarter-cylinders + 8 octants
   // = 6w² + 6πwr + 4πr²
-  double analyticalArea = 6 * w * w + 6 * kPi * w * r + 4 * kPi * r * r;
+  scalar analyticalArea = 6 * w * w + 6 * kPi * w * r + 4 * kPi * r * r;
   // Discrete sphere approximation differs from analytical by ~1%
   EXPECT_NEAR(sum.Volume(), analyticalVolume, 0.15);
   EXPECT_NEAR(sum.SurfaceArea(), analyticalArea, 0.5);
@@ -522,16 +522,16 @@ TEST(Boolean, ConvexConvexMinkowskiDifference) {
   ManifoldParamGuard guard;
   ManifoldParams().processOverlaps = true;
 
-  double r = 0.1;
-  double w = 2.0;
+  scalar r = 0.1;
+  scalar w = 2.0;
   Manifold sphere = Manifold::Sphere(r, 20);
   Manifold cube = Manifold::Cube({w, w, w});
   Manifold difference = cube.MinkowskiDifference(sphere);
   // Analytical volume of eroded cube: (w-2r)³
-  double analyticalVolume = (w - 2 * r) * (w - 2 * r) * (w - 2 * r);
+  scalar analyticalVolume = (w - 2 * r) * (w - 2 * r) * (w - 2 * r);
   EXPECT_NEAR(difference.Volume(), analyticalVolume, 0.1);
   // Analytical surface area: 6*(w-2r)²
-  double analyticalArea = 6 * (w - 2 * r) * (w - 2 * r);
+  scalar analyticalArea = 6 * (w - 2 * r) * (w - 2 * r);
   EXPECT_NEAR(difference.SurfaceArea(), analyticalArea, 0.1);
   EXPECT_EQ(difference.Genus(), 0);
 
@@ -624,7 +624,7 @@ TEST(Boolean, Vug) {
 
 TEST(Boolean, Empty) {
   Manifold cube = Manifold::Cube();
-  double cubeVol = cube.Volume();
+  scalar cubeVol = cube.Volume();
   Manifold empty;
 
   EXPECT_EQ((cube + empty).Volume(), cubeVol);
@@ -645,9 +645,9 @@ TEST(Boolean, Winding) {
 
 TEST(Boolean, NonIntersecting) {
   Manifold cube1 = Manifold::Cube();
-  double vol1 = cube1.Volume();
+  scalar vol1 = cube1.Volume();
   Manifold cube2 = cube1.Scale(vec3(2)).Translate({3, 0, 0});
-  double vol2 = cube2.Volume();
+  scalar vol2 = cube2.Volume();
 
   EXPECT_EQ((cube1 + cube2).Volume(), vol1 + vol2);
   EXPECT_EQ((cube1 - cube2).Volume(), vol1);
@@ -658,8 +658,8 @@ TEST(Boolean, Precision) {
   Manifold cube = Manifold::Cube();
   Manifold cube2 = cube;
   Manifold cube3 = cube;
-  double distance = 100;
-  double scale = distance * kPrecision;
+  scalar distance = 100;
+  scalar scale = distance * kPrecision;
   cube2 = cube2.Scale(vec3(scale)).Translate({distance, 0, 0});
 
   cube += cube2;
@@ -671,10 +671,10 @@ TEST(Boolean, Precision) {
 }
 
 TEST(Boolean, Precision2) {
-  double scale = 1000;
+  scalar scale = 1000;
   Manifold cube = Manifold::Cube(vec3(scale));
   Manifold cube2 = cube;
-  double distance = scale * (1 - kPrecision / 2);
+  scalar distance = scale * (1 - kPrecision / 2);
 
   cube2 = cube2.Translate(vec3(-distance));
   EXPECT_TRUE((cube ^ cube2).IsEmpty());

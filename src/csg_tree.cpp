@@ -64,8 +64,8 @@ std::shared_ptr<CsgNode> CsgNode::Scale(const vec3& v) const {
   return Transform(transform);
 }
 
-std::shared_ptr<CsgNode> CsgNode::Rotate(double xDegrees, double yDegrees,
-                                         double zDegrees) const {
+std::shared_ptr<CsgNode> CsgNode::Rotate(scalar xDegrees, scalar yDegrees,
+                                         scalar zDegrees) const {
   mat3 rX({1.0, 0.0, 0.0},                        //
           {0.0, cosd(xDegrees), sind(xDegrees)},  //
           {0.0, -sind(xDegrees), cosd(xDegrees)});
@@ -189,8 +189,8 @@ std::shared_ptr<CsgLeafNode> SimpleBoolean(const Manifold::Impl& a,
 std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
     const std::vector<std::shared_ptr<CsgLeafNode>>& nodes) {
   ZoneScoped;
-  double epsilon = -1;
-  double tolerance = -1;
+  scalar epsilon = -1;
+  scalar tolerance = -1;
   Box bbox;
   int numVert = 0;
   int numEdge = 0;
@@ -207,11 +207,11 @@ std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
       impl.status_ = node->pImpl_->status_;
       return ImplToLeaf(std::move(impl));
     }
-    double nodeOldScale = node->pImpl_->bBox_.Scale();
-    double nodeNewScale =
+    scalar nodeOldScale = node->pImpl_->bBox_.Scale();
+    scalar nodeNewScale =
         node->pImpl_->bBox_.Transform(node->transform_).Scale();
-    double nodeEpsilon = node->pImpl_->epsilon_;
-    nodeEpsilon *= std::max(1.0, nodeNewScale / nodeOldScale);
+    scalar nodeEpsilon = node->pImpl_->epsilon_;
+    nodeEpsilon *= std::max((scalar)1.0, nodeNewScale / nodeOldScale);
     nodeEpsilon = std::max(nodeEpsilon, kPrecision * nodeNewScale);
     if (!std::isfinite(nodeEpsilon)) nodeEpsilon = -1;
     epsilon = std::max(epsilon, nodeEpsilon);

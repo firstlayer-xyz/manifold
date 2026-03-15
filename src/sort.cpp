@@ -104,18 +104,18 @@ bool MergeMeshGLP(MeshGLP<Precision, I>& mesh) {
         StridedRange(vertPropD.begin() + i, vertPropD.end(), mesh.numProp);
     auto minMax = manifold::transform_reduce(
         iPos.begin(), iPos.end(),
-        std::make_pair(std::numeric_limits<double>::infinity(),
-                       -std::numeric_limits<double>::infinity()),
+        std::make_pair(std::numeric_limits<scalar>::infinity(),
+                       -std::numeric_limits<scalar>::infinity()),
         [](auto a, auto b) {
           return std::make_pair(std::min(a.first, b.first),
                                 std::max(a.second, b.second));
         },
-        [](double f) { return std::make_pair(f, f); });
+        [](scalar f) { return std::make_pair(f, f); });
     bBox.min[i] = minMax.first;
     bBox.max[i] = minMax.second;
   }
 
-  const double tolerance = std::max(static_cast<double>(mesh.tolerance),
+  const scalar tolerance = std::max(static_cast<scalar>(mesh.tolerance),
                                     (std::is_same<Precision, float>::value
                                          ? std::numeric_limits<float>::epsilon()
                                          : kPrecision) *
@@ -134,8 +134,8 @@ bool MergeMeshGLP(MeshGLP<Precision, I>& mesh) {
                                  mesh.vertProperties[mesh.numProp * vert + 1],
                                  mesh.vertProperties[mesh.numProp * vert + 2]);
 
-               vertBox[i].min = center - tolerance / 2.0;
-               vertBox[i].max = center + tolerance / 2.0;
+               vertBox[i].min = center - tolerance / (scalar)2.0;
+               vertBox[i].max = center + tolerance / (scalar)2.0;
 
                vertMorton[i] = MortonCode(center, bBox);
              });
@@ -327,7 +327,7 @@ void Manifold::Impl::CompactProps() {
   Vec<int> propOld2New(numVerts + 1, 0);
   inclusive_scan(keep.begin(), keep.end(), propOld2New.begin() + 1);
 
-  Vec<double> oldProp = properties_;
+  Vec<scalar> oldProp = properties_;
   const int numVertsNew = propOld2New[numVerts];
   auto& properties = properties_;
   properties.resize_nofill(numProp * numVertsNew);

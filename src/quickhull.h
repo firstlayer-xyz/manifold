@@ -89,13 +89,13 @@ class Plane {
   vec3 N;
 
   // Signed distance (if normal is of length 1) to the plane from origin
-  double D;
+  scalar D;
 
   // Normal length squared
-  double sqrNLength;
+  scalar sqrNLength;
 
   bool isPointOnPositiveSide(const vec3& Q) const {
-    double d = la::dot(N, Q) + D;
+    scalar d = la::dot(N, Q) + D;
     if (d >= 0) return true;
     return false;
   }
@@ -110,7 +110,7 @@ class Plane {
 struct Ray {
   const vec3 S;
   const vec3 V;
-  const double VInvLengthSquared;
+  const scalar VInvLengthSquared;
 
   Ray(const vec3& S, const vec3& V)
       : S(S), V(V), VInvLengthSquared(1 / (la::dot(V, V))) {}
@@ -121,7 +121,7 @@ class MeshBuilder {
   struct Face {
     int he;
     Plane P{};
-    double mostDistantPointDist = 0.0;
+    scalar mostDistantPointDist = 0.0;
     size_t mostDistantPoint = 0;
     size_t visibilityCheckedOnIteration = 0;
     std::uint8_t isVisibleFaceOnCurrentIteration : 1;
@@ -210,7 +210,7 @@ class HalfEdgeMesh {
                const VecView<vec3>& vertexData);
 };
 
-double defaultEps();
+scalar defaultEps();
 
 class QuickHull {
   struct FaceData {
@@ -220,7 +220,7 @@ class QuickHull {
     int enteredFromHalfedge;
   };
 
-  double m_epsilon, epsilonSquared, scale;
+  scalar m_epsilon, epsilonSquared, scale;
   bool planar;
   Vec<vec3> planarPointCloudTemp;
   VecView<const vec3> originalVertexData;
@@ -251,7 +251,7 @@ class QuickHull {
   std::array<size_t, 6> getExtremeValues();
 
   // Compute scale of the vertex data.
-  double getScale(const std::array<size_t, 6>& extremeValuesInput);
+  scalar getScale(const std::array<size_t, 6>& extremeValuesInput);
 
   // Each face contains a unique pointer to a vector of indices. However, many -
   // often most - faces do not have any points on the positive side of them
@@ -283,7 +283,7 @@ class QuickHull {
   // cloud with scale 1) Returns: Convex hull of the point cloud as halfEdge
   // vector and vertex vector
   std::pair<SharedVec<Halfedge>, Vec<vec3>> buildMesh(
-      double eps = defaultEps());
+      scalar eps = defaultEps());
 };
 
 }  // namespace manifold

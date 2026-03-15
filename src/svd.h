@@ -30,39 +30,40 @@
 
 namespace {
 using manifold::mat3;
+using manifold::scalar;
 using manifold::vec3;
 using manifold::vec4;
 
 // Constants used for calculation of Givens quaternions
-inline constexpr double _gamma = 5.82842712474619;    // sqrt(8)+3;
-inline constexpr double _cStar = 0.9238795325112867;  // cos(pi/8)
-inline constexpr double _sStar = 0.3826834323650898;  // sin(pi/8)
+inline constexpr scalar _gamma = 5.82842712474619;    // sqrt(8)+3;
+inline constexpr scalar _cStar = 0.9238795325112867;  // cos(pi/8)
+inline constexpr scalar _sStar = 0.3826834323650898;  // sin(pi/8)
 // Threshold value
-inline constexpr double _SVD_EPSILON = 1e-6;
+inline constexpr scalar _SVD_EPSILON = 1e-6;
 // Iteration counts for Jacobi Eigen Analysis, influences precision
 inline constexpr int JACOBI_STEPS = 12;
 
 // Helper function used to swap X with Y and Y with  X if c == true
-inline void CondSwap(bool c, double& X, double& Y) {
-  double Z = X;
+inline void CondSwap(bool c, scalar& X, scalar& Y) {
+  scalar Z = X;
   X = c ? Y : X;
   Y = c ? Z : Y;
 }
 // Helper function used to swap X with Y and Y with -X if c == true
-inline void CondNegSwap(bool c, double& X, double& Y) {
-  double Z = -X;
+inline void CondNegSwap(bool c, scalar& X, scalar& Y) {
+  scalar Z = -X;
   X = c ? Y : X;
   Y = c ? Z : Y;
 }
 // A simple symmetric 3x3 Matrix class (contains no storage for (0, 1) (0, 2)
 // and (1, 2)
 struct Symmetric3x3 {
-  double m_00 = 1.0;
-  double m_10 = 0.0, m_11 = 1.0;
-  double m_20 = 0.0, m_21 = 0.0, m_22 = 1.0;
+  scalar m_00 = 1.0;
+  scalar m_10 = 0.0, m_11 = 1.0;
+  scalar m_20 = 0.0, m_21 = 0.0, m_22 = 1.0;
 
-  Symmetric3x3(double a11 = 1.0, double a21 = 0.0, double a22 = 1.0,
-               double a31 = 0.0, double a32 = 0.0, double a33 = 1.0)
+  Symmetric3x3(scalar a11 = 1.0, scalar a21 = 0.0, scalar a22 = 1.0,
+               scalar a31 = 0.0, scalar a32 = 0.0, scalar a33 = 1.0)
       : m_00(a11), m_10(a21), m_11(a22), m_20(a31), m_21(a32), m_22(a33) {}
   Symmetric3x3(mat3 o)
       : m_00(o[0][0]),
@@ -74,15 +75,15 @@ struct Symmetric3x3 {
 };
 // Helper struct to store 2 doubles to avoid OUT parameters on functions
 struct Givens {
-  double ch = _cStar;
-  double sh = _sStar;
+  scalar ch = _cStar;
+  scalar sh = _sStar;
 };
 // Helper struct to store 2 Matrices to avoid OUT parameters on functions
 struct QR {
   mat3 Q, R;
 };
 // Calculates the squared norm of the vector.
-inline double Dist2(vec3 v) { return manifold::la::dot(v, v); }
+inline scalar Dist2(vec3 v) { return manifold::la::dot(v, v); }
 // For an explanation of the math see
 // http://pages.cs.wisc.edu/~sifakis/papers/SVD_TR1690.pdf Computing the
 // Singular Value Decomposition of 3 x 3 matrices with minimal branching and
@@ -90,9 +91,9 @@ inline double Dist2(vec3 v) { return manifold::la::dot(v, v); }
 // matrix A this function returns the Givens quaternion (x and w component, y
 // and z are 0)
 inline Givens ApproximateGivensQuaternion(Symmetric3x3& A) {
-  Givens g{2.0 * (A.m_00 - A.m_11), A.m_10};
+  Givens g{(scalar)2.0 * (A.m_00 - A.m_11), A.m_10};
   bool b = _gamma * g.sh * g.sh < g.ch * g.ch;
-  double w = 1.0 / hypot(g.ch, g.sh);
+  scalar w = 1.0 / hypot(g.ch, g.sh);
   if (!std::isfinite(w)) b = 0;
   return Givens{b ? w * g.ch : _cStar, b ? w * g.sh : _sStar};
 }
@@ -101,9 +102,9 @@ inline Givens ApproximateGivensQuaternion(Symmetric3x3& A) {
 inline void JacobiConjugation(const int32_t x, const int32_t y, const int32_t z,
                               Symmetric3x3& S, vec4& q) {
   auto g = ApproximateGivensQuaternion(S);
-  double scale = 1.0 / (g.ch * g.ch + g.sh * g.sh);
-  double a = (g.ch * g.ch - g.sh * g.sh) * scale;
-  double b = 2.0 * g.sh * g.ch * scale;
+  scalar scale = 1.0 / (g.ch * g.ch + g.sh * g.sh);
+  scalar a = (g.ch * g.ch - g.sh * g.sh) * scale;
+  scalar b = 2.0 * g.sh * g.ch * scale;
   Symmetric3x3 _S = S;
   // perform conjugation S = Q'*S*Q
   S.m_00 = a * (a * _S.m_00 + b * _S.m_10) + b * (a * _S.m_10 + b * _S.m_11);
@@ -145,9 +146,9 @@ inline mat3 JacobiEigenAnalysis(Symmetric3x3 S) {
     JacobiConjugation(1, 2, 0, S, q);
     JacobiConjugation(2, 0, 1, S, q);
   }
-  return mat3({1.0 - 2.0 * (q.y * q.y + q.z * q.z),  //
-               2.0 * (q.x * q.y + +q.w * q.z),       //
-               2.0 * (q.x * q.z + -q.w * q.y)},      //
+  return mat3({(scalar)1.0 - (scalar)2.0 * (q.y * q.y + q.z * q.z),  //
+               (scalar)2.0 * (q.x * q.y + +q.w * q.z),       //
+               (scalar)2.0 * (q.x * q.z + -q.w * q.y)},      //
               {2 * (q.x * q.y + -q.w * q.z),         //
                1 - 2 * (q.x * q.x + q.z * q.z),      //
                2 * (q.y * q.z + q.w * q.x)},         //
@@ -157,9 +158,9 @@ inline mat3 JacobiEigenAnalysis(Symmetric3x3 S) {
 }
 // Implementation of Algorithm 3
 inline void SortSingularValues(mat3& B, mat3& V) {
-  double rho1 = Dist2(B[0]);
-  double rho2 = Dist2(B[1]);
-  double rho3 = Dist2(B[2]);
+  scalar rho1 = Dist2(B[0]);
+  scalar rho2 = Dist2(B[1]);
+  scalar rho3 = Dist2(B[2]);
   bool c;
   c = rho1 < rho2;
   CondNegSwap(c, B[0][0], B[1][0]);
@@ -186,15 +187,15 @@ inline void SortSingularValues(mat3& B, mat3& V) {
   CondNegSwap(c, V[1][2], V[2][2]);
 }
 // Implementation of Algorithm 4
-inline Givens QRGivensQuaternion(double a1, double a2) {
+inline Givens QRGivensQuaternion(scalar a1, scalar a2) {
   // a1 = pivot point on diagonal
   // a2 = lower triangular entry we want to annihilate
-  double epsilon = _SVD_EPSILON;
-  double rho = hypot(a1, a2);
+  scalar epsilon = _SVD_EPSILON;
+  scalar rho = hypot(a1, a2);
   Givens g{fabs(a1) + fmax(rho, epsilon), rho > epsilon ? a2 : 0};
   bool b = a1 < 0.0;
   CondSwap(b, g.sh, g.ch);
-  double w = 1.0 / hypot(g.ch, g.sh);
+  scalar w = 1.0 / hypot(g.ch, g.sh);
   g.ch *= w;
   g.sh *= w;
   return g;
@@ -297,7 +298,7 @@ inline SVDSet SVD(mat3 A) {
  *
  * @param A The matrix to measure.
  */
-inline double SpectralNorm(mat3 A) {
+inline scalar SpectralNorm(mat3 A) {
   SVDSet usv = SVD(A);
   return usv.S[0][0];
 }

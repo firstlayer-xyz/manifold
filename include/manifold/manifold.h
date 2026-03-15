@@ -290,27 +290,27 @@ class Manifold {
   static Manifold Compose(const std::vector<Manifold>&);
   static Manifold Tetrahedron();
   static Manifold Cube(vec3 size = vec3(1.0), bool center = false);
-  static Manifold Cylinder(double height, double radiusLow,
-                           double radiusHigh = -1.0, int circularSegments = 0,
+  static Manifold Cylinder(scalar height, scalar radiusLow,
+                           scalar radiusHigh = -1.0, int circularSegments = 0,
                            bool center = false);
-  static Manifold Sphere(double radius, int circularSegments = 0);
-  static Manifold LevelSet(std::function<double(vec3)> sdf, Box bounds,
-                           double edgeLength, double level = 0,
-                           double tolerance = -1, bool canParallel = true);
+  static Manifold Sphere(scalar radius, int circularSegments = 0);
+  static Manifold LevelSet(std::function<scalar(vec3)> sdf, Box bounds,
+                           scalar edgeLength, scalar level = 0,
+                           scalar tolerance = -1, bool canParallel = true);
   ///@}
 
   /** @name Polygons
    * 3D to 2D and 2D to 3D
    */
   ///@{
-  Polygons Slice(double height = 0) const;
+  Polygons Slice(scalar height = 0) const;
   Polygons Project() const;
-  static Manifold Extrude(const Polygons& crossSection, double height,
-                          int nDivisions = 0, double twistDegrees = 0.0,
+  static Manifold Extrude(const Polygons& crossSection, scalar height,
+                          int nDivisions = 0, scalar twistDegrees = 0.0,
                           vec2 scaleTop = vec2(1.0));
   static Manifold Revolve(const Polygons& crossSection,
                           int circularSegments = 0,
-                          double revolveDegrees = 360.0f);
+                          scalar revolveDegrees = 360.0f);
   ///@}
 
   enum class Error {
@@ -342,15 +342,15 @@ class Manifold {
   size_t NumPropVert() const;
   Box BoundingBox() const;
   int Genus() const;
-  double GetTolerance() const;
+  scalar GetTolerance() const;
   ///@}
 
   /** @name Measurement
    */
   ///@{
-  double SurfaceArea() const;
-  double Volume() const;
-  double MinGap(const Manifold& other, double searchLength) const;
+  scalar SurfaceArea() const;
+  scalar Volume() const;
+  scalar MinGap(const Manifold& other, scalar searchLength) const;
   ///@}
 
   /** @name Mesh ID
@@ -368,14 +368,14 @@ class Manifold {
   ///@{
   Manifold Translate(vec3) const;
   Manifold Scale(vec3) const;
-  Manifold Rotate(double xDegrees, double yDegrees = 0.0,
-                  double zDegrees = 0.0) const;
+  Manifold Rotate(scalar xDegrees, scalar yDegrees = 0.0,
+                  scalar zDegrees = 0.0) const;
   Manifold Mirror(vec3) const;
   Manifold Transform(const mat3x4&) const;
   Manifold Warp(std::function<void(vec3&)>) const;
   Manifold WarpBatch(std::function<void(VecView<vec3>)>) const;
-  Manifold SetTolerance(double) const;
-  Manifold Simplify(double tolerance = 0) const;
+  Manifold SetTolerance(scalar) const;
+  Manifold Simplify(scalar tolerance = 0) const;
   ///@}
 
   /** @name Boolean
@@ -394,8 +394,8 @@ class Manifold {
   Manifold& operator^=(const Manifold&);
   std::pair<Manifold, Manifold> Split(const Manifold&) const;
   std::pair<Manifold, Manifold> SplitByPlane(vec3 normal,
-                                             double originOffset) const;
-  Manifold TrimByPlane(vec3 normal, double originOffset) const;
+                                             scalar originOffset) const;
+  Manifold TrimByPlane(vec3 normal, scalar originOffset) const;
   Manifold MinkowskiSum(const Manifold&) const;
   Manifold MinkowskiDifference(const Manifold&) const;
   ///@}
@@ -406,9 +406,9 @@ class Manifold {
   ///@{
   Manifold SetProperties(
       int numProp,
-      std::function<void(double*, vec3, const double*)> propFunc) const;
+      std::function<void(scalar*, vec3, const scalar*)> propFunc) const;
   Manifold CalculateCurvature(int gaussianIdx, int meanIdx) const;
-  Manifold CalculateNormals(int normalIdx, double minSharpAngle = 60) const;
+  Manifold CalculateNormals(int normalIdx, scalar minSharpAngle = 60) const;
   ///@}
 
   /** @name Smoothing
@@ -417,10 +417,10 @@ class Manifold {
    */
   ///@{
   Manifold Refine(int) const;
-  Manifold RefineToLength(double) const;
-  Manifold RefineToTolerance(double) const;
+  Manifold RefineToLength(scalar) const;
+  Manifold RefineToTolerance(scalar) const;
   Manifold SmoothByNormals(int normalIdx) const;
-  Manifold SmoothOut(double minSharpAngle = 60, double minSmoothness = 0) const;
+  Manifold SmoothOut(scalar minSharpAngle = 60, scalar minSmoothness = 0) const;
   static Manifold Smooth(const MeshGL&,
                          const std::vector<Smoothness>& sharpenedEdges = {});
   static Manifold Smooth(const MeshGL64&,
@@ -479,7 +479,7 @@ class Manifold {
   ///@{
   bool MatchesTriNormals() const;
   size_t NumDegenerateTris() const;
-  double GetEpsilon() const;
+  scalar GetEpsilon() const;
   ///@}
 
   struct Impl;

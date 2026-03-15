@@ -47,6 +47,7 @@ option(
   ON
 )
 option(MANIFOLD_PAR "Enable Parallel backend" OFF)
+option(MANIFOLD_USE_FLOAT "Use float instead of double for internal scalar type" OFF)
 option(
   MANIFOLD_OPTIMIZED
   "Force optimized build, even with debugging enabled"

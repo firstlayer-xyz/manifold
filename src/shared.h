@@ -25,8 +25,8 @@ inline vec3 SafeNormalize(vec3 v) {
   return std::isfinite(v.x) ? v : vec3(0.0);
 }
 
-inline double MaxEpsilon(double minEpsilon, const Box& bBox) {
-  double epsilon = std::max(minEpsilon, kPrecision * bBox.Scale());
+inline scalar MaxEpsilon(scalar minEpsilon, const Box& bBox) {
+  scalar epsilon = std::max(minEpsilon, kPrecision * bBox.Scale());
   return std::isfinite(epsilon) ? epsilon : -1;
 }
 
@@ -46,7 +46,7 @@ inline mat3 NormalTransform(const mat3x4& transform) {
  */
 inline mat2x3 GetAxisAlignedProjection(vec3 normal) {
   vec3 absNormal = la::abs(normal);
-  double xyzMax;
+  scalar xyzMax;
   mat3x2 projection;
   if (absNormal.z > absNormal.x && absNormal.z > absNormal.y) {
     projection = mat3x2({1.0, 0.0, 0.0},  //
@@ -61,12 +61,12 @@ inline mat2x3 GetAxisAlignedProjection(vec3 normal) {
                         {0.0, 0.0, 1.0});
     xyzMax = normal.x;
   }
-  if (xyzMax < 0) projection[0] *= -1.0;
+  if (xyzMax < 0) projection[0] *= (scalar)-1.0;
   return la::transpose(projection);
 }
 
 inline vec3 GetBarycentric(const vec3& v, const mat3& triPos,
-                           double tolerance) {
+                           scalar tolerance) {
   const mat3 edges(triPos[2] - triPos[1], triPos[0] - triPos[2],
                    triPos[1] - triPos[0]);
   const vec3 d2(la::dot(edges[0], edges[0]), la::dot(edges[1], edges[1]),
@@ -75,8 +75,8 @@ inline vec3 GetBarycentric(const vec3& v, const mat3& triPos,
                        : d2[1] > d2[2]                ? 1
                                                       : 2;
   const vec3 crossP = la::cross(edges[0], edges[1]);
-  const double area2 = la::dot(crossP, crossP);
-  const double tol2 = tolerance * tolerance;
+  const scalar area2 = la::dot(crossP, crossP);
+  const scalar tol2 = tolerance * tolerance;
 
   vec3 uvw(0.0);
   for (const int i : {0, 1, 2}) {
@@ -94,7 +94,7 @@ inline vec3 GetBarycentric(const vec3& v, const mat3& triPos,
     for (const int i : {0, 1, 2}) {
       const int j = Next3(i);
       const vec3 crossPv = la::cross(edges[i], v - triPos[j]);
-      const double area2v = la::dot(crossPv, crossPv);
+      const scalar area2v = la::dot(crossPv, crossPv);
       // Return exactly equal if within tolerance of edge.
       uvw[i] = area2v < d2[i] * tol2 ? 0 : la::dot(crossPv, crossP);
     }
@@ -102,7 +102,7 @@ inline vec3 GetBarycentric(const vec3& v, const mat3& triPos,
     return uvw;
   } else {  // line
     const int nextV = Next3(longSide);
-    const double alpha =
+    const scalar alpha =
         la::dot(v - triPos[nextV], edges[longSide]) / d2[longSide];
     uvw[longSide] = 0;
     uvw[nextV] = 1 - alpha;

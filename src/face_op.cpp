@@ -252,7 +252,7 @@ void Manifold::Impl::Face2Tri(const Vec<int>& faceEdge,
   CreateHalfedges(triProp, triVerts);
 }
 
-Polygons Manifold::Impl::Slice(double height) const {
+Polygons Manifold::Impl::Slice(scalar height) const {
   Box plane = bBox_;
   plane.min.z = plane.max.z = height;
   Vec<Box> query;
@@ -260,10 +260,10 @@ Polygons Manifold::Impl::Slice(double height) const {
 
   std::unordered_set<int> tris;
   auto recordCollision = [&](int, int tri) {
-    double min = std::numeric_limits<double>::infinity();
-    double max = -std::numeric_limits<double>::infinity();
+    scalar min = std::numeric_limits<scalar>::infinity();
+    scalar max = -std::numeric_limits<scalar>::infinity();
     for (const int j : {0, 1, 2}) {
-      const double z = vertPos_[halfedge_[3 * tri + j].startVert].z;
+      const scalar z = vertPos_[halfedge_[3 * tri + j].startVert].z;
       min = std::min(min, z);
       max = std::max(max, z);
     }
@@ -300,7 +300,7 @@ Polygons Manifold::Impl::Slice(double height) const {
       Halfedge up = halfedge_[3 * tri + k];
       const vec3 below = vertPos_[up.startVert];
       const vec3 above = vertPos_[up.endVert];
-      const double a = (height - below.z) / (above.z - below.z);
+      const scalar a = (height - below.z) / (above.z - below.z);
       poly.push_back(vec2(la::lerp(below, above, a)));
 
       const int pair = up.pairedHalfedge;

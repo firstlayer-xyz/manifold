@@ -143,7 +143,7 @@ CrossSection IntersectionN(const std::vector<CrossSection>& cross_sections) {
 }
 
 CrossSection Transform(CrossSection& cross_section, const val& mat) {
-  std::vector<double> array = convertJSArrayToNumberVector<double>(mat);
+  std::vector<scalar> array = convertJSArrayToNumberVector<scalar>(mat);
   mat2x3 matrix;
   for (const int col : {0, 1, 2})
     for (const int row : {0, 1}) matrix[col][row] = array[col * 3 + row];
@@ -155,8 +155,8 @@ CrossSection Warp(CrossSection& cross_section, uintptr_t funcPtr) {
   return cross_section.Warp(f);
 }
 
-CrossSection Offset(CrossSection& cross_section, double delta, int join_type,
-                    double miter_limit, double arc_tolerance) {
+CrossSection Offset(CrossSection& cross_section, scalar delta, int join_type,
+                    scalar miter_limit, scalar arc_tolerance) {
   auto jt = join_type == 0   ? CrossSection::JoinType::Square
             : join_type == 1 ? CrossSection::JoinType::Round
             : join_type == 2 ? CrossSection::JoinType::Miter
@@ -192,7 +192,7 @@ Manifold IntersectionN(const std::vector<Manifold>& manifolds) {
 }
 
 Manifold Transform(Manifold& manifold, const val& mat) {
-  std::vector<double> array = convertJSArrayToNumberVector<double>(mat);
+  std::vector<scalar> array = convertJSArrayToNumberVector<scalar>(mat);
   mat3x4 matrix;
   for (const int col : {0, 1, 2, 3})
     for (const int row : {0, 1, 2}) matrix[col][row] = array[col * 4 + row];
@@ -205,14 +205,14 @@ Manifold Warp(Manifold& manifold, uintptr_t funcPtr) {
 }
 
 Manifold SetProperties(Manifold& manifold, int numProp, uintptr_t funcPtr) {
-  void (*f)(double*, vec3, const double*) =
-      reinterpret_cast<void (*)(double*, vec3, const double*)>(funcPtr);
+  void (*f)(scalar*, vec3, const scalar*) =
+      reinterpret_cast<void (*)(scalar*, vec3, const scalar*)>(funcPtr);
   return manifold.SetProperties(numProp, f);
 }
 
-Manifold LevelSet(uintptr_t funcPtr, Box bounds, double edgeLength,
-                  double level, double tolerance) {
-  double (*f)(const vec3&) = reinterpret_cast<double (*)(const vec3&)>(funcPtr);
+Manifold LevelSet(uintptr_t funcPtr, Box bounds, scalar edgeLength,
+                  scalar level, scalar tolerance) {
+  scalar (*f)(const vec3&) = reinterpret_cast<scalar (*)(const vec3&)>(funcPtr);
   return Manifold::LevelSet(f, bounds, edgeLength, level, tolerance, false);
 }
 
@@ -253,7 +253,7 @@ std::vector<Manifold> Split(Manifold& a, Manifold& b) {
 }
 
 std::vector<Manifold> SplitByPlane(Manifold& m, vec3 normal,
-                                   double originOffset) {
+                                   scalar originOffset) {
   auto [a, b] = m.SplitByPlane(normal, originOffset);
   return {a, b};
 }

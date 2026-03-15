@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-Polygons SquareHole(double xOffset) {
+Polygons SquareHole(scalar xOffset) {
   Polygons polys;
   polys.push_back({
       {2 + xOffset, 2},    //
@@ -156,20 +156,20 @@ MeshGL Csaszar() {
 }
 
 struct GyroidSDF {
-  double operator()(vec3 p) const {
+  scalar operator()(vec3 p) const {
     const vec3 min = p;
     const vec3 max = vec3(kTwoPi) - p;
-    const double min3 = std::min(min.x, std::min(min.y, min.z));
-    const double max3 = std::min(max.x, std::min(max.y, max.z));
-    const double bound = std::min(min3, max3);
-    const double gyroid =
+    const scalar min3 = std::min(min.x, std::min(min.y, min.z));
+    const scalar max3 = std::min(max.x, std::min(max.y, max.z));
+    const scalar bound = std::min(min3, max3);
+    const scalar gyroid =
         cos(p.x) * sin(p.y) + cos(p.y) * sin(p.z) + cos(p.z) * sin(p.x);
     return std::min(gyroid, bound);
   }
 };
 
 Manifold Gyroid() {
-  const double period = kTwoPi;
+  const scalar period = kTwoPi;
   return Manifold::LevelSet(GyroidSDF(), {vec3(0.0), vec3(period)}, 0.5);
 }
 
@@ -230,7 +230,7 @@ Manifold WithPositionColors(const Manifold& in) {
   const vec3 size = bbox.Size();
 
   return in.SetProperties(
-      3, [bbox, size](double* prop, vec3 pos, const double* oldProp) {
+      3, [bbox, size](scalar* prop, vec3 pos, const scalar* oldProp) {
         for (int i : {0, 1, 2}) {
           prop[i] = (pos[i] - bbox.min[i]) / size[i];
         }
@@ -371,7 +371,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
           la::cross(outTriPos[1] - outTriPos[0], outTriPos[2] - outTriPos[0]);
       vec3 inNormal =
           la::cross(inTriPos[1] - inTriPos[0], inTriPos[2] - inTriPos[0]);
-      const double area = la::length(inNormal);
+      const scalar area = la::length(inNormal);
       if (area == 0) continue;
       inNormal /= area;
 
@@ -379,7 +379,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
         const int vert = output.triVerts[3 * tri + j];
         vec3 edges[3];
         for (int k : {0, 1, 2}) edges[k] = inTriPos[k] - outTriPos[j];
-        const double volume = la::dot(edges[0], la::cross(edges[1], edges[2]));
+        const scalar volume = la::dot(edges[0], la::cross(edges[1], edges[2]));
         ASSERT_LE(volume, area * tolerance);
 
         if (checkNormals) {
@@ -390,7 +390,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
           ASSERT_GT(la::dot(normal, outNormal), 0);
         } else {
           for (size_t p = 3; p < inMesh.numProp; ++p) {
-            const double propOut =
+            const scalar propOut =
                 output.vertProperties[vert * output.numProp + p];
 
             vec3 inProp = {inMesh.vertProperties[inTriangle[0] + p],
@@ -400,7 +400,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
             for (int k : {0, 1, 2}) {
               edgesP[k] = edges[k] + inNormal * inProp[k] - inNormal * propOut;
             }
-            const double volumeP =
+            const scalar volumeP =
                 la::dot(edgesP[0], la::cross(edgesP[1], edgesP[2]));
 
             ASSERT_LE(volumeP, area * tolerance);

@@ -71,11 +71,11 @@ TEST(Samples, Scallop) {
 
   if (options.exportModels) WriteTestOBJ("scallopFacets.obj", scallop);
 
-  auto colorCurvature = [](double* newProp, vec3 pos, const double* oldProp) {
-    const double curvature = oldProp[0];
+  auto colorCurvature = [](scalar* newProp, vec3 pos, const scalar* oldProp) {
+    const scalar curvature = oldProp[0];
     const vec3 red(1, 0, 0);
     const vec3 blue(0, 0, 1);
-    const double limit = 15;
+    const scalar limit = 15;
     vec3 color = la::lerp(blue, red, smoothstep(-limit, limit, curvature));
     for (const int i : {0, 1, 2}) {
       newProp[i] = color[i];
@@ -155,14 +155,14 @@ TEST(Samples, Bracelet) {
 }
 
 TEST(Samples, GyroidModule) {
-  const double size = 20;
+  const scalar size = 20;
   Manifold gyroid = GyroidModule(size);
   EXPECT_LE(gyroid.NumDegenerateTris(), 4);
   EXPECT_EQ(gyroid.Genus(), 15);
   CheckGL(gyroid);
 
   const Box bounds = gyroid.BoundingBox();
-  const double epsilon = gyroid.GetEpsilon();
+  const scalar epsilon = gyroid.GetEpsilon();
   EXPECT_NEAR(bounds.min.z, 0, epsilon);
   EXPECT_NEAR(bounds.max.z, size * std::sqrt(2.0), epsilon);
 
@@ -218,7 +218,7 @@ TEST(Samples, Sponge4) {
     WriteTestOBJ("mengerHalf.obj", cutSponge.first);
 
     const Manifold out = sponge.SetProperties(
-        3, [](double* newProp, vec3 pos, const double* oldProp) {
+        3, [](scalar* newProp, vec3 pos, const scalar* oldProp) {
           for (const int i : {0, 1, 2}) newProp[i] = 0.5 * (pos[i] + 0.5);
         });
     WriteTestOBJ("mengerSponge.obj", out);

@@ -44,7 +44,11 @@ namespace manifold {
   return n;
 }
 
-constexpr double kPrecision = 1e-12;
+#ifdef MANIFOLD_USE_FLOAT
+constexpr scalar kPrecision = 1e-5f;
+#else
+constexpr scalar kPrecision = 1e-12;
+#endif
 
 inline int Next3(int i) {
   constexpr ivec3 next3(1, 2, 0);
@@ -144,11 +148,11 @@ struct Negate {
  * @return int, like Signum, this returns 1 for CCW, -1 for CW, and 0 if within
  * tol of colinear.
  */
-inline int CCW(vec2 p0, vec2 p1, vec2 p2, double tol) {
+inline int CCW(vec2 p0, vec2 p1, vec2 p2, scalar tol) {
   vec2 v1 = p1 - p0;
   vec2 v2 = p2 - p0;
-  double area = v1.x * v2.y - v1.y * v2.x;
-  double base2 = la::max(la::dot(v1, v1), la::dot(v2, v2));
+  scalar area = v1.x * v2.y - v1.y * v2.x;
+  scalar base2 = la::max(la::dot(v1, v1), la::dot(v2, v2));
   if (area * area * 4 <= base2 * tol * tol)
     return 0;
   else

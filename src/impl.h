@@ -41,13 +41,13 @@ struct Manifold::Impl {
   };
 
   Box bBox_;
-  double epsilon_ = -1;
-  double tolerance_ = -1;
+  scalar epsilon_ = -1;
+  scalar tolerance_ = -1;
   int numProp_ = 0;
   Error status_ = Error::NoError;
   Vec<vec3> vertPos_;
   SharedVec<Halfedge> halfedge_;
-  Vec<double> properties_;
+  Vec<scalar> properties_;
   Vec<vec3> vertNormal_;
   Vec<vec3> faceNormal_;
   Vec<vec4> halfedgeTangent_;
@@ -197,10 +197,10 @@ struct Manifold::Impl {
       } else {
         const Precision* m = meshGL.runTransform.data() + 12 * i;
         meshRelation_.meshIDtransform[meshID] = {originalID,
-                                                 {{m[0], m[1], m[2]},
-                                                  {m[3], m[4], m[5]},
-                                                  {m[6], m[7], m[8]},
-                                                  {m[9], m[10], m[11]}}};
+                                                 {{(scalar)m[0], (scalar)m[1], (scalar)m[2]},
+                                                  {(scalar)m[3], (scalar)m[4], (scalar)m[5]},
+                                                  {(scalar)m[6], (scalar)m[7], (scalar)m[8]},
+                                                  {(scalar)m[9], (scalar)m[10], (scalar)m[11]}}};
       }
     }
 
@@ -313,19 +313,19 @@ struct Manifold::Impl {
 
   // properties.cpp
   enum class Property { Volume, SurfaceArea };
-  double GetProperty(Property prop) const;
+  scalar GetProperty(Property prop) const;
   void CalculateCurvature(int gaussianIdx, int meanIdx);
   void CalculateBBox();
   bool IsFinite() const;
   bool IsIndexInBounds(VecView<const ivec3> triVerts) const;
-  void SetEpsilon(double minEpsilon = -1, bool useSingle = false);
+  void SetEpsilon(scalar minEpsilon = -1, bool useSingle = false);
   bool IsManifold() const;
   bool Is2Manifold() const;
   bool IsSelfIntersecting() const;
   bool MatchesTriNormals() const;
   int NumDegenerateTris() const;
   bool IsConvex() const;
-  double MinGap(const Impl& other, double searchLength) const;
+  scalar MinGap(const Impl& other, scalar searchLength) const;
 
   // sort.cpp
   void SortGeometry();
@@ -341,7 +341,7 @@ struct Manifold::Impl {
   // face_op.cpp
   void Face2Tri(const Vec<int>& faceEdge, const Vec<TriRef>& halfedgeRef,
                 bool allowConvex = false);
-  Polygons Slice(double height) const;
+  Polygons Slice(scalar height) const;
   Polygons Project() const;
 
   // edge_op.cpp
@@ -381,10 +381,10 @@ struct Manifold::Impl {
   Vec<bool> FlatFaces() const;
   Vec<int> VertFlatFace(const Vec<bool>&) const;
   Vec<int> VertHalfedge() const;
-  std::vector<Smoothness> SharpenEdges(double minSharpAngle,
-                                       double minSmoothness) const;
-  void SharpenTangent(int halfedge, double smoothness);
-  void SetNormals(int normalIdx, double minSharpAngle);
+  std::vector<Smoothness> SharpenEdges(scalar minSharpAngle,
+                                       scalar minSmoothness) const;
+  void SharpenTangent(int halfedge, scalar smoothness);
+  void SetNormals(int normalIdx, scalar minSharpAngle);
   void LinearizeFlatTangents();
   void DistributeTangents(const Vec<bool>& fixedHalfedges);
   void CreateTangents(int normalIdx);
@@ -455,7 +455,7 @@ inline MeshGLP<Precision, I> GetMeshGLImpl(const manifold::Manifold::Impl& impl,
     out.runOriginalID.push_back(rel.originalID);
     if (updateNormals) {
       runNormalTransform.push_back(NormalTransform(rel.transform) *
-                                   (rel.backSide ? -1.0 : 1.0));
+                                   (rel.backSide ? (scalar)-1.0 : (scalar)1.0));
     }
     if (!isOriginal) {
       for (const int col : {0, 1, 2, 3}) {

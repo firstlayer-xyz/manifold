@@ -100,8 +100,8 @@ TEST(CrossSection, Empty) {
 }
 
 TEST(CrossSection, Rect) {
-  double w = 10;
-  double h = 5;
+  scalar w = 10;
+  scalar h = 5;
   auto rect = Rect({0, 0}, {w, h});
   CrossSection cross(rect);
   auto area = rect.Area();
@@ -214,7 +214,7 @@ TEST(CrossSection, Hull) {
 }
 
 TEST(CrossSection, HullError) {
-  auto rounded_rectangle = [](double x, double y, double radius, int segments) {
+  auto rounded_rectangle = [](scalar x, scalar y, scalar radius, int segments) {
     auto circ = CrossSection::Circle(radius, segments);
     std::vector<CrossSection> vl{};
     vl.push_back(circ.Translate(vec2{radius, radius}));

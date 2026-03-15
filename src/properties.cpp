@@ -26,10 +26,10 @@ namespace {
 using namespace manifold;
 
 struct CurvatureAngles {
-  VecView<double> meanCurvature;
-  VecView<double> gaussianCurvature;
-  VecView<double> area;
-  VecView<double> degree;
+  VecView<scalar> meanCurvature;
+  VecView<scalar> gaussianCurvature;
+  VecView<scalar> area;
+  VecView<scalar> degree;
   VecView<const Halfedge> halfedge;
   VecView<const vec3> vertPos;
   VecView<const vec3> triNormal;
@@ -44,20 +44,20 @@ struct CurvatureAngles {
       edgeLength[i] = la::length(edge[i]);
       edge[i] /= edgeLength[i];
       const int neighborTri = halfedge[3 * tri + i].pairedHalfedge / 3;
-      const double dihedral =
+      const scalar dihedral =
           0.25 * edgeLength[i] *
           std::asin(la::dot(la::cross(triNormal[tri], triNormal[neighborTri]),
                             edge[i]));
       AtomicAdd(meanCurvature[startVert], dihedral);
       AtomicAdd(meanCurvature[endVert], dihedral);
-      AtomicAdd(degree[startVert], 1.0);
+      AtomicAdd(degree[startVert], (scalar)1.0);
     }
 
     vec3 phi;
     phi[0] = std::acos(-la::dot(edge[2], edge[0]));
     phi[1] = std::acos(-la::dot(edge[0], edge[1]));
     phi[2] = kPi - phi[0] - phi[1];
-    const double area3 = edgeLength[0] * edgeLength[1] *
+    const scalar area3 = edgeLength[0] * edgeLength[1] *
                          la::length(la::cross(edge[0], edge[1])) / 6;
 
     for (int i : {0, 1, 2}) {
@@ -136,8 +136,8 @@ std::mutex dump_lock;
  * Note that this is not checking for epsilon-validity.
  */
 bool Manifold::Impl::IsSelfIntersecting() const {
-  const double ep = 2 * epsilon_;
-  const double epsilonSq = ep * ep;
+  const scalar ep = 2 * epsilon_;
+  const scalar epsilonSq = ep * ep;
   Vec<Box> faceBox;
   Vec<uint32_t> faceMorton;
   GetFaceBoxMorton(faceBox, faceMorton);
@@ -200,12 +200,12 @@ bool Manifold::Impl::MatchesTriNormals() const {
 
     const mat2x3 projection = GetAxisAlignedProjection(faceNormal_[face]);
     vec2 v[3];
-    double max = -std::numeric_limits<double>::infinity();
-    double min = std::numeric_limits<double>::infinity();
+    scalar max = -std::numeric_limits<scalar>::infinity();
+    scalar min = std::numeric_limits<scalar>::infinity();
     for (int i : {0, 1, 2}) {
       const vec3 p = vertPos_[halfedge_[3 * face + i].startVert];
       v[i] = projection * p;
-      const double d = la::dot(p, faceNormal_[face]);
+      const scalar d = la::dot(p, faceNormal_[face]);
       if (!std::isfinite(d)) return true;
       max = std::max(max, d);
       min = std::min(min, d);
@@ -262,7 +262,7 @@ bool Manifold::Impl::IsConvex() const {
   });
 }
 
-double Manifold::Impl::GetProperty(Property prop) const {
+scalar Manifold::Impl::GetProperty(Property prop) const {
   ZoneScoped;
   if (IsEmpty()) return 0;
 
@@ -282,11 +282,11 @@ double Manifold::Impl::GetProperty(Property prop) const {
   };
 
   // Kahan summation
-  double value = 0;
-  double valueCompensation = 0;
+  scalar value = 0;
+  scalar valueCompensation = 0;
   for (size_t i = 0; i < NumTri(); ++i) {
-    const double value1 = prop == Property::SurfaceArea ? Area(i) : Volume(i);
-    const double t = value + value1;
+    const scalar value1 = prop == Property::SurfaceArea ? Area(i) : Volume(i);
+    const scalar t = value + value1;
     valueCompensation += (value - t) + value1;
     value = t;
   }
@@ -298,10 +298,10 @@ void Manifold::Impl::CalculateCurvature(int gaussianIdx, int meanIdx) {
   ZoneScoped;
   if (IsEmpty()) return;
   if (gaussianIdx < 0 && meanIdx < 0) return;
-  Vec<double> vertMeanCurvature(NumVert(), 0);
-  Vec<double> vertGaussianCurvature(NumVert(), kTwoPi);
-  Vec<double> vertArea(NumVert(), 0);
-  Vec<double> degree(NumVert(), 0);
+  Vec<scalar> vertMeanCurvature(NumVert(), 0);
+  Vec<scalar> vertGaussianCurvature(NumVert(), kTwoPi);
+  Vec<scalar> vertArea(NumVert(), 0);
+  Vec<scalar> degree(NumVert(), 0);
   auto policy = autoPolicy(NumTri(), 1e4);
   for_each(policy, countAt(0_uz), countAt(NumTri()),
            CurvatureAngles({vertMeanCurvature, vertGaussianCurvature, vertArea,
@@ -309,15 +309,15 @@ void Manifold::Impl::CalculateCurvature(int gaussianIdx, int meanIdx) {
   for_each_n(policy, countAt(0), NumVert(),
              [&vertMeanCurvature, &vertGaussianCurvature, &vertArea,
               &degree](const int vert) {
-               const double factor = degree[vert] / (6 * vertArea[vert]);
+               const scalar factor = degree[vert] / (6 * vertArea[vert]);
                vertMeanCurvature[vert] *= factor;
                vertGaussianCurvature[vert] *= factor;
              });
 
   const int oldNumProp = NumProp();
   const int numProp = std::max(oldNumProp, std::max(gaussianIdx, meanIdx) + 1);
-  const Vec<double> oldProperties = properties_;
-  properties_ = Vec<double>(numProp * NumPropVert(), 0);
+  const Vec<scalar> oldProperties = properties_;
+  properties_ = Vec<scalar>(numProp * NumPropVert(), 0);
   numProp_ = numProp;
 
   Vec<uint8_t> counters(NumPropVert(), 0);
@@ -355,13 +355,13 @@ void Manifold::Impl::CalculateCurvature(int gaussianIdx, int meanIdx) {
 void Manifold::Impl::CalculateBBox() {
   bBox_.min =
       reduce(vertPos_.begin(), vertPos_.end(),
-             vec3(std::numeric_limits<double>::infinity()), [](auto a, auto b) {
+             vec3(std::numeric_limits<scalar>::infinity()), [](auto a, auto b) {
                if (std::isnan(a.x)) return b;
                if (std::isnan(b.x)) return a;
                return la::min(a, b);
              });
   bBox_.max = reduce(vertPos_.begin(), vertPos_.end(),
-                     vec3(-std::numeric_limits<double>::infinity()),
+                     vec3(-std::numeric_limits<scalar>::infinity()),
                      [](auto a, auto b) {
                        if (std::isnan(a.x)) return b;
                        if (std::isnan(b.x)) return a;
@@ -407,24 +407,24 @@ bool Manifold::Impl::IsIndexInBounds(VecView<const ivec3> triVerts) const {
 }
 
 struct MinDistanceRecorder {
-  using Local = double;
+  using Local = scalar;
   const Manifold::Impl &self, &other;
 #if MANIFOLD_PAR == 1
-  tbb::combinable<double> store = tbb::combinable<double>(
-      []() { return std::numeric_limits<double>::infinity(); });
+  tbb::combinable<scalar> store = tbb::combinable<scalar>(
+      []() { return std::numeric_limits<scalar>::infinity(); });
   Local& local() { return store.local(); }
-  double get() {
-    double result = std::numeric_limits<double>::infinity();
-    store.combine_each([&](double& val) { result = std::min(result, val); });
+  scalar get() {
+    scalar result = std::numeric_limits<scalar>::infinity();
+    store.combine_each([&](scalar& val) { result = std::min(result, val); });
     return result;
   }
 #else
-  double result = std::numeric_limits<double>::infinity();
+  scalar result = std::numeric_limits<scalar>::infinity();
   Local& local() { return result; }
-  double get() { return result; }
+  scalar get() { return result; }
 #endif
 
-  void record(int triOther, int tri, double& minDistance) {
+  void record(int triOther, int tri, scalar& minDistance) {
     std::array<vec3, 3> p;
     std::array<vec3, 3> q;
 
@@ -440,8 +440,8 @@ struct MinDistanceRecorder {
  * Returns the minimum gap between two manifolds. Returns a double between
  * 0 and searchLength.
  */
-double Manifold::Impl::MinGap(const Manifold::Impl& other,
-                              double searchLength) const {
+scalar Manifold::Impl::MinGap(const Manifold::Impl& other,
+                              scalar searchLength) const {
   ZoneScoped;
   Vec<Box> faceBoxOther;
   Vec<uint32_t> faceMortonOther;
@@ -456,7 +456,7 @@ double Manifold::Impl::MinGap(const Manifold::Impl& other,
 
   MinDistanceRecorder recorder{*this, other};
   collider_.Collisions<false>(recorder, faceBoxOther.cview(), false);
-  double minDistanceSquared =
+  scalar minDistanceSquared =
       std::min(recorder.get(), searchLength * searchLength);
   return sqrt(minDistanceSquared);
 };

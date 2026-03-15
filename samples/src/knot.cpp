@@ -38,8 +38,8 @@ namespace manifold {
  * @param linearSegments Number of segments along the length of the knot.
  * Default makes roughly square facets.
  */
-Manifold TorusKnot(int p, int q, double majorRadius, double minorRadius,
-                   double threadRadius, int circularSegments,
+Manifold TorusKnot(int p, int q, scalar majorRadius, scalar minorRadius,
+                   scalar threadRadius, int circularSegments,
                    int linearSegments) {
   int kLoops = gcd(p, q);
   p /= kLoops;
@@ -53,15 +53,15 @@ Manifold TorusKnot(int p, int q, double majorRadius, double minorRadius,
   Manifold knot = Manifold::Revolve(circle.ToPolygons(), m);
 
   knot = knot.Warp([p, q, majorRadius, minorRadius, threadRadius](vec3& v) {
-    double psi = q * atan2(v.x, v.y);
-    double theta = psi * p / q;
+    scalar psi = q * atan2(v.x, v.y);
+    scalar theta = psi * p / q;
     vec2 xy = vec2(v);
-    double x1 = sqrt(la::dot(xy, xy));
-    double phi = atan2(x1 - 2, v.z);
+    scalar x1 = sqrt(la::dot(xy, xy));
+    scalar phi = atan2(x1 - 2, v.z);
     v = vec3(cos(phi), 0.0, sin(phi));
     v *= threadRadius;
-    double r = majorRadius + minorRadius * cos(theta);
-    v = la::rotx(-double(atan2(p * minorRadius, q * r)), v);
+    scalar r = majorRadius + minorRadius * cos(theta);
+    v = la::rotx(-scalar(atan2(p * minorRadius, q * r)), v);
     v.x += minorRadius;
     v = la::roty(theta, v);
     v.x += majorRadius;
@@ -70,9 +70,9 @@ Manifold TorusKnot(int p, int q, double majorRadius, double minorRadius,
 
   if (kLoops > 1) {
     std::vector<Manifold> knots;
-    for (double k = 0; k < kLoops; ++k) {
+    for (scalar k = 0; k < kLoops; ++k) {
       knots.push_back(
-          knot.Rotate(0, 0, 360.0 * (k / kLoops) * (q / double(p))));
+          knot.Rotate(0, 0, 360.0 * (k / kLoops) * (q / scalar(p))));
     }
     knot = Manifold::BatchBoolean(knots, OpType::Add);
   }

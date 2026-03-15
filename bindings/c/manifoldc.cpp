@@ -28,15 +28,17 @@ using namespace manifold;
 
 namespace {
 ManifoldManifold* level_set(
-    void* mem, double (*sdf_context)(double, double, double, void*),
-    ManifoldBox* bounds, double edge_length, double level, double tolerance,
-    bool seq, void* ctx) {
+    void* mem,
+    ManifoldScalar (*sdf_context)(ManifoldScalar, ManifoldScalar,
+                                  ManifoldScalar, void*),
+    ManifoldBox* bounds, ManifoldScalar edge_length, ManifoldScalar level,
+    ManifoldScalar tolerance, bool seq, void* ctx) {
   // Bind function with context argument to one without
   using namespace std::placeholders;
-  std::function<double(double, double, double)> sdf =
-      std::bind(sdf_context, _1, _2, _3, ctx);
-  std::function<double(vec3)> fun = [sdf](vec3 v) {
-    return (sdf(v.x, v.y, v.z));
+  std::function<ManifoldScalar(ManifoldScalar, ManifoldScalar, ManifoldScalar)>
+      sdf = std::bind(sdf_context, _1, _2, _3, ctx);
+  std::function<scalar(vec3)> fun = [sdf](vec3 v) {
+    return (scalar)(sdf(v.x, v.y, v.z));
   };
   return to_c(new (mem) Manifold(Manifold::LevelSet(
       fun, *from_c(bounds), edge_length, level, tolerance, !seq)));
@@ -167,8 +169,10 @@ ManifoldManifoldPair manifold_split(void* mem_first, void* mem_second,
 
 ManifoldManifoldPair manifold_split_by_plane(void* mem_first, void* mem_second,
                                              ManifoldManifold* m,
-                                             double normal_x, double normal_y,
-                                             double normal_z, double offset) {
+                                             ManifoldScalar normal_x,
+                                             ManifoldScalar normal_y,
+                                             ManifoldScalar normal_z,
+                                             ManifoldScalar offset) {
   auto normal = vec3(normal_x, normal_y, normal_z);
   auto pair = from_c(m)->SplitByPlane(normal, offset);
   auto first = new (mem_first) Manifold(pair.first);
@@ -177,8 +181,10 @@ ManifoldManifoldPair manifold_split_by_plane(void* mem_first, void* mem_second,
 }
 
 ManifoldManifold* manifold_trim_by_plane(void* mem, ManifoldManifold* m,
-                                         double normal_x, double normal_y,
-                                         double normal_z, double offset) {
+                                         ManifoldScalar normal_x,
+                                         ManifoldScalar normal_y,
+                                         ManifoldScalar normal_z,
+                                         ManifoldScalar offset) {
   auto normal = vec3(normal_x, normal_y, normal_z);
   auto trimmed = from_c(m)->TrimByPlane(normal, offset);
   return to_c(new (mem) Manifold(trimmed));
@@ -197,7 +203,7 @@ ManifoldManifold* manifold_minkowski_difference(void* mem, ManifoldManifold* a,
 }
 
 ManifoldPolygons* manifold_slice(void* mem, ManifoldManifold* m,
-                                 double height) {
+                                 ManifoldScalar height) {
   auto poly = from_c(m)->Slice(height);
   return to_c(new (mem) Polygons(poly));
 }
@@ -227,49 +233,57 @@ ManifoldManifold* manifold_hull_pts(void* mem, ManifoldVec3* ps,
   return to_c(new (mem) Manifold(hulled));
 }
 
-ManifoldManifold* manifold_translate(void* mem, ManifoldManifold* m, double x,
-                                     double y, double z) {
+ManifoldManifold* manifold_translate(void* mem, ManifoldManifold* m,
+                                     ManifoldScalar x, ManifoldScalar y,
+                                     ManifoldScalar z) {
   auto v = vec3(x, y, z);
   auto translated = from_c(m)->Translate(v);
   return to_c(new (mem) Manifold(translated));
 }
 
-ManifoldManifold* manifold_rotate(void* mem, ManifoldManifold* m, double x,
-                                  double y, double z) {
+ManifoldManifold* manifold_rotate(void* mem, ManifoldManifold* m,
+                                  ManifoldScalar x, ManifoldScalar y,
+                                  ManifoldScalar z) {
   auto rotated = from_c(m)->Rotate(x, y, z);
   return to_c(new (mem) Manifold(rotated));
 }
 
-ManifoldManifold* manifold_scale(void* mem, ManifoldManifold* m, double x,
-                                 double y, double z) {
+ManifoldManifold* manifold_scale(void* mem, ManifoldManifold* m,
+                                 ManifoldScalar x, ManifoldScalar y,
+                                 ManifoldScalar z) {
   auto s = vec3(x, y, z);
   auto scaled = from_c(m)->Scale(s);
   return to_c(new (mem) Manifold(scaled));
 }
 
-ManifoldManifold* manifold_transform(void* mem, ManifoldManifold* m, double x1,
-                                     double y1, double z1, double x2, double y2,
-                                     double z2, double x3, double y3, double z3,
-                                     double x4, double y4, double z4) {
+ManifoldManifold* manifold_transform(void* mem, ManifoldManifold* m,
+                                     ManifoldScalar x1, ManifoldScalar y1,
+                                     ManifoldScalar z1, ManifoldScalar x2,
+                                     ManifoldScalar y2, ManifoldScalar z2,
+                                     ManifoldScalar x3, ManifoldScalar y3,
+                                     ManifoldScalar z3, ManifoldScalar x4,
+                                     ManifoldScalar y4, ManifoldScalar z4) {
   auto mat = mat3x4({x1, y1, z1}, {x2, y2, z2}, {x3, y3, z3}, {x4, y4, z4});
   auto transformed = from_c(m)->Transform(mat);
   return to_c(new (mem) Manifold(transformed));
 }
 
-ManifoldManifold* manifold_mirror(void* mem, ManifoldManifold* m, double nx,
-                                  double ny, double nz) {
+ManifoldManifold* manifold_mirror(void* mem, ManifoldManifold* m,
+                                  ManifoldScalar nx, ManifoldScalar ny,
+                                  ManifoldScalar nz) {
   auto mirrored = from_c(m)->Mirror({nx, ny, nz});
   return to_c(new (mem) Manifold(mirrored));
 }
 
 ManifoldManifold* manifold_warp(void* mem, ManifoldManifold* m,
-                                ManifoldVec3 (*fun)(double, double, double,
-                                                    void*),
+                                ManifoldVec3 (*fun)(ManifoldScalar,
+                                                    ManifoldScalar,
+                                                    ManifoldScalar, void*),
                                 void* ctx) {
   // Bind function with context argument to one without
   using namespace std::placeholders;
-  std::function<ManifoldVec3(double, double, double)> f3 =
-      std::bind(fun, _1, _2, _3, ctx);
+  std::function<ManifoldVec3(ManifoldScalar, ManifoldScalar, ManifoldScalar)>
+      f3 = std::bind(fun, _1, _2, _3, ctx);
   std::function<void(vec3 & v)> warp = [f3](vec3& v) {
     v = from_c(f3(v.x, v.y, v.z));
   };
@@ -278,16 +292,20 @@ ManifoldManifold* manifold_warp(void* mem, ManifoldManifold* m,
 }
 
 ManifoldManifold* manifold_level_set(
-    void* mem, double (*sdf)(double, double, double, void*),
-    ManifoldBox* bounds, double edge_length, double level, double tolerance,
-    void* ctx) {
+    void* mem,
+    ManifoldScalar (*sdf)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                          void*),
+    ManifoldBox* bounds, ManifoldScalar edge_length, ManifoldScalar level,
+    ManifoldScalar tolerance, void* ctx) {
   return level_set(mem, sdf, bounds, edge_length, level, tolerance, false, ctx);
 }
 
 ManifoldManifold* manifold_level_set_seq(
-    void* mem, double (*sdf)(double, double, double, void*),
-    ManifoldBox* bounds, double edge_length, double level, double tolerance,
-    void* ctx) {
+    void* mem,
+    ManifoldScalar (*sdf)(ManifoldScalar, ManifoldScalar, ManifoldScalar,
+                          void*),
+    ManifoldBox* bounds, ManifoldScalar edge_length, ManifoldScalar level,
+    ManifoldScalar tolerance, void* ctx) {
   return level_set(mem, sdf, bounds, edge_length, level, tolerance, true, ctx);
 }
 
@@ -298,8 +316,8 @@ ManifoldManifold* manifold_smooth_by_normals(void* mem, ManifoldManifold* m,
 }
 
 ManifoldManifold* manifold_smooth_out(void* mem, ManifoldManifold* m,
-                                      double minSharpAngle,
-                                      double minSmoothness) {
+                                      ManifoldScalar minSharpAngle,
+                                      ManifoldScalar minSmoothness) {
   auto smoothed = from_c(m)->SmoothOut(minSharpAngle, minSmoothness);
   return to_c(new (mem) Manifold(smoothed));
 }
@@ -310,13 +328,13 @@ ManifoldManifold* manifold_refine(void* mem, ManifoldManifold* m, int refine) {
 }
 
 ManifoldManifold* manifold_refine_to_length(void* mem, ManifoldManifold* m,
-                                            double length) {
+                                            ManifoldScalar length) {
   auto refined = from_c(m)->RefineToLength(length);
   return to_c(new (mem) Manifold(refined));
 }
 
 ManifoldManifold* manifold_refine_to_tolerance(void* mem, ManifoldManifold* m,
-                                               double tolerance) {
+                                               ManifoldScalar tolerance) {
   auto refined = from_c(m)->RefineToTolerance(tolerance);
   return to_c(new (mem) Manifold(refined));
 }
@@ -334,22 +352,23 @@ ManifoldManifold* manifold_tetrahedron(void* mem) {
   return to_c(new (mem) Manifold(m));
 }
 
-ManifoldManifold* manifold_cube(void* mem, double x, double y, double z,
-                                int center) {
+ManifoldManifold* manifold_cube(void* mem, ManifoldScalar x, ManifoldScalar y,
+                                ManifoldScalar z, int center) {
   auto size = vec3(x, y, z);
   auto m = Manifold::Cube(size, center);
   return to_c(new (mem) Manifold(m));
 }
 
-ManifoldManifold* manifold_cylinder(void* mem, double height, double radius_low,
-                                    double radius_high, int circular_segments,
-                                    int center) {
+ManifoldManifold* manifold_cylinder(void* mem, ManifoldScalar height,
+                                    ManifoldScalar radius_low,
+                                    ManifoldScalar radius_high,
+                                    int circular_segments, int center) {
   auto m = Manifold::Cylinder(height, radius_low, radius_high,
                               circular_segments, center);
   return to_c(new (mem) Manifold(m));
 }
 
-ManifoldManifold* manifold_sphere(void* mem, double radius,
+ManifoldManifold* manifold_sphere(void* mem, ManifoldScalar radius,
                                   int circular_segments) {
   auto m = Manifold::Sphere(radius, circular_segments);
   return to_c(new (mem) Manifold(m));
@@ -474,7 +493,8 @@ ManifoldMeshGL64* manifold_meshgl64_w_options(
 }
 
 ManifoldManifold* manifold_smooth(void* mem, ManifoldMeshGL* mesh,
-                                  size_t* half_edges, double* smoothness,
+                                  size_t* half_edges,
+                                  ManifoldScalar* smoothness,
                                   size_t n_edges) {
   auto smooth = std::vector<Smoothness>();
   for (size_t i = 0; i < n_edges; ++i) {
@@ -485,7 +505,8 @@ ManifoldManifold* manifold_smooth(void* mem, ManifoldMeshGL* mesh,
 }
 
 ManifoldManifold* manifold_smooth64(void* mem, ManifoldMeshGL64* mesh,
-                                    size_t* half_edges, double* smoothness,
+                                    size_t* half_edges,
+                                    ManifoldScalar* smoothness,
                                     size_t n_edges) {
   auto smooth = std::vector<Smoothness>();
   for (size_t i = 0; i < n_edges; ++i) {
@@ -506,9 +527,10 @@ ManifoldManifold* manifold_of_meshgl64(void* mem, ManifoldMeshGL64* mesh) {
 }
 
 ManifoldManifold* manifold_extrude(void* mem, ManifoldPolygons* cs,
-                                   double height, int slices,
-                                   double twist_degrees, double scale_x,
-                                   double scale_y) {
+                                   ManifoldScalar height, int slices,
+                                   ManifoldScalar twist_degrees,
+                                   ManifoldScalar scale_x,
+                                   ManifoldScalar scale_y) {
   auto scale = vec2(scale_x, scale_y);
   auto m = Manifold::Extrude(*from_c(cs), height, slices, twist_degrees, scale);
   return to_c(new (mem) Manifold(m));
@@ -516,7 +538,7 @@ ManifoldManifold* manifold_extrude(void* mem, ManifoldPolygons* cs,
 
 ManifoldManifold* manifold_revolve(void* mem, ManifoldPolygons* cs,
                                    int circular_segments,
-                                   double revolve_degrees) {
+                                   ManifoldScalar revolve_degrees) {
   auto m = Manifold::Revolve(*from_c(cs), circular_segments, revolve_degrees);
   return to_c(new (mem) Manifold(m));
 }
@@ -741,31 +763,35 @@ size_t manifold_num_tri(ManifoldManifold* m) { return from_c(m)->NumTri(); }
 size_t manifold_num_prop(ManifoldManifold* m) { return from_c(m)->NumProp(); };
 int manifold_genus(ManifoldManifold* m) { return from_c(m)->Genus(); }
 
-double manifold_surface_area(ManifoldManifold* m) {
+ManifoldScalar manifold_surface_area(ManifoldManifold* m) {
   return from_c(m)->SurfaceArea();
 }
-double manifold_volume(ManifoldManifold* m) { return from_c(m)->Volume(); }
+ManifoldScalar manifold_volume(ManifoldManifold* m) {
+  return from_c(m)->Volume();
+}
 
 ManifoldBox* manifold_bounding_box(void* mem, ManifoldManifold* m) {
   auto box = from_c(m)->BoundingBox();
   return to_c(new (mem) Box(box));
 }
 
-double manifold_epsilon(ManifoldManifold* m) { return from_c(m)->GetEpsilon(); }
+ManifoldScalar manifold_epsilon(ManifoldManifold* m) {
+  return from_c(m)->GetEpsilon();
+}
 
 uint32_t manifold_reserve_ids(uint32_t n) { return Manifold::ReserveIDs(n); }
 
 ManifoldManifold* manifold_set_properties(
     void* mem, ManifoldManifold* m, int num_prop,
-    void (*fun)(double* new_prop, ManifoldVec3 position, const double* old_prop,
-                void* ctx),
+    void (*fun)(ManifoldScalar* new_prop, ManifoldVec3 position,
+                const ManifoldScalar* old_prop, void* ctx),
     void* ctx) {
   // Bind function with context argument to one without
   using namespace std::placeholders;
-  std::function<void(double*, ManifoldVec3, const double*)> f3 =
+  std::function<void(ManifoldScalar*, ManifoldVec3, const ManifoldScalar*)> f3 =
       std::bind(fun, _1, _2, _3, ctx);
-  std::function<void(double*, vec3, const double*)> f =
-      [f3](double* new_prop, vec3 v, const double* old_prop) {
+  std::function<void(scalar*, vec3, const scalar*)> f =
+      [f3](scalar* new_prop, vec3 v, const scalar* old_prop) {
         return (f3(new_prop, to_c(v), old_prop));
       };
   auto man = from_c(m)->SetProperties(num_prop, f);
@@ -778,25 +804,25 @@ ManifoldManifold* manifold_calculate_curvature(void* mem, ManifoldManifold* m,
   return to_c(new (mem) Manifold(man));
 }
 
-double manifold_min_gap(ManifoldManifold* m, ManifoldManifold* other,
-                        double searchLength) {
+ManifoldScalar manifold_min_gap(ManifoldManifold* m, ManifoldManifold* other,
+                                ManifoldScalar searchLength) {
   return from_c(m)->MinGap(*from_c(other), searchLength);
 }
 
 ManifoldManifold* manifold_calculate_normals(void* mem, ManifoldManifold* m,
                                              int normal_idx,
-                                             double min_sharp_angle) {
+                                             ManifoldScalar min_sharp_angle) {
   auto man = from_c(m)->CalculateNormals(normal_idx, min_sharp_angle);
   return to_c(new (mem) Manifold(man));
 }
 
 // Static Quality Globals
 
-void manifold_set_min_circular_angle(double degrees) {
+void manifold_set_min_circular_angle(ManifoldScalar degrees) {
   Quality::SetMinCircularAngle(degrees);
 }
 
-void manifold_set_min_circular_edge_length(double length) {
+void manifold_set_min_circular_edge_length(ManifoldScalar length) {
   Quality::SetMinCircularEdgeLength(length);
 }
 
@@ -804,14 +830,14 @@ void manifold_set_circular_segments(int number) {
   Quality::SetCircularSegments(number);
 }
 
-int manifold_get_circular_segments(double radius) {
+int manifold_get_circular_segments(ManifoldScalar radius) {
   return Quality::GetCircularSegments(radius);
 }
 
 void manifold_reset_to_circular_defaults() { Quality::ResetToDefaults(); }
 
 ManifoldTriangulation* manifold_triangulate(void* mem, ManifoldPolygons* ps,
-                                            double epsilon) {
+                                            ManifoldScalar epsilon) {
   auto triangulation = manifold::Triangulate(*from_c(ps), epsilon);
   return to_c(new (mem) std::vector<ivec3>(triangulation));
 }

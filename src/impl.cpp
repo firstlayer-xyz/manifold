@@ -150,8 +150,8 @@ int GetLabels(std::vector<int>& components,
 }
 
 template <typename T>
-double FromChars(T buffer) {
-  double tmp;
+scalar FromChars(T buffer) {
+  scalar tmp;
   std::istringstream iss(buffer);
   iss >> std::setprecision(19);
   iss >> tmp;
@@ -266,7 +266,7 @@ void Manifold::Impl::SetNormalsAndCoplanar() {
   const int numTri = NumTri();
   faceNormal_.resize(numTri);
   struct TriPriority {
-    double area2;
+    scalar area2;
     int tri;
   };
   Vec<TriPriority> triPriority(numTri);
@@ -702,9 +702,9 @@ Manifold::Impl Manifold::Impl::Transform(const mat3x4& transform_) const {
  * Sets epsilon based on the bounding box, and limits its minimum value
  * by the optional input.
  */
-void Manifold::Impl::SetEpsilon(double minEpsilon, bool useSingle) {
+void Manifold::Impl::SetEpsilon(scalar minEpsilon, bool useSingle) {
   epsilon_ = MaxEpsilon(minEpsilon, bBox_);
-  double minTol = epsilon_;
+  scalar minTol = epsilon_;
   if (useSingle)
     minTol =
         std::max(minTol, std::numeric_limits<float>::epsilon() * bBox_.Scale());
@@ -757,8 +757,8 @@ void Manifold::Impl::CalculateVertNormals() {
       // if it is not finite, this means that the triangle is degenerate, and we
       // should just exclude it from the normal calculation...
       if (!la::isfinite(currEdge[0]) || !la::isfinite(prevEdge[0])) return;
-      double dot = -la::dot(prevEdge, currEdge);
-      double phi = dot >= 1 ? 0 : (dot <= -1 ? kPi : sun_acos(dot));
+      scalar dot = -la::dot(prevEdge, currEdge);
+      scalar phi = dot >= 1 ? 0 : (dot <= -1 ? kPi : sun_acos(dot));
       normal += phi * faceNormal_[edge / 3];
     });
     vertNormal_[vert] = SafeNormalize(normal);
@@ -789,7 +789,7 @@ void Manifold::Impl::IncrementMeshIDs() {
 
 static std::ostream& WriteOBJWithEpsilon(std::ostream& stream,
                                          const MeshGL64& mesh,
-                                         std::optional<double> epsilon) {
+                                         std::optional<scalar> epsilon) {
   stream << std::setprecision(19);  // for double precision
   stream << std::fixed;             // for uniformity in output numbers
   stream << "# ======= begin mesh ======" << std::endl;
@@ -815,7 +815,7 @@ static std::ostream& WriteOBJWithEpsilon(std::ostream& stream,
   return stream;
 }
 
-static std::pair<MeshGL64, std::optional<double>> ReadOBJWithEpsilon(
+static std::pair<MeshGL64, std::optional<scalar>> ReadOBJWithEpsilon(
     std::istream& stream) {
   static const std::string FLOAT_PATTERN =
       "(-?\\d+(?:\\.\\d*)?(?:[eE][+\\-]?\\d+)?)";
@@ -834,7 +834,7 @@ static std::pair<MeshGL64, std::optional<double>> ReadOBJWithEpsilon(
                                        FACE_ELEMENT + TRAILING_SPACES);
 
   MeshGL64 mesh;
-  std::optional<double> epsilon;
+  std::optional<scalar> epsilon;
   if (!stream.good()) return std::make_pair(mesh, epsilon);
 
   constexpr size_t BUFFER_SIZE = 1000;

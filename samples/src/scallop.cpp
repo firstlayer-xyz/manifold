@@ -21,21 +21,21 @@ namespace manifold {
  * Manifold.Smooth(). Use Manifold.Refine() before export to see the curvature.
  */
 Manifold Scallop() {
-  constexpr double height = 1;
-  constexpr double radius = 3;
-  constexpr double offset = 2;
+  constexpr scalar height = 1;
+  constexpr scalar radius = 3;
+  constexpr scalar offset = 2;
   constexpr int wiggles = 12;
-  constexpr double sharpness = 0.8;
+  constexpr scalar sharpness = 0.8;
 
   MeshGL64 scallop;
   std::vector<Smoothness> sharpenedEdges;
   scallop.numProp = 3;
   scallop.vertProperties = {-offset, 0, height, -offset, 0, -height};
 
-  const double delta = kPi / wiggles;
+  const scalar delta = kPi / wiggles;
   for (int i = 0; i < 2 * wiggles; ++i) {
-    double theta = (i - wiggles) * delta;
-    double amp = 0.5 * height * la::max(la::cos(0.8 * theta), 0.0);
+    scalar theta = (i - wiggles) * delta;
+    scalar amp = 0.5 * height * la::max(la::cos(0.8 * theta), 0.0);
 
     scallop.vertProperties.insert(
         scallop.vertProperties.end(),
@@ -44,7 +44,7 @@ Manifold Scallop() {
     int j = i + 1;
     if (j == 2 * wiggles) j = 0;
 
-    double smoothness = 1 - sharpness * la::cos((theta + delta / 2) / 2);
+    scalar smoothness = 1 - sharpness * la::cos((theta + delta / 2) / 2);
     size_t halfedge = scallop.triVerts.size() + 1;
     sharpenedEdges.push_back({halfedge, smoothness});
     scallop.triVerts.insert(

@@ -27,22 +27,22 @@ using namespace manifold;
 Polygons Turn180(Polygons polys) {
   for (SimplePolygon& poly : polys) {
     for (vec2& vert : poly) {
-      vert *= -1.0;
+      vert *= (scalar)-1.0;
     }
   }
   return polys;
 }
 
 Polygons Duplicate(Polygons polys) {
-  double xMin = std::numeric_limits<double>::infinity();
-  double xMax = -std::numeric_limits<double>::infinity();
+  scalar xMin = std::numeric_limits<scalar>::infinity();
+  scalar xMax = -std::numeric_limits<scalar>::infinity();
   for (SimplePolygon& poly : polys) {
     for (vec2& vert : poly) {
       xMin = std::min(xMin, vert.x);
       xMax = std::max(xMax, vert.x);
     }
   }
-  const double shift = xMax - xMin;
+  const scalar shift = xMax - xMin;
 
   const int nPolys = polys.size();
   for (int i = 0; i < nPolys; ++i) {
@@ -56,7 +56,7 @@ Polygons Duplicate(Polygons polys) {
 }
 
 void TestPoly(const Polygons& polys, int expectedNumTri,
-              double epsilon = -1.0) {
+              scalar epsilon = -1.0) {
   std::vector<ivec3> triangles;
   EXPECT_NO_THROW(triangles = Triangulate(polys, epsilon));
   EXPECT_EQ(triangles.size(), expectedNumTri) << "Basic";
@@ -71,9 +71,9 @@ void TestPoly(const Polygons& polys, int expectedNumTri,
 class PolygonTestFixture : public testing::Test {
  public:
   Polygons polys;
-  double epsilon;
+  scalar epsilon;
   int expectedNumTri;
-  explicit PolygonTestFixture(Polygons polys, double epsilon,
+  explicit PolygonTestFixture(Polygons polys, scalar epsilon,
                               int expectedNumTri)
       : polys(polys), epsilon(epsilon), expectedNumTri(expectedNumTri) {}
   void TestBody() { TestPoly(polys, expectedNumTri, epsilon); }
@@ -93,7 +93,7 @@ void RegisterPolygonTestsFile(const std::string& filename) {
   // note that we should not have commas in the file
 
   std::string name;
-  double epsilon, x, y;
+  scalar epsilon, x, y;
   int expectedNumTri, numPolys, numPoints;
 
   while (1) {

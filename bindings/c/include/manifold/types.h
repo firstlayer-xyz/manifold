@@ -16,6 +16,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef MANIFOLD_USE_FLOAT
+typedef float ManifoldScalar;
+#else
+typedef double ManifoldScalar;
+#endif
+
 // opaque pointers
 
 typedef struct ManifoldManifold ManifoldManifold;
@@ -38,14 +44,14 @@ typedef struct ManifoldManifoldPair {
 } ManifoldManifoldPair;
 
 typedef struct ManifoldVec2 {
-  double x;
-  double y;
+  ManifoldScalar x;
+  ManifoldScalar y;
 } ManifoldVec2;
 
 typedef struct ManifoldVec3 {
-  double x;
-  double y;
-  double z;
+  ManifoldScalar x;
+  ManifoldScalar y;
+  ManifoldScalar z;
 } ManifoldVec3;
 
 typedef struct ManifoldIVec3 {
@@ -55,15 +61,15 @@ typedef struct ManifoldIVec3 {
 } ManifoldIVec3;
 
 typedef struct ManifoldVec4 {
-  double x;
-  double y;
-  double z;
-  double w;
+  ManifoldScalar x;
+  ManifoldScalar y;
+  ManifoldScalar z;
+  ManifoldScalar w;
 } ManifoldVec4;
 
 typedef struct ManifoldProperties {
-  double surface_area;
-  double volume;
+  ManifoldScalar surface_area;
+  ManifoldScalar volume;
 } ManifoldProperties;
 
 typedef struct ManifoldMeshGLOptions {
@@ -127,4 +133,5 @@ typedef enum ManifoldJoinType {
 } ManifoldJoinType;
 
 // function pointer
-typedef double (*ManifoldSdf)(double, double, double, void*);
+typedef ManifoldScalar (*ManifoldSdf)(ManifoldScalar, ManifoldScalar,
+                                      ManifoldScalar, void*);

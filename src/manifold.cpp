@@ -25,14 +25,14 @@ using namespace manifold;
 
 ExecutionParams manifoldParams;
 
-Manifold Halfspace(Box bBox, vec3 normal, double originOffset) {
+Manifold Halfspace(Box bBox, vec3 normal, scalar originOffset) {
   normal = la::normalize(normal);
   Manifold cutter = Manifold::Cube(vec3(2.0), true).Translate({1.0, 0.0, 0.0});
-  double size = la::length(bBox.Center() - normal * originOffset) +
+  scalar size = la::length(bBox.Center() - normal * originOffset) +
                 0.5 * la::length(bBox.Size());
   cutter = cutter.Scale(vec3(size)).Translate({originOffset, 0.0, 0.0});
-  double yDeg = degrees(-std::asin(normal.z));
-  double zDeg = degrees(std::atan2(normal.y, normal.x));
+  scalar yDeg = degrees(-std::asin(normal.z));
+  scalar zDeg = degrees(std::atan2(normal.y, normal.x));
   return cutter.Rotate(0.0, yDeg, zDeg);
 }
 }  // namespace
@@ -40,8 +40,8 @@ Manifold Halfspace(Box bBox, vec3 normal, double originOffset) {
 namespace manifold {
 
 static int circularSegments_ = DEFAULT_SEGMENTS;
-static double circularAngle_ = DEFAULT_ANGLE;
-static double circularEdgeLength_ = DEFAULT_LENGTH;
+static scalar circularAngle_ = DEFAULT_ANGLE;
+static scalar circularEdgeLength_ = DEFAULT_LENGTH;
 
 /**
  * Sets an angle constraint the default number of circular segments for the
@@ -53,7 +53,7 @@ static double circularEdgeLength_ = DEFAULT_LENGTH;
  * angle will increase if the the segments hit the minimum edge length.
  * Default is 10 degrees.
  */
-void Quality::SetMinCircularAngle(double angle) {
+void Quality::SetMinCircularAngle(scalar angle) {
   if (angle <= 0) return;
   circularAngle_ = angle;
 }
@@ -67,7 +67,7 @@ void Quality::SetMinCircularAngle(double angle) {
  * @param length The minimum length of segments. The length will
  * increase if the the segments hit the minimum angle. Default is 1.0.
  */
-void Quality::SetMinCircularEdgeLength(double length) {
+void Quality::SetMinCircularEdgeLength(scalar length) {
   if (length <= 0) return;
   circularEdgeLength_ = length;
 }
@@ -93,7 +93,7 @@ void Quality::SetCircularSegments(int number) {
  * @param radius For a given radius of circle, determine how many default
  * segments there will be.
  */
-int Quality::GetCircularSegments(double radius) {
+int Quality::GetCircularSegments(scalar radius) {
   if (circularSegments_ > 0) return circularSegments_;
   int nSegA = 360.0 / circularAngle_;
   int nSegL = 2.0 * std::abs(radius) * kPi / circularEdgeLength_;
@@ -274,7 +274,7 @@ Box Manifold::BoundingBox() const { return GetCsgLeafNode().GetImpl()->bBox_; }
  * led to this state. This is the value of &epsilon; defining
  * [&epsilon;-valid](https://github.com/elalish/manifold/wiki/Manifold-Library#definition-of-%CE%B5-valid).
  */
-double Manifold::GetEpsilon() const {
+scalar Manifold::GetEpsilon() const {
   return GetCsgLeafNode().GetImpl()->epsilon_;
 }
 
@@ -283,7 +283,7 @@ double Manifold::GetEpsilon() const {
  * within tolerance tend to be merged and edges shorter than tolerance tend to
  * be collapsed.
  */
-double Manifold::GetTolerance() const {
+scalar Manifold::GetTolerance() const {
   return GetCsgLeafNode().GetImpl()->tolerance_;
 }
 
@@ -291,7 +291,7 @@ double Manifold::GetTolerance() const {
  * Return a copy of the manifold with the set tolerance value.
  * This performs mesh simplification when the tolerance value is increased.
  */
-Manifold Manifold::SetTolerance(double tolerance) const {
+Manifold Manifold::SetTolerance(scalar tolerance) const {
   auto impl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   if (tolerance > impl->tolerance_) {
     impl->tolerance_ = tolerance;
@@ -313,9 +313,9 @@ Manifold Manifold::SetTolerance(double tolerance) const {
  * The result will contain a subset of the original verts and all surfaces will
  * have moved by less than tolerance.
  */
-Manifold Manifold::Simplify(double tolerance) const {
+Manifold Manifold::Simplify(scalar tolerance) const {
   auto impl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
-  const double oldTolerance = impl->tolerance_;
+  const scalar oldTolerance = impl->tolerance_;
   if (tolerance == 0) tolerance = oldTolerance;
   if (tolerance > oldTolerance) {
     impl->tolerance_ = tolerance;
@@ -340,14 +340,14 @@ int Manifold::Genus() const {
 /**
  * Returns the surface area of the manifold.
  */
-double Manifold::SurfaceArea() const {
+scalar Manifold::SurfaceArea() const {
   return GetCsgLeafNode().GetImpl()->GetProperty(Impl::Property::SurfaceArea);
 }
 
 /**
  * Returns the volume of the manifold.
  */
-double Manifold::Volume() const {
+scalar Manifold::Volume() const {
   return GetCsgLeafNode().GetImpl()->GetProperty(Impl::Property::Volume);
 }
 
@@ -444,8 +444,8 @@ Manifold Manifold::Scale(vec3 v) const { return Manifold(pNode_->Scale(v)); }
  * @param yDegrees Second rotation, degrees about the global Y-axis.
  * @param zDegrees Third rotation, degrees about the global Z-axis.
  */
-Manifold Manifold::Rotate(double xDegrees, double yDegrees,
-                          double zDegrees) const {
+Manifold Manifold::Rotate(scalar xDegrees, scalar yDegrees,
+                          scalar zDegrees) const {
   return Manifold(pNode_->Rotate(xDegrees, yDegrees, zDegrees));
 }
 
@@ -473,7 +473,7 @@ Manifold Manifold::Mirror(vec3 normal) const {
     return Manifold();
   }
   auto n = la::normalize(normal);
-  auto m = mat3x4(mat3(la::identity) - 2.0 * la::outerprod(n, n), vec3());
+  auto m = mat3x4(mat3(la::identity) - (scalar)2.0 * la::outerprod(n, n), vec3());
   return Manifold(pNode_->Transform(m));
 }
 
@@ -532,16 +532,16 @@ Manifold Manifold::WarpBatch(
  */
 Manifold Manifold::SetProperties(
     int numProp,
-    std::function<void(double* newProp, vec3 position, const double* oldProp)>
+    std::function<void(scalar* newProp, vec3 position, const scalar* oldProp)>
         propFunc) const {
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   const int oldNumProp = NumProp();
-  const Vec<double> oldProperties = pImpl->properties_;
+  const Vec<scalar> oldProperties = pImpl->properties_;
 
   if (numProp == 0) {
     pImpl->properties_.clear();
   } else {
-    pImpl->properties_ = Vec<double>(numProp * NumPropVert(), 0);
+    pImpl->properties_ = Vec<scalar>(numProp * NumPropVert(), 0);
     for_each_n(
         propFunc == nullptr ? ExecutionPolicy::Par : ExecutionPolicy::Seq,
         countAt(0), NumTri(), [&](int tri) {
@@ -603,7 +603,7 @@ Manifold Manifold::CalculateCurvature(int gaussianIdx, int meanIdx) const {
  * of zero, the model is faceted and all normals match their triangle normals,
  * but in this case it would be better not to calculate normals at all.
  */
-Manifold Manifold::CalculateNormals(int normalIdx, double minSharpAngle) const {
+Manifold Manifold::CalculateNormals(int normalIdx, scalar minSharpAngle) const {
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   pImpl->SetNormals(normalIdx, minSharpAngle);
   return Manifold(std::make_shared<CsgLeafNode>(pImpl));
@@ -646,12 +646,12 @@ Manifold Manifold::SmoothByNormals(int normalIdx) const {
  * fillet on these sharp edges. A value of 1 is equivalent to a minSharpAngle of
  * 180 - all edges will be smooth.
  */
-Manifold Manifold::SmoothOut(double minSharpAngle, double minSmoothness) const {
+Manifold Manifold::SmoothOut(scalar minSharpAngle, scalar minSmoothness) const {
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   if (!IsEmpty()) {
     if (minSmoothness == 0) {
       const int numProp = pImpl->numProp_;
-      Vec<double> properties = pImpl->properties_;
+      Vec<scalar> properties = pImpl->properties_;
       Vec<Halfedge> halfedge = pImpl->halfedge_;
       pImpl->SetNormals(0, minSharpAngle);
       pImpl->CreateTangents(0);
@@ -695,7 +695,7 @@ Manifold Manifold::Refine(int n) const {
  *
  * @param length The length that edges will be broken down to.
  */
-Manifold Manifold::RefineToLength(double length) const {
+Manifold Manifold::RefineToLength(scalar length) const {
   length = std::abs(length);
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   pImpl->Refine([length](vec3 edge, vec4, vec4) {
@@ -716,7 +716,7 @@ Manifold Manifold::RefineToLength(double length) const {
  * produced and the exact smoothly curving surface. All vertices are exactly on
  * the surface, within rounding error.
  */
-Manifold Manifold::RefineToTolerance(double tolerance) const {
+Manifold Manifold::RefineToTolerance(scalar tolerance) const {
   tolerance = std::abs(tolerance);
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   if (!pImpl->halfedgeTangent_.empty()) {
@@ -730,7 +730,7 @@ Manifold Manifold::RefineToTolerance(double tolerance) const {
           const vec3 start = tStart - edgeNorm * la::dot(edgeNorm, tStart);
           const vec3 end = tEnd - edgeNorm * la::dot(edgeNorm, tEnd);
           // Circular arc result plus heuristic term for non-circular curves
-          const double d = 0.5 * (la::length(start) + la::length(end)) +
+          const scalar d = 0.5 * (la::length(start) + la::length(end)) +
                            la::length(start - end);
           return static_cast<int>(std::sqrt(3 * d / (4 * tolerance)));
         },
@@ -847,7 +847,7 @@ std::pair<Manifold, Manifold> Manifold::Split(const Manifold& cutter) const {
  * direction of the normal vector.
  */
 std::pair<Manifold, Manifold> Manifold::SplitByPlane(
-    vec3 normal, double originOffset) const {
+    vec3 normal, scalar originOffset) const {
   return Split(Halfspace(BoundingBox(), normal, originOffset));
 }
 
@@ -860,7 +860,7 @@ std::pair<Manifold, Manifold> Manifold::SplitByPlane(
  * @param originOffset The distance of the plane from the origin in the
  * direction of the normal vector.
  */
-Manifold Manifold::TrimByPlane(vec3 normal, double originOffset) const {
+Manifold Manifold::TrimByPlane(vec3 normal, scalar originOffset) const {
   return *this ^ Halfspace(BoundingBox(), normal, originOffset);
 }
 
@@ -900,7 +900,7 @@ Manifold Manifold::MinkowskiDifference(const Manifold& other) const {
  * the bounding box will return the bottom faces, while using a height equal to
  * the top of the bounding box will return empty.
  */
-Polygons Manifold::Slice(double height) const {
+Polygons Manifold::Slice(scalar height) const {
   return GetCsgLeafNode().GetImpl()->Slice(height);
 }
 
@@ -965,7 +965,7 @@ Manifold Manifold::Hull(const std::vector<Manifold>& manifolds) {
  * @param other The other manifold to compute the minimum gap to.
  * @param searchLength The maximum distance to search for a minimum gap.
  */
-double Manifold::MinGap(const Manifold& other, double searchLength) const {
+scalar Manifold::MinGap(const Manifold& other, scalar searchLength) const {
   auto intersect = *this ^ other;
   if (!intersect.IsEmpty()) return 0.0;
 

@@ -187,7 +187,7 @@ std::tuple<Vec<int>, Vec<int>> SizeOutput(
 }
 
 struct EdgePos {
-  double edgePos;
+  scalar edgePos;
   int vert;
   int collisionId;
   bool isStart;
@@ -524,7 +524,7 @@ struct Barycentric {
   VecView<const Halfedge> halfedgeP;
   VecView<const Halfedge> halfedgeQ;
   VecView<const Halfedge> halfedgeR;
-  const double epsilon;
+  const scalar epsilon;
 
   void operator()(const int tri) {
     const TriRef refPQ = ref[tri];

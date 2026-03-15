@@ -298,7 +298,7 @@ TEST(Manifold, CylinderZeroRadiusLow) {
   // cylinder(h, 0, r) should produce a cone with apex at z=0 and base at z=h.
   // Use enough segments for accurate volume.
   const int n = 256;
-  const double h = 5.0, r = 3.0;
+  const scalar h = 5.0, r = 3.0;
   Manifold coneApexBottom = Manifold::Cylinder(h, 0.0, r, n);
   Manifold coneApexTop = Manifold::Cylinder(h, r, 0.0, n);
 
@@ -306,7 +306,7 @@ TEST(Manifold, CylinderZeroRadiusLow) {
   EXPECT_FALSE(coneApexBottom.IsEmpty());
 
   // Both cones must have equal total volume.
-  const double totalVol = coneApexTop.Volume();
+  const scalar totalVol = coneApexTop.Volume();
   EXPECT_NEAR(coneApexBottom.Volume(), totalVol, 1e-6);
 
   // Differentiate orientation by intersecting with the bottom half (z in
@@ -432,9 +432,9 @@ TEST(Manifold, Warp2) {
   Manifold shape =
       Manifold::Extrude(circle.ToPolygons(), 2, 10).Warp([](vec3& v) {
         int nSegments = 10;
-        double angleStep = 2.0 / 3.0 * kPi / nSegments;
+        scalar angleStep = 2.0 / 3.0 * kPi / nSegments;
         int zIndex = nSegments - 1 - std::round(v.z);
-        double angle = zIndex * angleStep;
+        scalar angle = zIndex * angleStep;
         v.z = v.y;
         v.y = v.x * sin(angle);
         v.x = v.x * cos(angle);

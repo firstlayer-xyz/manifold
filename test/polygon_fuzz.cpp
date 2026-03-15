@@ -23,6 +23,7 @@
 #include "manifold/polygon.h"
 
 using namespace fuzztest;
+using manifold::scalar;
 
 void TriangulationNoCrash(
     std::vector<std::vector<std::pair<float, float>>> input, float precision) {
@@ -115,7 +116,7 @@ std::vector<TestCase> SeedProvider() {
   // note that we should not have commas in the file
 
   std::string name;
-  double precision, x, y;
+  scalar precision, x, y;
   int expectedNumTri, numPolys, numPoints;
 
   std::vector<TestCase> TestCases;

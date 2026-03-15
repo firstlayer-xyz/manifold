@@ -33,8 +33,8 @@ void QueryTwoDTree(VecView<PolyVert> points, Rect r, F f) {
     return;
   }
   Rect current;
-  current.min = vec2(-std::numeric_limits<double>::infinity());
-  current.max = vec2(std::numeric_limits<double>::infinity());
+  current.min = vec2(-std::numeric_limits<scalar>::infinity());
+  current.max = vec2(std::numeric_limits<scalar>::infinity());
 
   int level = 0;
   VecView<PolyVert> currentView = points;

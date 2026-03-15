@@ -121,7 +121,7 @@ class CrossSection {
   std::vector<CrossSection> Decompose() const;
   static CrossSection Compose(const std::vector<CrossSection>&);
   static CrossSection Square(const vec2 dims, bool center = false);
-  static CrossSection Circle(double radius, int circularSegments = 0);
+  static CrossSection Circle(scalar radius, int circularSegments = 0);
   ///@}
 
   /** @name Information
@@ -132,22 +132,22 @@ class CrossSection {
   size_t NumVert() const;
   size_t NumContour() const;
   Rect Bounds() const;
-  double Area() const;
+  scalar Area() const;
   ///@}
 
   /** @name Transformation
    */
   ///@{
   CrossSection Translate(const vec2 v) const;
-  CrossSection Rotate(double degrees) const;
+  CrossSection Rotate(scalar degrees) const;
   CrossSection Scale(const vec2 s) const;
   CrossSection Mirror(const vec2 ax) const;
   CrossSection Transform(const mat2x3& m) const;
   CrossSection Warp(std::function<void(vec2&)> warpFunc) const;
   CrossSection WarpBatch(std::function<void(VecView<vec2>)> warpFunc) const;
-  CrossSection Simplify(double epsilon = 1e-6) const;
-  CrossSection Offset(double delta, JoinType jt = JoinType::Round,
-                      double miter_limit = 2.0, int circularSegments = 0) const;
+  CrossSection Simplify(scalar epsilon = 1e-6) const;
+  CrossSection Offset(scalar delta, JoinType jt = JoinType::Round,
+                      scalar miter_limit = 2.0, int circularSegments = 0) const;
   ///@}
 
   /** @name Boolean

@@ -33,16 +33,16 @@ namespace {
 // are carefully designed to minimize rounding error and to eliminate it at edge
 // cases to ensure consistency.
 
-inline double withSign(bool pos, double v) { return pos ? v : -v; }
+inline scalar withSign(bool pos, scalar v) { return pos ? v : -v; }
 
-inline vec2 Interpolate(vec3 aL, vec3 aR, double x) {
-  const double dxL = x - aL.x;
-  const double dxR = x - aR.x;
+inline vec2 Interpolate(vec3 aL, vec3 aR, scalar x) {
+  const scalar dxL = x - aL.x;
+  const scalar dxR = x - aR.x;
   DEBUG_ASSERT(dxL * dxR <= 0, logicErr,
                "Boolean manifold error: not in domain");
   const bool useL = fabs(dxL) < fabs(dxR);
   const vec3 dLR = aR - aL;
-  const double lambda = (useL ? dxL : dxR) / dLR.x;
+  const scalar lambda = (useL ? dxL : dxR) / dLR.x;
   if (!std::isfinite(lambda) || !std::isfinite(dLR.y) || !std::isfinite(dLR.z))
     return vec2(aL.y, aL.z);
   vec2 yz;
@@ -52,18 +52,18 @@ inline vec2 Interpolate(vec3 aL, vec3 aR, double x) {
 }
 
 vec4 Intersect(const vec3& aL, const vec3& aR, const vec3& bL, const vec3& bR) {
-  const double dyL = bL.y - aL.y;
-  const double dyR = bR.y - aR.y;
+  const scalar dyL = bL.y - aL.y;
+  const scalar dyR = bR.y - aR.y;
   DEBUG_ASSERT(dyL * dyR <= 0, logicErr,
                "Boolean manifold error: no intersection");
   const bool useL = fabs(dyL) < fabs(dyR);
-  const double dx = aR.x - aL.x;
-  double lambda = (useL ? dyL : dyR) / (dyL - dyR);
+  const scalar dx = aR.x - aL.x;
+  scalar lambda = (useL ? dyL : dyR) / (dyL - dyR);
   if (!std::isfinite(lambda)) lambda = 0.0;
   vec4 xyzz;
   xyzz.x = lambda * dx + (useL ? aL.x : aR.x);
-  const double aDy = aR.y - aL.y;
-  const double bDy = bR.y - bL.y;
+  const scalar aDy = aR.y - aL.y;
+  const scalar bDy = bR.y - bL.y;
   const bool useA = fabs(aDy) < fabs(bDy);
   xyzz.y = lambda * (useA ? aDy : bDy) +
            (useL ? (useA ? aL.y : bL.y) : (useA ? aR.y : bR.y));
@@ -72,7 +72,7 @@ vec4 Intersect(const vec3& aL, const vec3& aR, const vec3& bL, const vec3& bR) {
   return xyzz;
 }
 
-inline bool Shadows(double p, double q, double dir) {
+inline bool Shadows(scalar p, scalar q, scalar dir) {
   return p == q ? dir < 0 : p < q;
 }
 
@@ -82,12 +82,12 @@ inline std::pair<int, vec2> Shadow01(const int a0, const int b1,
                                      const Manifold::Impl& inB) {
   const int b1s = inB.halfedge_[b1].startVert;
   const int b1e = inB.halfedge_[b1].endVert;
-  const double a0x = inA.vertPos_[a0].x;
-  const double b1sx = inB.vertPos_[b1s].x;
-  const double b1ex = inB.vertPos_[b1e].x;
-  const double a0xp = inA.vertNormal_[a0].x;
-  const double b1sxp = inB.vertNormal_[b1s].x;
-  const double b1exp = inB.vertNormal_[b1e].x;
+  const scalar a0x = inA.vertPos_[a0].x;
+  const scalar b1sx = inB.vertPos_[b1s].x;
+  const scalar b1ex = inB.vertPos_[b1e].x;
+  const scalar a0xp = inA.vertNormal_[a0].x;
+  const scalar b1sxp = inB.vertNormal_[b1s].x;
+  const scalar b1exp = inB.vertNormal_[b1e].x;
   int s01 = forward ? Shadows(a0x, b1ex, withSign(expandP, a0xp) - b1exp) -
                           Shadows(a0x, b1sx, withSign(expandP, a0xp) - b1sxp)
                     : Shadows(b1sx, a0x, withSign(expandP, b1sxp) - a0xp) -
@@ -98,7 +98,7 @@ inline std::pair<int, vec2> Shadow01(const int a0, const int b1,
     yz01 =
         Interpolate(inB.vertPos_[b1s], inB.vertPos_[b1e], inA.vertPos_[a0].x);
     const int b1pair = inB.halfedge_[b1].pairedHalfedge;
-    const double dir =
+    const scalar dir =
         inB.faceNormal_[b1 / 3].y + inB.faceNormal_[b1pair / 3].y;
     if (forward) {
       if (!Shadows(inA.vertPos_[a0].y, yz01[0], -dir)) s01 = 0;
@@ -164,10 +164,10 @@ struct Kernel11 {
       xyzz11 = Intersect(pRL[0], pRL[1], qRL[0], qRL[1]);
 
       const int p1pair = inP.halfedge_[p1].pairedHalfedge;
-      const double dirP =
+      const scalar dirP =
           inP.faceNormal_[p1 / 3].z + inP.faceNormal_[p1pair / 3].z;
       const int q1pair = inQ.halfedge_[q1].pairedHalfedge;
-      const double dirQ =
+      const scalar dirQ =
           inQ.faceNormal_[q1 / 3].z + inQ.faceNormal_[q1pair / 3].z;
       if (!Shadows(xyzz11.z, xyzz11.w, withSign(expandP, dirP) - dirQ)) s11 = 0;
     }
@@ -181,9 +181,9 @@ struct Kernel02 {
   const Manifold::Impl& inA;
   const Manifold::Impl& inB;
 
-  std::pair<int, double> operator()(int a0, int b2) {
+  std::pair<int, scalar> operator()(int a0, int b2) {
     int s02 = 0;
-    double z02 = 0.0;
+    scalar z02 = 0.0;
 
     // For yzzLR[k], k==0 is the left and k==1 is the right.
     int k = 0;

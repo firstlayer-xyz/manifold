@@ -32,10 +32,10 @@ using namespace manifold;
 
 constexpr int TRIANGULATOR_VERBOSE_LEVEL = 2;
 
-constexpr double kBest = -std::numeric_limits<double>::infinity();
+constexpr scalar kBest = -std::numeric_limits<scalar>::infinity();
 
 // it seems that MSVC cannot optimize la::determinant(mat2(a, b))
-constexpr double determinant2x2(vec2 a, vec2 b) {
+constexpr scalar determinant2x2(vec2 a, vec2 b) {
   return a.x * b.y - a.y * b.x;
 }
 
@@ -112,7 +112,7 @@ void CheckTopology(const std::vector<ivec3>& triangles,
 }
 
 void CheckGeometry(const std::vector<ivec3>& triangles,
-                   const PolygonsIdx& polys, double epsilon) {
+                   const PolygonsIdx& polys, scalar epsilon) {
   std::unordered_map<int, vec2> vertPos;
   for (const auto& poly : polys) {
     for (size_t i = 0; i < poly.size(); ++i) {
@@ -127,7 +127,7 @@ void CheckGeometry(const std::vector<ivec3>& triangles,
                geometryErr, "triangulation is not entirely CCW!");
 }
 
-void Dump(const PolygonsIdx& polys, double epsilon) {
+void Dump(const PolygonsIdx& polys, scalar epsilon) {
   std::cout << std::setprecision(19);
   std::cout << "Polygon 0 " << epsilon << " " << polys.size() << std::endl;
   for (auto poly : polys) {
@@ -149,7 +149,7 @@ void Dump(const PolygonsIdx& polys, double epsilon) {
 std::atomic<int> numFailures(0);
 
 void PrintFailure(const std::exception& e, const PolygonsIdx& polys,
-                  std::vector<ivec3>& triangles, double epsilon) {
+                  std::vector<ivec3>& triangles, scalar epsilon) {
   // only print the first triangulation failure
   if (numFailures.fetch_add(1) != 0) return;
   std::cout << std::setprecision(19);
@@ -182,7 +182,7 @@ void PrintFailure(const std::exception& e, const PolygonsIdx& polys,
  * Exactly colinear edges and zero-length edges are treated conservatively as
  * reflex. Does not check for overlaps.
  */
-bool IsConvex(const PolygonsIdx& polys, double epsilon) {
+bool IsConvex(const PolygonsIdx& polys, scalar epsilon) {
   for (const SimplePolygonIdx& poly : polys) {
     const vec2 firstEdge = poly[0].pos - poly[poly.size() - 1].pos;
     // Zero-length edges comes out NaN, which won't trip the early return, but
@@ -192,7 +192,7 @@ bool IsConvex(const PolygonsIdx& polys, double epsilon) {
     for (size_t v = 0; v < poly.size(); ++v) {
       const vec2 edge =
           v + 1 < poly.size() ? poly[v + 1].pos - poly[v].pos : firstEdge;
-      const double det = determinant2x2(lastEdge, edge);
+      const scalar det = determinant2x2(lastEdge, edge);
       if (det <= 0 || (std::abs(det) < epsilon && la::dot(lastEdge, edge) < 0))
         return false;
       lastEdge = la::normalize(edge);
@@ -244,7 +244,7 @@ std::vector<ivec3> TriangulateConvex(const PolygonsIdx& polys) {
 
 class EarClip {
  public:
-  EarClip(const PolygonsIdx& polys, double epsilon) : epsilon_(epsilon) {
+  EarClip(const PolygonsIdx& polys, scalar epsilon) : epsilon_(epsilon) {
     ZoneScoped;
 
     size_t numVert = 0;
@@ -278,7 +278,7 @@ class EarClip {
     return triangles_;
   }
 
-  double GetPrecision() const { return epsilon_; }
+  scalar GetPrecision() const { return epsilon_; }
 
  private:
   struct Vert;
@@ -313,7 +313,7 @@ class EarClip {
   // Bounding box of the entire set of polygons
   Rect bBox_;
   // Working epsilon: max of float error and input value.
-  double epsilon_;
+  scalar epsilon_;
 
   struct IdxCollider {
     Vec<PolyVert> points;
@@ -325,14 +325,14 @@ class EarClip {
   // two points and terminates.
   struct Vert {
     int mesh_idx;
-    double cost;
+    scalar cost;
     qItr ear;
     vec2 pos, rightDir;
     VertItr left, right;
 
     // Shorter than half of epsilon, to be conservative so that it doesn't
     // cause CW triangles that exceed epsilon due to rounding error.
-    bool IsShort(double epsilon) const {
+    bool IsShort(scalar epsilon) const {
       const vec2 edge = right->pos - pos;
       return la::dot(edge, edge) * 4 < epsilon * epsilon;
     }
@@ -340,7 +340,7 @@ class EarClip {
     // Like CCW, returns 1 if v is on the inside of the angle formed at this
     // vert, -1 on the outside, and 0 if it's within epsilon of the boundary.
     // Ensure v is more than epsilon from pos, as case this will not return 0.
-    int Interior(vec2 v, double epsilon) const {
+    int Interior(vec2 v, scalar epsilon) const {
       const vec2 diff = v - pos;
       if (la::dot(diff, diff) < epsilon * epsilon) {
         return 0;
@@ -354,8 +354,8 @@ class EarClip {
     // is found (beyond epsilon). If toLeft is true, this Vert will walk its
     // edges to the left. This should be chosen so that the edges walk in the
     // same general direction - tail always walks to the right.
-    bool InsideEdge(VertItr tail, double epsilon, bool toLeft) const {
-      const double p2 = epsilon * epsilon;
+    bool InsideEdge(VertItr tail, scalar epsilon, bool toLeft) const {
+      const scalar p2 = epsilon * epsilon;
       VertItr nextL = left->right;
       VertItr nextR = tail->right;
       VertItr center = tail;
@@ -364,21 +364,21 @@ class EarClip {
       while (nextL != nextR && tail != nextR &&
              nextL != (toLeft ? right : left)) {
         const vec2 edgeL = nextL->pos - center->pos;
-        const double l2 = la::dot(edgeL, edgeL);
+        const scalar l2 = la::dot(edgeL, edgeL);
         if (l2 <= p2) {
           nextL = toLeft ? nextL->left : nextL->right;
           continue;
         }
 
         const vec2 edgeR = nextR->pos - center->pos;
-        const double r2 = la::dot(edgeR, edgeR);
+        const scalar r2 = la::dot(edgeR, edgeR);
         if (r2 <= p2) {
           nextR = nextR->right;
           continue;
         }
 
         const vec2 vecLR = nextR->pos - nextL->pos;
-        const double lr2 = la::dot(vecLR, vecLR);
+        const scalar lr2 = la::dot(vecLR, vecLR);
         if (lr2 <= p2) {
           last = center;
           center = nextL;
@@ -409,14 +409,14 @@ class EarClip {
     }
 
     // Returns true for convex or colinear ears.
-    bool IsConvex(double epsilon) const {
+    bool IsConvex(scalar epsilon) const {
       return CCW(left->pos, pos, right->pos, epsilon) >= 0;
     }
 
     // Subtly different from !IsConvex because IsConvex will return true for
     // colinear non-folded verts, while IsReflex will always check until actual
     // certainty is determined.
-    bool IsReflex(double epsilon) const {
+    bool IsReflex(scalar epsilon) const {
       return !left->InsideEdge(left->right, epsilon, true);
     }
 
@@ -424,7 +424,7 @@ class EarClip {
     // returning NAN if the edge does not cross the value from below to above,
     // right of start - all within a epsilon tolerance. If onTop != 0, this
     // restricts which end is allowed to terminate within the epsilon band.
-    double InterpY2X(vec2 start, int onTop, double epsilon) const {
+    scalar InterpY2X(vec2 start, int onTop, scalar epsilon) const {
       if (la::abs(pos.y - start.y) <= epsilon) {
         if (right->pos.y <= start.y + epsilon || onTop == 1) {
           return NAN;
@@ -449,12 +449,12 @@ class EarClip {
     // of the ear. Points are valid even when they touch, so long as their edge
     // goes to the outside. No need to check the other side, since all verts are
     // processed in the EarCost loop.
-    double SignedDist(VertItr v, vec2 unit, double epsilon) const {
-      double d = determinant2x2(unit, v->pos - pos);
+    scalar SignedDist(VertItr v, vec2 unit, scalar epsilon) const {
+      scalar d = determinant2x2(unit, v->pos - pos);
       if (std::abs(d) < epsilon) {
-        double dR = determinant2x2(unit, v->right->pos - pos);
+        scalar dR = determinant2x2(unit, v->right->pos - pos);
         if (std::abs(dR) > epsilon) return dR;
-        double dL = determinant2x2(unit, v->left->pos - pos);
+        scalar dL = determinant2x2(unit, v->left->pos - pos);
         if (std::abs(dL) > epsilon) return dL;
       }
       return d;
@@ -462,18 +462,18 @@ class EarClip {
 
     // Find the cost of Vert v within this ear, where openSide is the unit
     // vector from Verts right to left - passed in for reuse.
-    double Cost(VertItr v, vec2 openSide, double epsilon) const {
-      double cost = std::min(SignedDist(v, rightDir, epsilon),
+    scalar Cost(VertItr v, vec2 openSide, scalar epsilon) const {
+      scalar cost = std::min(SignedDist(v, rightDir, epsilon),
                              SignedDist(v, left->rightDir, epsilon));
 
-      const double openCost = determinant2x2(openSide, v->pos - right->pos);
+      const scalar openCost = determinant2x2(openSide, v->pos - right->pos);
       return std::min(cost, openCost);
     }
 
     // For verts outside the ear, apply a cost based on the Delaunay condition
     // to aid in prioritization and produce cleaner triangulations. This doesn't
     // affect robustness, but may be adjusted to improve output.
-    static double DelaunayCost(vec2 diff, double scale, double epsilon) {
+    static scalar DelaunayCost(vec2 diff, scalar scale, scalar epsilon) {
       return -epsilon - scale * la::dot(diff, diff);
     }
 
@@ -487,14 +487,14 @@ class EarClip {
     // values < -epsilon so they will never affect validity. The first
     // totalCost is designed to give priority to sharper angles. Any cost < (-1
     // - epsilon) has satisfied the Delaunay condition.
-    double EarCost(double epsilon, IdxCollider& collider) const {
+    scalar EarCost(scalar epsilon, IdxCollider& collider) const {
       vec2 openSide = left->pos - right->pos;
-      const vec2 center = 0.5 * (left->pos + right->pos);
-      const double scale = 4 / la::dot(openSide, openSide);
-      const double radius = la::length(openSide) / 2;
+      const vec2 center = (scalar)0.5 * (left->pos + right->pos);
+      const scalar scale = 4 / la::dot(openSide, openSide);
+      const scalar radius = la::length(openSide) / 2;
       openSide = la::normalize(openSide);
 
-      double totalCost = la::dot(left->rightDir, rightDir) - 1 - epsilon;
+      scalar totalCost = la::dot(left->rightDir, rightDir) - 1 - epsilon;
       if (CCW(pos, left->pos, right->pos, epsilon) == 0) {
         // Clip folded ears first
         return totalCost;
@@ -513,7 +513,7 @@ class EarClip {
         if (!Clipped(test) && test->mesh_idx != mesh_idx &&
             test->mesh_idx != lid &&
             test->mesh_idx != rid) {  // Skip duplicated verts
-          double cost = Cost(test, openSide, epsilon);
+          scalar cost = Cost(test, openSide, epsilon);
           if (cost < -epsilon) {
             cost = DelaunayCost(test->pos - center, scale, epsilon);
           }
@@ -667,17 +667,17 @@ class EarClip {
     const vec2 origin = first->pos;
 
     VertItr start = first;
-    double maxX = -std::numeric_limits<double>::infinity();
+    scalar maxX = -std::numeric_limits<scalar>::infinity();
     Rect bBox;
     // Kahan summation
-    double area = 0;
-    double areaCompensation = 0;
+    scalar area = 0;
+    scalar areaCompensation = 0;
 
     auto AddPoint = [&](VertItr v) {
       bBox.Union(v->pos);
-      const double area1 =
+      const scalar area1 =
           determinant2x2(v->pos - origin, v->right->pos - origin);
-      const double t1 = area + area1;
+      const scalar t1 = area + area1;
       areaCompensation += (area - t1) + area1;
       area = t1;
 
@@ -694,7 +694,7 @@ class EarClip {
 
     area += areaCompensation;
     const vec2 size = bBox.Size();
-    const double minArea = epsilon_ * std::max(size.x, size.y);
+    const scalar minArea = epsilon_ * std::max(size.x, size.y);
 
     if (std::isfinite(maxX) && area < -minArea) {
       holes_.insert(start);
@@ -719,7 +719,7 @@ class EarClip {
     VertItr connector = polygon_.end();
 
     auto CheckEdge = [&](VertItr edge) {
-      const double x = edge->InterpY2X(start->pos, onTop, epsilon_);
+      const scalar x = edge->InterpY2X(start->pos, onTop, epsilon_);
       if (std::isfinite(x) && start->InsideEdge(edge, epsilon_, true) &&
           (connector == polygon_.end() ||
            CCW({x, start->pos.y}, connector->pos, connector->right->pos,
@@ -766,10 +766,10 @@ class EarClip {
     if (la::abs(connector->pos.y - start->pos.y) <= epsilon_) {
       return connector;
     }
-    const double above = connector->pos.y > start->pos.y ? 1 : -1;
+    const scalar above = connector->pos.y > start->pos.y ? 1 : -1;
 
     auto CheckVert = [&](VertItr vert) {
-      const double inside =
+      const scalar inside =
           above * CCW(start->pos, vert->pos, connector->pos, epsilon_);
       if (vert->pos.x > start->pos.x - epsilon_ &&
           vert->pos.y * above > start->pos.y * above - epsilon_ &&
@@ -939,10 +939,10 @@ namespace manifold {
  * @return std::vector<ivec3> The triangles, referencing the original
  * vertex indicies.
  */
-std::vector<ivec3> TriangulateIdx(const PolygonsIdx& polys, double epsilon,
+std::vector<ivec3> TriangulateIdx(const PolygonsIdx& polys, scalar epsilon,
                                   bool allowConvex) {
   std::vector<ivec3> triangles;
-  double updatedEpsilon = epsilon;
+  scalar updatedEpsilon = epsilon;
 #ifdef MANIFOLD_DEBUG
   try {
 #endif
@@ -989,7 +989,7 @@ std::vector<ivec3> TriangulateIdx(const PolygonsIdx& polys, double epsilon,
  * @return std::vector<ivec3> The triangles, referencing the original
  * polygon points in order.
  */
-std::vector<ivec3> Triangulate(const Polygons& polygons, double epsilon,
+std::vector<ivec3> Triangulate(const Polygons& polygons, scalar epsilon,
                                bool allowConvex) {
   int idx = 0;
   PolygonsIdx polygonsIndexed;

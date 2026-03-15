@@ -85,7 +85,7 @@ C2::JoinType jt(CrossSection::JoinType jointype) {
   return jt;
 }
 
-vec2 v2_of_pd(const C2::PointD p) { return {p.x, p.y}; }
+vec2 v2_of_pd(const C2::PointD p) { return {(scalar)p.x, (scalar)p.y}; }
 
 C2::PointD v2_to_pd(const vec2 v) { return C2::PointD(v.x, v.y); }
 
@@ -325,12 +325,12 @@ CrossSection CrossSection::Square(const vec2 size, bool center) {
     p[2] = C2::PointD(-w, -h);
     p[3] = C2::PointD(w, -h);
   } else {
-    const double x = size.x;
-    const double y = size.y;
+    const scalar x = size.x;
+    const scalar y = size.y;
     p[0] = C2::PointD(0.0, 0.0);
-    p[1] = C2::PointD(x, 0.0);
-    p[2] = C2::PointD(x, y);
-    p[3] = C2::PointD(0.0, y);
+    p[1] = C2::PointD((double)x, 0.0);
+    p[2] = C2::PointD((double)x, (double)y);
+    p[3] = C2::PointD(0.0, (double)y);
   }
   return CrossSection(shared_paths(C2::PathsD{p}));
 }
@@ -342,13 +342,13 @@ CrossSection CrossSection::Square(const vec2 size, bool center) {
  * @param circularSegments Number of segments along its diameter. Default is
  * calculated by the static Quality defaults according to the radius.
  */
-CrossSection CrossSection::Circle(double radius, int circularSegments) {
+CrossSection CrossSection::Circle(scalar radius, int circularSegments) {
   if (radius <= 0.0) {
     return CrossSection();
   }
   int n = circularSegments > 2 ? circularSegments
                                : Quality::GetCircularSegments(radius);
-  double dPhi = 360.0 / n;
+  scalar dPhi = 360.0 / n;
   auto circle = C2::PathD(n);
   for (int i = 0; i < n; ++i) {
     circle[i] = C2::PointD(radius * cosd(dPhi * i), radius * sind(dPhi * i));
@@ -509,7 +509,7 @@ CrossSection CrossSection::Translate(const vec2 v) const {
  *
  * @param degrees degrees about the Z-axis to rotate.
  */
-CrossSection CrossSection::Rotate(double degrees) const {
+CrossSection CrossSection::Rotate(scalar degrees) const {
   auto s = sind(degrees);
   auto c = cosd(degrees);
   mat2x3 m({c, s},   //
@@ -544,7 +544,7 @@ CrossSection CrossSection::Mirror(const vec2 ax) const {
     return CrossSection();
   }
   auto n = la::normalize(ax);
-  auto m = mat2x3(mat2(la::identity) - 2.0 * la::outerprod(n, n), vec2(0.0));
+  auto m = mat2x3(mat2(la::identity) - (scalar)2.0 * la::outerprod(n, n), vec2(0.0));
   return Transform(m);
 }
 
@@ -621,7 +621,7 @@ CrossSection CrossSection::WarpBatch(
  * quality in any meaningful way. This is particularly important if further
  * offseting operations are to be performed, which would compound the issue.
  */
-CrossSection CrossSection::Simplify(double epsilon) const {
+CrossSection CrossSection::Simplify(scalar epsilon) const {
   C2::PolyTreeD tree;
   C2::BooleanOp(C2::ClipType::Union, C2::FillRule::Positive, GetPaths()->paths_,
                 C2::PathsD(), tree, precision_);
@@ -667,17 +667,17 @@ CrossSection CrossSection::Simplify(double epsilon) const {
  * will be added to each contour). Default is calculated by the static Quality
  * defaults according to the radius.
  */
-CrossSection CrossSection::Offset(double delta, JoinType jointype,
-                                  double miter_limit,
+CrossSection CrossSection::Offset(scalar delta, JoinType jointype,
+                                  scalar miter_limit,
                                   int circularSegments) const {
-  double arc_tol = 0.;
+  scalar arc_tol = 0.;
   if (jointype == JoinType::Round) {
     int n = circularSegments > 2 ? circularSegments
                                  : Quality::GetCircularSegments(delta);
     // This calculates tolerance as a function of circular segments and delta
     // (radius) in order to get back the same number of segments in Clipper2:
     // steps_per_360 = PI / acos(1 - arc_tol / abs_delta)
-    const double abs_delta = std::fabs(delta);
+    const scalar abs_delta = std::fabs(delta);
     arc_tol = (std::cos(Clipper2Lib::PI / n) - 1) * -abs_delta;
   }
   auto ps =
@@ -748,7 +748,7 @@ CrossSection CrossSection::Hull(const Polygons polys) {
  * Return the total area covered by complex polygons making up the
  * CrossSection.
  */
-double CrossSection::Area() const { return C2::Area(GetPaths()->paths_); }
+scalar CrossSection::Area() const { return C2::Area(GetPaths()->paths_); }
 
 /**
  * Return the number of vertices in the CrossSection.
@@ -779,7 +779,7 @@ bool CrossSection::IsEmpty() const { return GetPaths()->paths_.empty(); }
  */
 Rect CrossSection::Bounds() const {
   auto r = C2::GetBounds(GetPaths()->paths_);
-  return Rect({r.left, r.bottom}, {r.right, r.top});
+  return Rect({(scalar)r.left, (scalar)r.bottom}, {(scalar)r.right, (scalar)r.top});
 }
 
 /**
@@ -793,7 +793,7 @@ Polygons CrossSection::ToPolygons() const {
     auto sp = SimplePolygon();
     sp.reserve(p.size());
     for (auto v : p) {
-      sp.push_back({v.x, v.y});
+      sp.push_back({(scalar)v.x, (scalar)v.y});
     }
     polys.push_back(sp);
   }

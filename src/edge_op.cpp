@@ -32,7 +32,7 @@ ivec3 TriOf(int edge) {
 
 bool Is01Longest(vec2 v0, vec2 v1, vec2 v2) {
   const vec2 e[3] = {v1 - v0, v2 - v1, v0 - v2};
-  double l[3];
+  scalar l[3];
   for (int i : {0, 1, 2}) l[i] = la::dot(e[i], e[i]);
   return l[0] > l[1] && l[0] > l[2];
 }
@@ -51,7 +51,7 @@ struct DuplicateEdge {
 struct ShortEdge {
   VecView<const Halfedge> halfedge;
   VecView<const vec3> vertPos;
-  const double epsilon;
+  const scalar epsilon;
   const int firstNewVert;
 
   inline bool operator()(int edge) const {
@@ -100,7 +100,7 @@ struct SwappableEdge {
   VecView<const Halfedge> halfedge;
   VecView<const vec3> vertPos;
   VecView<const vec3> triNormal;
-  const double tolerance;
+  const scalar tolerance;
   const int firstNewVert;
 
   inline bool operator()(int edge) const {
@@ -673,12 +673,12 @@ void Manifold::Impl::RecursiveEdgeSwap(const int edge, int& tag,
     const int tri1 = tri1edge[0] / 3;
     faceNormal_[tri0] = faceNormal_[tri1];
     triRef[tri0] = triRef[tri1];
-    const double l01 = la::length(v[1] - v[0]);
-    const double l02 = la::length(v[2] - v[0]);
-    const double a = std::max(0.0, std::min(1.0, l02 / l01));
+    const scalar l01 = la::length(v[1] - v[0]);
+    const scalar l02 = la::length(v[2] - v[0]);
+    const scalar a = std::max((scalar)0.0, std::min((scalar)1.0, l02 / l01));
     // Update properties if applicable
     if (properties_.size() > 0) {
-      Vec<double>& prop = properties_;
+      Vec<scalar>& prop = properties_;
       halfedge_[tri0edge[1]].propVert = halfedge_[tri1edge[0]].propVert;
       halfedge_[tri0edge[0]].propVert = halfedge_[tri1edge[2]].propVert;
       halfedge_[tri0edge[2]].propVert = halfedge_[tri1edge[2]].propVert;
