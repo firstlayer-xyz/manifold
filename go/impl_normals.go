@@ -178,8 +178,12 @@ func (mi *MutableImpl) CalculateVertNormals() {
 			v0 := starts[edge]
 			v1 := starts[nextHalfedge(edge)]
 			v2 := starts[nextHalfedge(nextHalfedge(edge))]
-			currEdge := verts[v1].Sub(verts[v0]).SafeNormalize()
-			prevEdge := verts[v0].Sub(verts[v2]).SafeNormalize()
+			// C++ uses la::normalize (NaN for a zero-length edge) so the
+			// isfinite guard below can exclude degenerate triangles;
+			// SafeNormalize would return a finite zero vector and defeat
+			// the guard (src/impl.cpp:739-746).
+			currEdge := verts[v1].Sub(verts[v0]).Normalize()
+			prevEdge := verts[v0].Sub(verts[v2]).Normalize()
 			if !currEdge.IsFinite() || !prevEdge.IsFinite() {
 				return
 			}

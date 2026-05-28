@@ -76,32 +76,20 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 			cx := n1.Y*n2.Z - n1.Z*n2.Y
 			cy := n1.Z*n2.X - n1.X*n2.Z
 			cz := n1.X*n2.Y - n1.Y*n2.X
+			// C++ calls math::asin directly with no clamp
+			// (src/properties.cpp:50). Match it — do not clamp d.
 			d := cx*edge[i].X + cy*edge[i].Y + cz*edge[i].Z
-			if d > 1 {
-				d = 1
-			}
-			if d < -1 {
-				d = -1
-			}
 			dihedral := 0.25 * length * math.Asin(d)
 			parallel.AtomicAddFloat64(&vertMean[startVert], dihedral)
 			parallel.AtomicAddFloat64(&vertMean[endVert], dihedral)
 			parallel.AtomicAddFloat64(&degree[startVert], 1.0)
 		}
 
+		// C++ calls math::acos directly with no clamp
+		// (src/properties.cpp:58-59). Match it — do not clamp the dots.
 		var phi [3]float64
 		dot20 := -(edge[2].X*edge[0].X + edge[2].Y*edge[0].Y + edge[2].Z*edge[0].Z)
 		dot01 := -(edge[0].X*edge[1].X + edge[0].Y*edge[1].Y + edge[0].Z*edge[1].Z)
-		if dot20 > 1 {
-			dot20 = 1
-		} else if dot20 < -1 {
-			dot20 = -1
-		}
-		if dot01 > 1 {
-			dot01 = 1
-		} else if dot01 < -1 {
-			dot01 = -1
-		}
 		phi[0] = math.Acos(dot20)
 		phi[1] = math.Acos(dot01)
 		phi[2] = math.Pi - phi[0] - phi[1]

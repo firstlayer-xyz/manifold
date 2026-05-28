@@ -47,12 +47,10 @@ func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
 	}
 	he := make([]heRec, numHalfedge)
 
-	vertCount := 0
-	for _, v := range triVerts {
-		if int(v)+1 > vertCount {
-			vertCount = int(v) + 1
-		}
-	}
+	// C++ uses vertPos_.size() (src/impl.cpp:389) — the impl's vert
+	// count, not a value derived from triVerts. This feeds both the
+	// `< (1<<18)` branch selection and the bucket-branch offset sizing.
+	vertCount := mi.NumVert()
 	ids := make([]int32, numHalfedge)
 
 	if vertCount < (1 << 18) {
