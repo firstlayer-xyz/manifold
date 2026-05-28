@@ -202,14 +202,14 @@ func (m *Manifold) AsOriginal() *Manifold {
 	if status := impl.Scalars().Status; Error(status) != NoError {
 		return wrap(bridge.PropagateStatus(status))
 	}
+	// hadNormals mirrors C++ AsOriginal: snapshot AllHaveNormals from
+	// the SOURCE impl before Copy, so InitializeOriginal can preserve
+	// that bit on the new meshIDtransform entry.
+	hadNormals := impl.AllHaveNormals()
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
-	// hadNormals reflects whether the source impl's meshIDtransform
-	// already records normals — for AsOriginal we currently lose that
-	// distinction and pass false. (A future drill that reads
-	// AllHaveNormals on the mutable side will lift this.)
 	numTri := len(newImpl.HalfedgeStartsRO()) / 3
-	initializeOriginal(newImpl, numTri, false)
+	initializeOriginal(newImpl, numTri, hadNormals)
 	setNormalsAndCoplanar(newImpl)
 	return wrap(newImpl.ToManifold())
 }
