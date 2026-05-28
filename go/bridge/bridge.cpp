@@ -315,6 +315,13 @@ int mb_mutable_impl_num_prop(const mb_mutable_impl_handle* h) {
   return h->impl->numProp_;
 }
 
+const double* mb_mutable_impl_properties(const mb_mutable_impl_handle* h,
+                                         size_t* out_count) {
+  const auto& p = h->impl->properties_;
+  *out_count = p.size();
+  return p.data();
+}
+
 size_t mb_mutable_impl_meshid_transform_count(const mb_mutable_impl_handle* h) {
   return h->impl->meshRelation_.meshIDtransform.size();
 }
@@ -401,11 +408,6 @@ void mb_mutable_impl_create_tangents_from(mb_mutable_impl_handle* h,
 }
 
 void mb_delete_smoothness_vec(mb_smoothness_vec_handle* sv) { delete sv; }
-
-void mb_mutable_impl_calculate_curvature(mb_mutable_impl_handle* h,
-                                         int gaussianIdx, int meanIdx) {
-  h->impl->CalculateCurvature(gaussianIdx, meanIdx);
-}
 
 void mb_mutable_impl_set_normals(mb_mutable_impl_handle* h, int normalIdx,
                                  double minSharpAngle) {

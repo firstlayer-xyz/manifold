@@ -255,7 +255,7 @@ func (m *Manifold) CalculateCurvature(gaussianIdx, meanIdx int) *Manifold {
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
-	newImpl.CalculateCurvature(gaussianIdx, meanIdx)
+	implCalculateCurvature(newImpl, gaussianIdx, meanIdx)
 	return wrap(newImpl.ToManifold())
 }
 

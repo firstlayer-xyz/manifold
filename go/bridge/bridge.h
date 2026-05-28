@@ -201,6 +201,11 @@ const void*              mb_mutable_impl_halfedge_props(
 int                      mb_mutable_impl_num_prop(
     const mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_properties returns a read-only pointer to
+// properties_ on a mutable Impl. Mirror of the const-Impl variant.
+const double*            mb_mutable_impl_properties(
+    const mb_mutable_impl_handle* h, size_t* out_count);
+
 // mb_mutable_impl_meshid_transform_count returns the entry count of
 // meshRelation_.meshIDtransform on a mutable Impl (mirror of the
 // const-Impl variant).
@@ -312,10 +317,8 @@ void                      mb_mutable_impl_create_tangents_from(
     mb_mutable_impl_handle* h, mb_smoothness_vec_handle* sv);
 void                      mb_delete_smoothness_vec(mb_smoothness_vec_handle* sv);
 
-// mb_mutable_impl_calculate_curvature wraps
-// Impl::CalculateCurvature(gaussianIdx, meanIdx).
-void                      mb_mutable_impl_calculate_curvature(
-    mb_mutable_impl_handle* h, int gaussianIdx, int meanIdx);
+// (mb_mutable_impl_calculate_curvature removed — CalculateCurvature
+// is now native Go; see impl_curvature.go.)
 
 // mb_mutable_impl_set_normals wraps Impl::SetNormals(normalIdx, minSharpAngle).
 void                      mb_mutable_impl_set_normals(

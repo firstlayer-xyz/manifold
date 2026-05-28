@@ -151,12 +151,6 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(sv *SmoothnessVec) {
 // Delete releases the smoothness vector.
 func (sv *SmoothnessVec) Delete() { C.mb_delete_smoothness_vec(sv.p) }
 
-// CalculateCurvature wraps Impl::CalculateCurvature(gaussianIdx, meanIdx).
-func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
-	C.mb_mutable_impl_calculate_curvature(mi.p,
-		C.int(gaussianIdx), C.int(meanIdx))
-}
-
 // SetNormals wraps Impl::SetNormals(normalIdx, minSharpAngle).
 func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 	C.mb_mutable_impl_set_normals(mi.p,
@@ -412,6 +406,17 @@ func (mi *MutableImpl) HalfedgePropsRO() []int32 {
 // Mirrors Impl.Scalars().NumProp on the const handle.
 func (mi *MutableImpl) NumProp() int {
 	return int(C.mb_mutable_impl_num_prop(mi.p))
+}
+
+// Properties returns a read-only slice aliasing properties_ on a
+// mutable Impl. Mirror of the const-Impl Properties accessor.
+func (mi *MutableImpl) Properties() []float64 {
+	var n C.size_t
+	p := C.mb_mutable_impl_properties(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*float64)(unsafe.Pointer(p)), int(n))
 }
 
 // SetNumProp writes numProp_. Caller must keep properties_ length in
