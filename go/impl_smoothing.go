@@ -12,7 +12,7 @@ import (
 // caller-supplied angle at this value.
 const kMinSharpAngle = 5.0
 
-// implSharpenEdges is the Go port of C++ Manifold::Impl::SharpenEdges
+// sharpenEdges is the Go port of C++ Manifold::Impl::SharpenEdges
 // (src/smoothing.cpp). Returns a list of (halfedge, smoothness)
 // entries for every halfedge whose dihedral (the angle between its
 // face and its pair's face) exceeds minSharpAngle degrees. The

@@ -6,7 +6,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 )
 
-// implCalculateCurvature is the Go port of C++
+// calculateCurvature is the Go port of C++
 // Manifold::Impl::CalculateCurvature (src/properties.cpp). Writes
 // Gaussian and mean curvature into the requested property slots.
 // Either index < 0 means "skip that slot."

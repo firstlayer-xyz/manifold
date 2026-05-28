@@ -5,7 +5,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// implProject is the Go port of C++ Manifold::Impl::Project
+// project is the Go port of C++ Manifold::Impl::Project
 // (src/face_op.cpp). It returns the XY-plane projection of the
 // manifold as a set of 2D polygons (often self-intersecting; users
 // typically run the result through CrossSection's positive fill rule

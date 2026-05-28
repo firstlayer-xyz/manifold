@@ -7,7 +7,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// implMatchesTriNormals is the Go port of C++ Manifold::Impl::MatchesTriNormals
+// matchesTriNormals is the Go port of C++ Manifold::Impl::MatchesTriNormals
 // (src/properties.cpp). For each triangle, the face is projected onto
 // the 2D plane axis-aligned with its precomputed face normal; a
 // CCW-positive 2D orientation (with the configured epsilon tolerance)
@@ -70,7 +70,7 @@ func implMatchesTriNormals(impl *bridge.Impl) bool {
 	return true
 }
 
-// implNumDegenerateTris is the Go port of C++ Manifold::Impl::NumDegenerateTris.
+// numDegenerateTris is the Go port of C++ Manifold::Impl::NumDegenerateTris.
 // For each interior triangle (Pair >= 0), if its axis-aligned 2D projection
 // is colinear within tolerance_/2, count it. Boundary halfedges (Pair < 0)
 // are also counted as degenerate, mirroring the C++ `return true` early

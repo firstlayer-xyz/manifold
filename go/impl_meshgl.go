@@ -8,32 +8,18 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// getMeshGL64FromImpl is the Go port of C++ GetMeshGLImpl<double,
-// uint64_t> (src/impl.h). Returns the parametric meshGLP populated
-// from the given const Impl; callers convert to the public MeshGL64
-// struct.
+// getMeshGLImpl is the Go port of the C++ template free function
+// GetMeshGLImpl<Precision, I> (src/impl.h). Parametric over output
+// precision (float32/float64) and index width (uint32/uint64) — the
+// two C++ instantiations:
 //
-// Implementation is a direct line-by-line port of the C++ template;
-// see src/impl.h for the canonical algorithm.
-func getMeshGL64FromImpl(impl *bridge.Impl, normalIdx int) meshGLP[float64, uint64] {
-	return buildMeshGL[float64, uint64](impl, normalIdx, false)
-}
-
-// getMeshGLFromImpl is the Go port of GetMeshGLImpl<float, uint32_t>.
-// Same algorithm as the 64-bit variant; the only behavior difference
-// is the float-precision tolerance floor.
-func getMeshGLFromImpl(impl *bridge.Impl, normalIdx int) meshGLP[float32, uint32] {
-	return buildMeshGL[float32, uint32](impl, normalIdx, true)
-}
-
-// buildMeshGL is the shared body of GetMeshGLImpl. Parametric over the
-// output precision (float32/float64) and index width (uint32/uint64),
-// matching the C++ template.
+//	GetMeshGLImpl<float, uint32_t>   → getMeshGLImpl[float32, uint32]
+//	GetMeshGLImpl<double, uint64_t>  → getMeshGLImpl[float64, uint64]
 //
-// useSingleTolerance enables the FLT_EPSILON * bBox.Scale() floor that
-// the float-precision variant adds. The two variants are otherwise
+// useSingleTolerance enables the FLT_EPSILON * bBox.Scale() floor
+// that the float-precision instantiation adds; the two are otherwise
 // algorithmically identical.
-func buildMeshGL[P float32 | float64, I uint32 | uint64](
+func getMeshGLImpl[P float32 | float64, I uint32 | uint64](
 	impl *bridge.Impl, normalIdx int, useSingleTolerance bool,
 ) meshGLP[P, I] {
 	s := impl.Scalars()

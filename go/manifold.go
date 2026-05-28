@@ -788,7 +788,7 @@ func (m *Manifold) GetMeshGL(normalIdx int) MeshGL {
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	o := getMeshGLFromImpl(impl, normalIdx)
+	o := getMeshGLImpl[float32, uint32](impl, normalIdx, true)
 	return MeshGL{
 		NumProp:         o.NumProp,
 		VertProperties:  o.VertProperties,
@@ -1064,7 +1064,7 @@ func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	o := getMeshGL64FromImpl(impl, normalIdx)
+	o := getMeshGLImpl[float64, uint64](impl, normalIdx, false)
 	return MeshGL64{
 		NumProp:         o.NumProp,
 		VertProperties:  o.VertProperties,

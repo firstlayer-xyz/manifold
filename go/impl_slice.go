@@ -5,7 +5,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// implSlice is the Go port of C++ Manifold::Impl::Slice
+// slice is the Go port of C++ Manifold::Impl::Slice
 // (src/face_op.cpp): cut the manifold with the horizontal plane z =
 // height and return the resulting closed polygons.
 //

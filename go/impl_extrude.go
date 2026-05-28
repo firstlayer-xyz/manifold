@@ -5,7 +5,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// implExtrude is the Go port of C++ Manifold::Extrude
+// extrude is the Go port of C++ Manifold::Extrude
 // (src/constructors.cpp). Sweeps the input polygons along +Z by
 // height, optionally with twist and scale-top. Mirrors the C++ body
 // step for step:
