@@ -88,6 +88,18 @@ void                     mb_mutable_impl_set_halfedges_raw(
     mb_mutable_impl_handle* h,
     const int* starts, const int* props, const int* paireds, size_t n);
 
+// mb_mutable_impl_get_bbox reads bBox_.min and bBox_.max. Used by
+// the Go port of SetEpsilon to compute MaxEpsilon(minEpsilon, bBox_).
+void                     mb_mutable_impl_get_bbox(
+    const mb_mutable_impl_handle* h,
+    double* min_x, double* min_y, double* min_z,
+    double* max_x, double* max_y, double* max_z);
+
+// mb_mutable_impl_get_tolerance reads tolerance_, used by the Go
+// port of SetEpsilon (which max-combines with the new minTol).
+double                   mb_mutable_impl_get_tolerance(
+    const mb_mutable_impl_handle* h);
+
 // mb_mutable_impl_set_bbox writes bBox_.min and bBox_.max directly.
 // Used by the Go port of Impl::CalculateBBox to install the
 // Go-computed min/max corners.

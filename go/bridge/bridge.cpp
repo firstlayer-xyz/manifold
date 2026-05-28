@@ -176,6 +176,21 @@ void mb_mutable_impl_set_bbox(mb_mutable_impl_handle* h,
   h->impl->bBox_.max = manifold::vec3(max_x, max_y, max_z);
 }
 
+void mb_mutable_impl_get_bbox(const mb_mutable_impl_handle* h,
+                              double* min_x, double* min_y, double* min_z,
+                              double* max_x, double* max_y, double* max_z) {
+  *min_x = h->impl->bBox_.min.x;
+  *min_y = h->impl->bBox_.min.y;
+  *min_z = h->impl->bBox_.min.z;
+  *max_x = h->impl->bBox_.max.x;
+  *max_y = h->impl->bBox_.max.y;
+  *max_z = h->impl->bBox_.max.z;
+}
+
+double mb_mutable_impl_get_tolerance(const mb_mutable_impl_handle* h) {
+  return h->impl->tolerance_;
+}
+
 void mb_mutable_impl_make_empty(mb_mutable_impl_handle* h, int status) {
   h->impl->MakeEmpty(static_cast<manifold::Manifold::Error>(status));
 }

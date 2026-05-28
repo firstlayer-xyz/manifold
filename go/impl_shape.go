@@ -107,8 +107,9 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *bridge.MutableImpl {
 	mi.InitializeOriginal()
 	// CalculateBBox() — drilled to Go (impl_bbox.go).
 	calculateBBox(mi)
-	// SetEpsilon()
-	mi.SetEpsilon()
+	// SetEpsilon() — drilled to Go (impl_epsilon.go). Default args are
+	// (minEpsilon=-1, useSingle=false), matching the C++ no-arg call.
+	setEpsilon(mi, -1, false)
 	// SortGeometry()
 	mi.SortGeometry()
 	// SetNormalsAndCoplanar()

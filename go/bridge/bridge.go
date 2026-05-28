@@ -488,6 +488,22 @@ func (mi *MutableImpl) SetHalfedgesRaw(starts, props, paireds []int32) {
 		C.size_t(n))
 }
 
+// GetBBox returns the cached bBox_.min / bBox_.max corners. Used by
+// ports that need to read the mesh extent (e.g. SetEpsilon's
+// MaxEpsilon needs bBox_.Scale()).
+func (mi *MutableImpl) GetBBox() (minV, maxV geom.Vec3) {
+	var mnX, mnY, mnZ, mxX, mxY, mxZ C.double
+	C.mb_mutable_impl_get_bbox(mi.p, &mnX, &mnY, &mnZ, &mxX, &mxY, &mxZ)
+	return geom.Vec3{X: float64(mnX), Y: float64(mnY), Z: float64(mnZ)},
+		geom.Vec3{X: float64(mxX), Y: float64(mxY), Z: float64(mxZ)}
+}
+
+// GetTolerance returns the current tolerance_ value. Used by ports
+// that need to max-combine with a new minimum (e.g. SetEpsilon).
+func (mi *MutableImpl) GetTolerance() float64 {
+	return float64(C.mb_mutable_impl_get_tolerance(mi.p))
+}
+
 // SetBBox writes bBox_.min and bBox_.max directly. Used by the Go
 // port of Impl::CalculateBBox to install the Go-computed corners.
 func (mi *MutableImpl) SetBBox(min, max geom.Vec3) {
