@@ -475,15 +475,6 @@ const int* mb_tri_verts_data(const mb_tri_verts_handle* h) {
 
 void mb_delete_tri_verts(mb_tri_verts_handle* h) { delete h; }
 
-void mb_mutable_impl_create_halfedges(mb_mutable_impl_handle* h,
-                                      const int* tri_verts,
-                                      size_t tri_count) {
-  manifold::Vec<manifold::ivec3> tris(tri_count);
-  const auto* in = reinterpret_cast<const manifold::ivec3*>(tri_verts);
-  std::copy(in, in + tri_count, tris.begin());
-  h->impl->CreateHalfedges(tris);
-}
-
 }  // extern "C"
 
 // _cgo_export.h is generated from the //export comments in bridge.go;

@@ -390,10 +390,8 @@ size_t              mb_tri_verts_count(const mb_tri_verts_handle* h);
 const int*          mb_tri_verts_data(const mb_tri_verts_handle* h);
 void                mb_delete_tri_verts(mb_tri_verts_handle* h);
 
-// mb_mutable_impl_create_halfedges wraps Impl::CreateHalfedges with the
-// supplied triangle indices (3 ints per triangle).
-void                mb_mutable_impl_create_halfedges(
-    mb_mutable_impl_handle* h, const int* tri_verts, size_t tri_count);
+// (mb_mutable_impl_create_halfedges removed — CreateHalfedges is now
+// native Go; see impl_halfedges.go.)
 
 // mb_manifold_level_set wraps the static Manifold::LevelSet. The SDF
 // is supplied as a Go-side callback referenced by id; mb_manifold_level_set

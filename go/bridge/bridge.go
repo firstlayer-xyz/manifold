@@ -257,17 +257,6 @@ func Triangulate(polys [][]geom.Vec2, epsilon float64) []int32 {
 	return out
 }
 
-// CreateHalfedges wraps Impl::CreateHalfedges(triVerts). triVerts is
-// 3 ints per triangle.
-func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
-	var tp unsafe.Pointer
-	if len(triVerts) > 0 {
-		tp = unsafe.Pointer(&triVerts[0])
-	}
-	C.mb_mutable_impl_create_halfedges(mi.p, (*C.int)(tp),
-		C.size_t(len(triVerts)/3))
-}
-
 // SetHalfedgesRaw replaces the contents of halfedge_ with the three
 // supplied parallel int32 arrays. All arrays must have the same length
 // (== 3 * NumTri). Used by the Go port of CreateHalfedges to write
