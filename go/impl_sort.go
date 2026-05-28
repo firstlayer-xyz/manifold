@@ -1,11 +1,188 @@
 package manifold
 
 import (
+	"math"
 	"sort"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
+
+// faceBoxMorton holds the per-face bounding box + Morton code that
+// Impl::GetFaceBoxMorton produces. Faces flagged for removal (whose
+// halfedge[0].Pair < 0) get Morton == NoMortonCode so they sort to
+// the end.
+type faceBoxMorton struct {
+	box    geom.Box
+	morton uint32
+}
+
+// getFaceBoxMorton is the Go port of Impl::GetFaceBoxMorton
+// (src/sort.cpp). For each triangle: compute its 3-vert bounding
+// box, take the centroid's Morton code against the mesh bBox.
+// Removed-tri sentinel (any halfedge pair < 0) maps to NoMortonCode.
+func getFaceBoxMorton(mi *bridge.MutableImpl) []faceBoxMorton {
+	verts := mi.Verts()
+	starts := mi.HalfedgeStartsRO()
+	pairs := mi.HalfedgePairsRO()
+	minB, maxB := mi.GetBBox()
+	bBox := geom.Box{Min: minB, Max: maxB}
+	numTri := len(starts) / 3
+	out := make([]faceBoxMorton, numTri)
+	infPos := math.Inf(1)
+	infNeg := math.Inf(-1)
+	for face := 0; face < numTri; face++ {
+		if pairs[3*face] < 0 {
+			out[face].morton = geom.NoMortonCode
+			continue
+		}
+		box := geom.Box{
+			Min: geom.Vec3{X: infPos, Y: infPos, Z: infPos},
+			Max: geom.Vec3{X: infNeg, Y: infNeg, Z: infNeg},
+		}
+		var center geom.Vec3
+		for i := 0; i < 3; i++ {
+			p := verts[starts[3*face+i]]
+			center = center.Add(p)
+			if p.X < box.Min.X {
+				box.Min.X = p.X
+			}
+			if p.Y < box.Min.Y {
+				box.Min.Y = p.Y
+			}
+			if p.Z < box.Min.Z {
+				box.Min.Z = p.Z
+			}
+			if p.X > box.Max.X {
+				box.Max.X = p.X
+			}
+			if p.Y > box.Max.Y {
+				box.Max.Y = p.Y
+			}
+			if p.Z > box.Max.Z {
+				box.Max.Z = p.Z
+			}
+		}
+		center = center.Scale(1.0 / 3.0)
+		out[face].box = box
+		out[face].morton = geom.MortonCode(center, bBox)
+	}
+	return out
+}
+
+// gatherFacesInPlace permutes meshRelation_.triRef, faceNormal_, and
+// halfedge_/halfedgeTangent_ in place by faceNew2Old. Mirrors the
+// single-arg C++ Impl::GatherFaces — used by SortFaces.
+func gatherFacesInPlace(mi *bridge.MutableImpl, faceNew2Old []int32) {
+	numTri := len(faceNew2Old)
+	oldNumTri := len(mi.HalfedgeStartsRO()) / 3
+
+	// 1. Permute triRef if it tracks numTri.
+	oldTriRefs := mi.TriRefs()
+	if len(oldTriRefs) == oldNumTri {
+		meshIDs := make([]int32, numTri)
+		originalIDs := make([]int32, numTri)
+		faceIDs := make([]int32, numTri)
+		coplanarIDs := make([]int32, numTri)
+		for i, oldF := range faceNew2Old {
+			r := oldTriRefs[oldF]
+			meshIDs[i] = r.MeshID
+			originalIDs[i] = r.OriginalID
+			faceIDs[i] = r.FaceID
+			coplanarIDs[i] = r.CoplanarID
+		}
+		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	}
+
+	// 2. Permute faceNormal_ if it tracks numTri.
+	oldFaceNormals := append([]geom.Vec3(nil), mi.FaceNormalsMut()...)
+	if len(oldFaceNormals) == oldNumTri && oldNumTri > 0 {
+		mi.ResizeFaceNormals(numTri)
+		dstFN := mi.FaceNormalsMut()
+		for i, oldF := range faceNew2Old {
+			dstFN[i] = oldFaceNormals[oldF]
+		}
+	}
+
+	// 3. Build faceOld2New permutation (size = old NumTri).
+	faceOld2New := make([]int32, oldNumTri)
+	for newF, oldF := range faceNew2Old {
+		faceOld2New[oldF] = int32(newF)
+	}
+
+	// 4. Rebuild halfedge_ + halfedgeTangent_ via ReindexFace.
+	oldStarts := append([]int32(nil), mi.HalfedgeStartsRO()...)
+	oldPairs := append([]int32(nil), mi.HalfedgePairsRO()...)
+	oldProps := append([]int32(nil), mi.HalfedgePropsRO()...)
+	oldTangents := append([]float64(nil), mi.HalfedgeTangents()...)
+
+	numHalfedge := 3 * numTri
+	starts := make([]int32, numHalfedge)
+	props := make([]int32, numHalfedge)
+	pairs := make([]int32, numHalfedge)
+	var tangents []float64
+	if len(oldTangents) > 0 {
+		tangents = make([]float64, 4*numHalfedge)
+	}
+	for newFace := 0; newFace < numTri; newFace++ {
+		oldFace := int(faceNew2Old[newFace])
+		for i := 0; i < 3; i++ {
+			oldEdge := 3*oldFace + i
+			newEdge := 3*newFace + i
+			starts[newEdge] = oldStarts[oldEdge]
+			props[newEdge] = oldProps[oldEdge]
+			pair := int(oldPairs[oldEdge])
+			pairedFace := pair / 3
+			offset := pair - 3*pairedFace
+			pairs[newEdge] = int32(3*int(faceOld2New[pairedFace]) + offset)
+			if tangents != nil {
+				copy(tangents[4*newEdge:4*newEdge+4],
+					oldTangents[4*oldEdge:4*oldEdge+4])
+			}
+		}
+	}
+	mi.SetHalfedgesRaw(starts, props, pairs)
+	if tangents != nil {
+		mi.SetHalfedgeTangents(tangents)
+	}
+}
+
+// sortFaces is the Go port of Impl::SortFaces (src/sort.cpp).
+// Stable-sorts triangle indices by Morton code, trims kNoCode tris
+// from the end, then in-place permutes triRef / faceNormal_ /
+// halfedge_ / halfedgeTangent_.
+//
+// Returns the permuted (faceBox, faceMorton) parallel arrays so the
+// Collider can consume them downstream.
+func sortFaces(mi *bridge.MutableImpl, faces []faceBoxMorton) ([]geom.Box, []uint32) {
+	n := len(faces)
+	idx := make([]int32, n)
+	for i := range idx {
+		idx[i] = int32(i)
+	}
+	sort.SliceStable(idx, func(a, b int) bool {
+		return faces[idx[a]].morton < faces[idx[b]].morton
+	})
+	// Trim tris with NoMortonCode (removed) to the end and drop them.
+	newNumTri := n
+	for i, f := range idx {
+		if faces[f].morton >= geom.NoMortonCode {
+			newNumTri = i
+			break
+		}
+	}
+	idx = idx[:newNumTri]
+
+	gatherFacesInPlace(mi, idx)
+
+	box := make([]geom.Box, newNumTri)
+	morton := make([]uint32, newNumTri)
+	for newF, oldF := range idx {
+		box[newF] = faces[oldF].box
+		morton[newF] = faces[oldF].morton
+	}
+	return box, morton
+}
 
 // reindexVerts is the Go port of C++ Manifold::Impl::ReindexVerts
 // (src/sort.cpp): for every halfedge with startVert >= 0, rewrite
@@ -110,18 +287,35 @@ func sortVerts(mi *bridge.MutableImpl) {
 	}
 }
 
-// sortGeometry is the Go port of C++ Manifold::Impl::SortGeometry. It
-// runs SortVerts in Go and delegates the GetFaceBoxMorton /
-// SortFaces / Collider construction / bBox refresh / CompactProps
-// remainder to the C++ side via SortGeometryPostVert.
+// sortGeometry is the Go port of C++ Manifold::Impl::SortGeometry. The
+// algorithm is now almost entirely in Go: SortVerts, GetFaceBoxMorton,
+// SortFaces (with in-place GatherFaces), and the post-sort empty
+// check all run here. Only the Collider AABB-tree build + bBox refresh
+// + CompactProps remain in C++, wrapped by BuildCollider.
 //
-// The early-out (empty mesh) is checked twice in C++; we mirror the
-// first check here. The second check (after sort) is inside the C++
-// post-vert helper.
+// Mirrors the C++ body's two empty-mesh checks: one before any work,
+// one after sorting (in case sort dropped all faces).
 func sortGeometry(mi *bridge.MutableImpl) {
 	if len(mi.HalfedgeStartsRO()) == 0 {
+		mi.BuildCollider(nil, nil)
 		return
 	}
 	sortVerts(mi)
-	mi.SortGeometryPostVert()
+	faces := getFaceBoxMorton(mi)
+	box, morton := sortFaces(mi, faces)
+	if len(mi.HalfedgeStartsRO()) == 0 {
+		mi.BuildCollider(nil, nil)
+		return
+	}
+	// Flatten box for the bridge ABI (6 doubles per face).
+	flat := make([]float64, 6*len(box))
+	for i, b := range box {
+		flat[6*i+0] = b.Min.X
+		flat[6*i+1] = b.Min.Y
+		flat[6*i+2] = b.Min.Z
+		flat[6*i+3] = b.Max.X
+		flat[6*i+4] = b.Max.Y
+		flat[6*i+5] = b.Max.Z
+	}
+	mi.BuildCollider(flat, morton)
 }

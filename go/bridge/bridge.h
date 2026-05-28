@@ -206,6 +206,20 @@ int                      mb_mutable_impl_num_prop(
 const double*            mb_mutable_impl_properties(
     const mb_mutable_impl_handle* h, size_t* out_count);
 
+// mb_mutable_impl_tri_refs returns the four parallel arrays inside
+// meshRelation_.triRef on a mutable Impl (mirror of the const-Impl
+// variant).
+void                     mb_mutable_impl_tri_refs(
+    const mb_mutable_impl_handle* h, size_t* out_count,
+    const int** mesh_ids, const int** original_ids,
+    const int** face_ids, const int** coplanar_ids);
+
+// mb_mutable_impl_halfedge_tangents returns a read-only pointer to
+// halfedgeTangent_ on a mutable Impl. Layout: 4 packed doubles per
+// element (vec4); out_count is the element count.
+const double*            mb_mutable_impl_halfedge_tangents(
+    const mb_mutable_impl_handle* h, size_t* out_count);
+
 // mb_mutable_impl_meshid_transform_count returns the entry count of
 // meshRelation_.meshIDtransform on a mutable Impl (mirror of the
 // const-Impl variant).
@@ -511,12 +525,14 @@ const double*             mb_impl_vert_normals_data(
 
 void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h);
 
-// mb_mutable_impl_sort_geometry_post_vert performs the C++ SortGeometry
-// steps that follow SortVerts: GetFaceBoxMorton, SortFaces, Collider
-// construction, bBox_ refresh from the collider, and CompactProps.
-// Used by the Go port that runs SortVerts itself in Go.
-void                     mb_mutable_impl_sort_geometry_post_vert(
-    mb_mutable_impl_handle* h);
+// mb_mutable_impl_build_collider builds collider_ from the supplied
+// faceBox + faceMorton arrays (already permuted into sorted order by
+// the Go-side SortFaces), then refreshes bBox_ from the collider and
+// runs CompactProps. boxes is laid out as n * 6 doubles (min.x, min.y,
+// min.z, max.x, max.y, max.z per box).
+void                     mb_mutable_impl_build_collider(
+    mb_mutable_impl_handle* h,
+    const double* boxes, const uint32_t* morton, size_t n);
 void                     mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol);
 
 // mb_mutable_impl_hull calls C++ Impl::Hull(vert_pos, ctx=nullptr) — fills

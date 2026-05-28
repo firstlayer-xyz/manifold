@@ -418,6 +418,38 @@ func (mi *MutableImpl) Properties() []float64 {
 	return unsafe.Slice((*float64)(unsafe.Pointer(p)), int(n))
 }
 
+// TriRefs reads meshRelation_.triRef from a mutable Impl, copying it
+// into a Go slice. Mirror of the const-Impl TriRefs accessor.
+func (mi *MutableImpl) TriRefs() []TriRef {
+	var n C.size_t
+	var meshIDs, originalIDs, faceIDs, coplanarIDs *C.int
+	C.mb_mutable_impl_tri_refs(mi.p, &n, &meshIDs, &originalIDs, &faceIDs, &coplanarIDs)
+	if n == 0 {
+		return nil
+	}
+	out := make([]TriRef, int(n))
+	for k := 0; k < int(n); k++ {
+		base := uintptr(k) * unsafe.Sizeof(out[0])
+		out[k].MeshID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(meshIDs)) + base)))
+		out[k].OriginalID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(originalIDs)) + base)))
+		out[k].FaceID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(faceIDs)) + base)))
+		out[k].CoplanarID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(coplanarIDs)) + base)))
+	}
+	return out
+}
+
+// HalfedgeTangents returns a read-only slice aliasing halfedgeTangent_
+// on a mutable Impl (4 packed doubles per element). Mirror of the
+// const-Impl HalfedgeTangents accessor.
+func (mi *MutableImpl) HalfedgeTangents() []float64 {
+	var n C.size_t
+	p := C.mb_mutable_impl_halfedge_tangents(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*float64)(unsafe.Pointer(p)), int(n)*4)
+}
+
 // SetNumProp writes numProp_. Caller must keep properties_ length in
 // sync (numProp_ * NumPropVert) via SetProperties.
 func (mi *MutableImpl) SetNumProp(n int) {
@@ -1156,12 +1188,20 @@ func (mi *MutableImpl) SimplifyTopology() {
 	C.mb_mutable_impl_simplify_topology(mi.p)
 }
 
-// SortGeometryPostVert runs the C++ portion of SortGeometry that
-// follows SortVerts: GetFaceBoxMorton, SortFaces, Collider build,
-// bBox_ refresh from collider, CompactProps. The Go port runs
-// SortVerts itself and calls this for the remainder.
-func (mi *MutableImpl) SortGeometryPostVert() {
-	C.mb_mutable_impl_sort_geometry_post_vert(mi.p)
+// BuildCollider builds collider_ from the supplied (boxes, morton)
+// arrays, refreshes bBox_ from the new collider, and runs
+// CompactProps. boxes is flat 6 doubles per face (min then max).
+// Used by the Go-side post-vert sort pipeline.
+func (mi *MutableImpl) BuildCollider(boxes []float64, morton []uint32) {
+	n := len(morton)
+	if n == 0 {
+		C.mb_mutable_impl_build_collider(mi.p, nil, nil, 0)
+		return
+	}
+	C.mb_mutable_impl_build_collider(mi.p,
+		(*C.double)(unsafe.Pointer(&boxes[0])),
+		(*C.uint32_t)(unsafe.Pointer(&morton[0])),
+		C.size_t(n))
 }
 
 // SetToleranceValue mirrors the C++ direct field assignment

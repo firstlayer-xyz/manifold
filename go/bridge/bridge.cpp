@@ -322,6 +322,31 @@ const double* mb_mutable_impl_properties(const mb_mutable_impl_handle* h,
   return p.data();
 }
 
+void mb_mutable_impl_tri_refs(const mb_mutable_impl_handle* h, size_t* out_count,
+                              const int** mesh_ids, const int** original_ids,
+                              const int** face_ids, const int** coplanar_ids) {
+  const auto& tr = h->impl->meshRelation_.triRef;
+  *out_count = tr.size();
+  if (tr.empty()) {
+    *mesh_ids = nullptr;
+    *original_ids = nullptr;
+    *face_ids = nullptr;
+    *coplanar_ids = nullptr;
+    return;
+  }
+  *mesh_ids = &tr[0].meshID;
+  *original_ids = &tr[0].originalID;
+  *face_ids = &tr[0].faceID;
+  *coplanar_ids = &tr[0].coplanarID;
+}
+
+const double* mb_mutable_impl_halfedge_tangents(const mb_mutable_impl_handle* h,
+                                                 size_t* out_count) {
+  const auto& ht = h->impl->halfedgeTangent_;
+  *out_count = ht.size();
+  return reinterpret_cast<const double*>(ht.data());
+}
+
 size_t mb_mutable_impl_meshid_transform_count(const mb_mutable_impl_handle* h) {
   return h->impl->meshRelation_.meshIDtransform.size();
 }
@@ -806,19 +831,20 @@ void mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h) {
   h->impl->SimplifyTopology();
 }
 
-void mb_mutable_impl_sort_geometry_post_vert(mb_mutable_impl_handle* h) {
+void mb_mutable_impl_build_collider(mb_mutable_impl_handle* h,
+                                    const double* boxes, const uint32_t* morton,
+                                    size_t n) {
   auto& impl = *h->impl;
-  if (impl.halfedge_.size() == 0) {
+  if (n == 0) {
     impl.collider_ = manifold::Collider{};
     return;
   }
-  manifold::Vec<manifold::Box> faceBox;
-  manifold::Vec<uint32_t> faceMorton;
-  impl.GetFaceBoxMorton(faceBox, faceMorton);
-  impl.SortFaces(faceBox, faceMorton);
-  if (impl.halfedge_.size() == 0) {
-    impl.collider_ = manifold::Collider{};
-    return;
+  manifold::Vec<manifold::Box> faceBox(n);
+  manifold::Vec<uint32_t> faceMorton(n);
+  for (size_t i = 0; i < n; ++i) {
+    faceBox[i].min = manifold::vec3(boxes[6*i+0], boxes[6*i+1], boxes[6*i+2]);
+    faceBox[i].max = manifold::vec3(boxes[6*i+3], boxes[6*i+4], boxes[6*i+5]);
+    faceMorton[i] = morton[i];
   }
   impl.collider_ = manifold::Collider(faceBox, faceMorton);
   impl.bBox_ = impl.collider_.GetBoundingBox();
