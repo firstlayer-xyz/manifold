@@ -24,8 +24,10 @@ type dedupeState struct {
 	props       []int32
 	triRefs     []bridge.TriRef
 	faceNormals []geom.Vec3
-	numProp     int     // numProp_ — gates prop updates in collapseEdge
-	epsilon     float64 // epsilon_ — collapse tolerance floor
+	properties  []float64 // properties_ — property values (numProp per propVert)
+	numProp     int       // numProp_ — gates prop updates in collapse/swap
+	epsilon     float64   // epsilon_ — collapse tolerance floor
+	tolerance   float64   // tolerance_ — edge-swap degeneracy threshold
 }
 
 func newDedupeState(mi *MutableImpl) *dedupeState {
@@ -37,8 +39,10 @@ func newDedupeState(mi *MutableImpl) *dedupeState {
 		props:       append([]int32(nil), mi.HalfedgeProps()...),
 		triRefs:     append([]bridge.TriRef(nil), mi.TriRefs()...),
 		faceNormals: append([]geom.Vec3(nil), mi.FaceNormals()...),
+		properties:  append([]float64(nil), mi.Properties()...),
 		numProp:     mi.NumProp(),
 		epsilon:     mi.h.GetEpsilon(),
+		tolerance:   mi.Tolerance(),
 	}
 }
 
@@ -411,6 +415,11 @@ func (s *dedupeState) commit(mi *MutableImpl) {
 	if len(s.faceNormals) > 0 {
 		mi.h.ResizeFaceNormals(len(s.faceNormals))
 		copy(mi.FaceNormals(), s.faceNormals)
+	}
+	// properties_ may have grown (RecursiveEdgeSwap interpolates new
+	// property verts); sync the whole buffer back.
+	if len(s.properties) > 0 {
+		mi.h.SetProperties(s.properties)
 	}
 }
 

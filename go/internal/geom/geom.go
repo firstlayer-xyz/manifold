@@ -13,6 +13,15 @@ type Vec2 struct {
 	X, Y float64
 }
 
+// Sub returns a - b. Mirrors la::vec2 subtraction.
+func (a Vec2) Sub(b Vec2) Vec2 { return Vec2{X: a.X - b.X, Y: a.Y - b.Y} }
+
+// Dot returns the dot product. Mirrors la::dot(vec2, vec2).
+func (a Vec2) Dot(b Vec2) float64 { return a.X*b.X + a.Y*b.Y }
+
+// Length returns |a|. Mirrors la::length(vec2).
+func (a Vec2) Length() float64 { return math.Sqrt(a.X*a.X + a.Y*a.Y) }
+
 // Vec3 is a 3D vector of doubles.
 type Vec3 struct {
 	X, Y, Z float64

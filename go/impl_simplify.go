@@ -308,3 +308,147 @@ func (s *dedupeState) collapseEdge(edge int, edges *[]int, tol float64, firstNew
 	s.removeIfFolded(start)
 	return true
 }
+
+// is01Longest mirrors Is01Longest (src/edge_op.cpp:33): true iff the edge
+// v0->v1 is strictly the longest of the triangle's three edges.
+func is01Longest(v0, v1, v2 geom.Vec2) bool {
+	e0 := v1.Sub(v0)
+	e1 := v2.Sub(v1)
+	e2 := v0.Sub(v2)
+	l0 := e0.Dot(e0)
+	l1 := e1.Dot(e1)
+	l2 := e2.Dot(e2)
+	return l0 > l1 && l0 > l2
+}
+
+// recursiveEdgeSwap is the Go port of Manifold::Impl::RecursiveEdgeSwap
+// (src/edge_op.cpp:608). Swaps the long edge of a degenerate triangle into
+// its neighbor, then pushes the edges that may have newly become swappable
+// onto edgeSwapStack for the caller to drain. visited[] is tagged per
+// top-level flag to break infinite recursion; edges is a scratch buffer.
+func (s *dedupeState) recursiveEdgeSwap(edge int, tag *int, visited []int, edgeSwapStack *[]int, edges *[]int) {
+	triRef := s.triRefs
+
+	if edge < 0 {
+		return
+	}
+	pair := int(s.pair(edge))
+	if pair < 0 {
+		return
+	}
+
+	// avoid infinite recursion
+	if visited[edge] == *tag && visited[pair] == *tag {
+		return
+	}
+
+	tri0edge := triOf(edge)
+	tri1edge := triOf(pair)
+
+	projection := geom.GetAxisAlignedProjection(s.faceNormals[edge/3])
+	var v [4]geom.Vec2
+	for i := 0; i < 3; i++ {
+		v[i] = projection.MulVec3(s.verts[s.start(tri0edge[i])])
+	}
+	// Only operate on the long edge of a degenerate triangle.
+	if geom.CCW(v[0], v[1], v[2], s.tolerance) > 0 || !is01Longest(v[0], v[1], v[2]) {
+		return
+	}
+
+	// Switch to neighbor's projection.
+	projection = geom.GetAxisAlignedProjection(s.faceNormals[pair/3])
+	for i := 0; i < 3; i++ {
+		v[i] = projection.MulVec3(s.verts[s.start(tri0edge[i])])
+	}
+	v[3] = projection.MulVec3(s.verts[s.start(tri1edge[2])])
+
+	swapEdge := func() {
+		// The 0-verts are swapped to the opposite 2-verts.
+		v0 := s.start(tri0edge[2])
+		v1 := s.start(tri1edge[2])
+		s.setStart(tri0edge[0], v1)
+		s.setEnd(tri0edge[2], v1)
+		s.setStart(tri1edge[0], v0)
+		s.setEnd(tri1edge[2], v0)
+		s.pairUp(tri0edge[0], int(s.pair(tri1edge[2])))
+		s.pairUp(tri1edge[0], int(s.pair(tri0edge[2])))
+		s.pairUp(tri0edge[2], tri1edge[2])
+		// Both triangles are now subsets of the neighboring triangle.
+		tri0 := tri0edge[0] / 3
+		tri1 := tri1edge[0] / 3
+		s.faceNormals[tri0] = s.faceNormals[tri1]
+		triRef[tri0] = triRef[tri1]
+		l01 := v[1].Sub(v[0]).Length()
+		l02 := v[2].Sub(v[0]).Length()
+		// a = std::max(0, std::min(1, l02/l01)); replicate C++ min/max NaN
+		// semantics (NaN -> 1) so a degenerate l01 matches the C++ result.
+		a := 1.0
+		if ratio := l02 / l01; ratio < 1.0 {
+			a = ratio
+		}
+		if !(0.0 < a) {
+			a = 0.0
+		}
+		// Update properties if applicable.
+		if len(s.properties) > 0 {
+			s.setProp(tri0edge[1], s.prop(tri1edge[0]))
+			s.setProp(tri0edge[0], s.prop(tri1edge[2]))
+			s.setProp(tri0edge[2], s.prop(tri1edge[2]))
+			numProp := s.numProp
+			newProp := len(s.properties) / numProp
+			propIdx0 := int(s.prop(tri1edge[0]))
+			propIdx1 := int(s.prop(tri1edge[1]))
+			for p := 0; p < numProp; p++ {
+				s.properties = append(s.properties,
+					a*s.properties[numProp*propIdx0+p]+(1-a)*s.properties[numProp*propIdx1+p])
+			}
+			s.setProp(tri1edge[0], int32(newProp))
+			s.setProp(tri0edge[2], int32(newProp))
+		}
+
+		// if the new edge already exists, duplicate the verts and split.
+		current := int(s.pair(tri1edge[0]))
+		endVert := s.end(tri1edge[1])
+		for current != tri0edge[1] {
+			current = nextHalfedge(current)
+			if s.end(current) == endVert {
+				s.formLoop(tri0edge[2], current)
+				s.removeIfFolded(tri0edge[2])
+				return
+			}
+			current = int(s.pair(current))
+		}
+	}
+
+	// Only operate if the other triangles are not degenerate.
+	if geom.CCW(v[1], v[0], v[3], s.tolerance) <= 0 {
+		if !is01Longest(v[1], v[0], v[3]) {
+			return
+		}
+		// Two facing, long-edge degenerates can swap.
+		swapEdge()
+		e23 := v[3].Sub(v[2])
+		if e23.Dot(e23) < s.tolerance*s.tolerance {
+			*tag++
+			s.collapseEdge(tri0edge[2], edges, -1, 0)
+			*edges = (*edges)[:0]
+		} else {
+			visited[edge] = *tag
+			visited[pair] = *tag
+			for _, e := range []int{tri1edge[1], tri1edge[0], tri0edge[1], tri0edge[0]} {
+				*edgeSwapStack = append(*edgeSwapStack, e)
+			}
+		}
+		return
+	} else if geom.CCW(v[0], v[3], v[2], s.tolerance) <= 0 ||
+		geom.CCW(v[1], v[2], v[3], s.tolerance) <= 0 {
+		return
+	}
+	// Normal path
+	swapEdge()
+	visited[edge] = *tag
+	visited[pair] = *tag
+	for _, e := range []int{int(s.pair(tri1edge[0])), int(s.pair(tri0edge[1]))} {
+		*edgeSwapStack = append(*edgeSwapStack, e)
+	}
+}
