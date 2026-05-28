@@ -238,6 +238,44 @@ func Sind(x float64) float64 {
 // Cosd returns cos(x) for x in degrees, exact at every multiple of 90.
 func Cosd(x float64) float64 { return Sind(x + 90.0) }
 
+// NoMortonCode mirrors the C++ constexpr kNoCode in src/sort.cpp.
+// Used to flag verts (or faces) for removal so they sort to the end.
+const NoMortonCode uint32 = 0xFFFFFFFF
+
+// spreadBits3 mirrors the constexpr inline of the same name in
+// src/collider.h. Interleaves the low 10 bits of v into every third
+// bit position, producing the per-axis component of a Morton code.
+func spreadBits3(v uint32) uint32 {
+	v = 0xFF0000FF & (v * 0x00010001)
+	v = 0x0F00F00F & (v * 0x00000101)
+	v = 0xC30C30C3 & (v * 0x00000011)
+	v = 0x49249249 & (v * 0x00000005)
+	return v
+}
+
+// MortonCode is the Go port of Collider::MortonCode and the wrapping
+// helper in src/sort.cpp: returns NoMortonCode for any NaN coordinate,
+// otherwise an interleaved 30-bit Z-curve index of position within
+// bBox.
+func MortonCode(position Vec3, bBox Box) uint32 {
+	if math.IsNaN(position.X) || math.IsNaN(position.Y) || math.IsNaN(position.Z) {
+		return NoMortonCode
+	}
+	dx := bBox.Max.X - bBox.Min.X
+	dy := bBox.Max.Y - bBox.Min.Y
+	dz := bBox.Max.Z - bBox.Min.Z
+	x := 1024.0 * (position.X - bBox.Min.X) / dx
+	y := 1024.0 * (position.Y - bBox.Min.Y) / dy
+	z := 1024.0 * (position.Z - bBox.Min.Z) / dz
+	x = math.Max(0, math.Min(1023, x))
+	y = math.Max(0, math.Min(1023, y))
+	z = math.Max(0, math.Min(1023, z))
+	xb := spreadBits3(uint32(x))
+	yb := spreadBits3(uint32(y))
+	zb := spreadBits3(uint32(z))
+	return xb*4 + yb*2 + zb
+}
+
 // ApplyAffine applies the 3x4 affine transform to a Vec3 with implicit
 // w=1, returning the transformed Vec3. Mirrors C++ `m * vec4(v, 1.0)`
 // for a la::mat<double,3,4>.

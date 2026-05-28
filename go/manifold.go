@@ -238,7 +238,7 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 		setNormalsAndCoplanar(newImpl)
 	}
 	newImpl.SimplifyTopology()
-	newImpl.SortGeometry()
+	sortGeometry(newImpl)
 	newImpl.SetToleranceValue(oldTolerance)
 	return wrap(newImpl.ToManifold())
 }
@@ -349,7 +349,7 @@ func (m *Manifold) SetTolerance(tol float64) *Manifold {
 		newImpl.SetToleranceValue(tol)
 		setNormalsAndCoplanar(newImpl)
 		newImpl.SimplifyTopology()
-		newImpl.SortGeometry()
+		sortGeometry(newImpl)
 	} else {
 		// For reducing tolerance, keep it at least equal to epsilon.
 		newImpl.SetToleranceValue(math.Max(s.Epsilon, tol))
@@ -592,7 +592,7 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 	initializeOriginal(impl, numTri, false)
 	calculateBBox(impl)
 	setEpsilon(impl, -1, false)
-	impl.SortGeometry()
+	sortGeometry(impl)
 	setNormalsAndCoplanar(impl)
 	return wrap(impl.ToManifold())
 }
@@ -1144,7 +1144,7 @@ func (m *Manifold) Decompose() []*Manifold {
 		newImpl.GatherFaces(impl, faceNew2Old)
 		newImpl.ReindexVerts(vertNew2Old, numVert)
 		calculateBBox(newImpl)
-		newImpl.SortGeometry()
+		sortGeometry(newImpl)
 		meshes = append(meshes, wrap(newImpl.ToManifold()))
 		newImpl.Delete()
 	}
@@ -1369,7 +1369,7 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 	initializeOriginal(newImpl, numTri, false)
 	calculateBBox(newImpl)
 	setEpsilon(newImpl, -1, false)
-	newImpl.SortGeometry()
+	sortGeometry(newImpl)
 	setNormalsAndCoplanar(newImpl)
 	return wrap(newImpl.ToManifold())
 }

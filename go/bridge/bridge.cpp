@@ -766,8 +766,23 @@ void mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h) {
   h->impl->SimplifyTopology();
 }
 
-void mb_mutable_impl_sort_geometry(mb_mutable_impl_handle* h) {
-  h->impl->SortGeometry();
+void mb_mutable_impl_sort_geometry_post_vert(mb_mutable_impl_handle* h) {
+  auto& impl = *h->impl;
+  if (impl.halfedge_.size() == 0) {
+    impl.collider_ = manifold::Collider{};
+    return;
+  }
+  manifold::Vec<manifold::Box> faceBox;
+  manifold::Vec<uint32_t> faceMorton;
+  impl.GetFaceBoxMorton(faceBox, faceMorton);
+  impl.SortFaces(faceBox, faceMorton);
+  if (impl.halfedge_.size() == 0) {
+    impl.collider_ = manifold::Collider{};
+    return;
+  }
+  impl.collider_ = manifold::Collider(faceBox, faceMorton);
+  impl.bBox_ = impl.collider_.GetBoundingBox();
+  impl.CompactProps();
 }
 
 void mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol) {

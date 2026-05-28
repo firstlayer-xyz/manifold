@@ -461,7 +461,13 @@ const double*             mb_polygons_poly_data(const mb_polygons_handle* p,
                                                 size_t idx);
 void                      mb_delete_polygons(mb_polygons_handle* p);
 void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h);
-void                     mb_mutable_impl_sort_geometry(mb_mutable_impl_handle* h);
+
+// mb_mutable_impl_sort_geometry_post_vert performs the C++ SortGeometry
+// steps that follow SortVerts: GetFaceBoxMorton, SortFaces, Collider
+// construction, bBox_ refresh from the collider, and CompactProps.
+// Used by the Go port that runs SortVerts itself in Go.
+void                     mb_mutable_impl_sort_geometry_post_vert(
+    mb_mutable_impl_handle* h);
 void                     mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol);
 
 // mb_mutable_impl_hull calls C++ Impl::Hull(vert_pos, ctx=nullptr) — fills

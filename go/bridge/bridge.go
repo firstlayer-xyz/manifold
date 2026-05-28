@@ -1326,9 +1326,12 @@ func (mi *MutableImpl) SimplifyTopology() {
 	C.mb_mutable_impl_simplify_topology(mi.p)
 }
 
-// SortGeometry calls C++ Impl::SortGeometry.
-func (mi *MutableImpl) SortGeometry() {
-	C.mb_mutable_impl_sort_geometry(mi.p)
+// SortGeometryPostVert runs the C++ portion of SortGeometry that
+// follows SortVerts: GetFaceBoxMorton, SortFaces, Collider build,
+// bBox_ refresh from collider, CompactProps. The Go port runs
+// SortVerts itself and calls this for the remainder.
+func (mi *MutableImpl) SortGeometryPostVert() {
+	C.mb_mutable_impl_sort_geometry_post_vert(mi.p)
 }
 
 // SetToleranceValue mirrors the C++ direct field assignment
