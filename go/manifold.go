@@ -548,7 +548,7 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 	if circularSegments > 0 {
 		n = (circularSegments + 3) / 4
 	} else {
-		n = bridge.QualityGetCircularSegments(radius) / 4
+		n = GetCircularSegments(radius) / 4
 	}
 	identity := Mat3x4{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
 	impl := newImplFromShape(shapeOctahedron, identity)
@@ -619,7 +619,7 @@ func Cylinder(height, radiusLow, radiusHigh float64, circularSegments int, cente
 	radius := math.Max(radiusLow, radiusHigh)
 	n := circularSegments
 	if n <= 2 {
-		n = bridge.QualityGetCircularSegments(radius)
+		n = GetCircularSegments(radius)
 	}
 
 	circle := make(SimplePolygon, n)
@@ -1238,7 +1238,7 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 	if circularSegments > 2 {
 		nDivisions = circularSegments
 	} else {
-		nDivisions = int(float64(bridge.QualityGetCircularSegments(radius)) * revolveDegrees / 360)
+		nDivisions = int(float64(GetCircularSegments(radius)) * revolveDegrees / 360)
 	}
 
 	dPhi := revolveDegrees / float64(nDivisions)

@@ -205,10 +205,8 @@ void                     mb_mutable_impl_set_epsilon_min(
 void                     mb_mutable_impl_set_epsilon(
     mb_mutable_impl_handle* h);
 
-// mb_quality_get_circular_segments: Quality::GetCircularSegments(radius).
-// Returns the default segment count for a given radius based on the
-// global Quality params.
-int                      mb_quality_get_circular_segments(double radius);
+// (mb_quality_get_circular_segments was removed; Quality is now
+// implemented natively in Go — see quality.go.)
 
 // mb_manifold_extrude wraps Manifold::Extrude(Polygons, height,
 // nDivisions, twistDegrees, scaleTop). cs_data is a flat array of vec2

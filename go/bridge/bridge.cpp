@@ -155,10 +155,6 @@ void mb_mutable_impl_set_epsilon_min(mb_mutable_impl_handle* h,
   h->impl->SetEpsilon(minEpsilon);
 }
 
-int mb_quality_get_circular_segments(double radius) {
-  return manifold::Quality::GetCircularSegments(radius);
-}
-
 unsigned int mb_impl_reserve_ids(unsigned int n) {
   return Manifold::Impl::ReserveIDs(n);
 }

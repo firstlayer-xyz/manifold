@@ -1295,12 +1295,6 @@ func (mh *MeshGLHandle) HalfedgeTangent() []float32 {
 		func(p unsafe.Pointer) { C.manifold_meshgl_halfedge_tangent(p, mh.p) })
 }
 
-// QualityGetCircularSegments wraps Quality::GetCircularSegments(radius)
-// — the default segment count for the given radius based on the
-// global Quality params (circularAngle_, circularEdgeLength_, etc.).
-func QualityGetCircularSegments(radius float64) int {
-	return int(C.mb_quality_get_circular_segments(C.double(radius)))
-}
 
 // Extrude wraps Manifold::Extrude. polys is the cross-section: each
 // inner []geom.Vec2 is a SimplePolygon, the outer slice is Polygons.
