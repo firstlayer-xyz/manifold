@@ -870,6 +870,69 @@ func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 	))
 }
 
+// ExecutionContext observes progress and requests cancellation of a
+// long-running Manifold evaluation. Attach to a Manifold via
+// WithContext; the next eager op (Status, Refine, RefineToLength,
+// RefineToTolerance, Hull, MinkowskiSum, MinkowskiDifference) on the
+// returned Manifold reports progress and observes cancellation
+// through it. Safe to read/write from any thread.
+//
+// Cancel is sticky: once Cancel() has been called, every subsequent
+// evaluation through this context (or any copy) short-circuits to
+// Error::Cancelled. Construct a fresh context to retry.
+//
+// Construction pairs with Delete; the underlying C++ ExecutionContext
+// is freed there. Calling Cancel/Cancelled/Progress on a deleted
+// context is undefined behavior.
+type ExecutionContext struct {
+	c *bridge.ExecutionContext
+}
+
+// NewExecutionContext returns a fresh ExecutionContext whose cancel
+// flag is clear and Progress is 1.0 (no work scheduled).
+//
+// Ported top-down from C++:
+//   ExecutionContext ctx;
+func NewExecutionContext() *ExecutionContext {
+	return &ExecutionContext{c: bridge.NewExecutionContext()}
+}
+
+// Cancel requests cancellation of any in-progress evaluation using
+// this context. Idempotent. Sticky — future evaluations on the same
+// context (or any copy) will also short-circuit to Error::Cancelled.
+//
+// Ported from ExecutionContext::Cancel.
+func (ctx *ExecutionContext) Cancel() { ctx.c.Cancel() }
+
+// Cancelled reports whether Cancel() has ever been called on this
+// context.
+//
+// Ported from ExecutionContext::Cancelled.
+func (ctx *ExecutionContext) Cancelled() bool { return ctx.c.Cancelled() }
+
+// Progress returns the normalized [0, 1] progress of the current (or
+// most recent) evaluation through this context. Returns 1.0 when no
+// work has been scheduled.
+//
+// Ported from ExecutionContext::Progress.
+func (ctx *ExecutionContext) Progress() float64 { return ctx.c.Progress() }
+
+// Delete frees the underlying C++ context. Must be called exactly
+// once per NewExecutionContext.
+func (ctx *ExecutionContext) Delete() { ctx.c.Delete() }
+
+// WithContext returns a copy of m with ctx attached. The next eager
+// op on the result reports progress and observes cancellation through
+// ctx. The original m is unaffected.
+//
+// Ported top-down from C++ Manifold::WithContext:
+//   Manifold result = *this;
+//   std::atomic_store(&result.ctx_, ctx.impl_);
+//   return result;
+func (m *Manifold) WithContext(ctx *ExecutionContext) *Manifold {
+	return wrap(bridge.WithContext(m.h, ctx.c))
+}
+
 // SetProperties returns a copy of m with numProp properties per
 // vertex, filled by fn. fn receives a writable slice for the new
 // properties at this vertex, the vertex position, and a read-only

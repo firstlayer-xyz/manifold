@@ -1422,6 +1422,59 @@ func TestSmoothFromMeshGL64_SmokeRun(t *testing.T) {
 	}
 }
 
+// TestExecutionContext_FreshState verifies a fresh context starts
+// uncancelled and at Progress=1.0 (no work scheduled).
+func TestExecutionContext_FreshState(t *testing.T) {
+	ctx := NewExecutionContext()
+	defer ctx.Delete()
+	if ctx.Cancelled() {
+		t.Error("fresh context should not be Cancelled")
+	}
+	if got := ctx.Progress(); got != 1.0 {
+		t.Errorf("fresh context Progress: got %v, want 1.0", got)
+	}
+}
+
+// TestExecutionContext_StickyCancel verifies that Cancel toggles
+// Cancelled() and is idempotent. Whether an in-flight evaluation
+// actually short-circuits depends on the C++ side's per-op
+// cancellation granularity (small ops may complete before any check);
+// here we only assert the API contract on the context object itself.
+func TestExecutionContext_StickyCancel(t *testing.T) {
+	ctx := NewExecutionContext()
+	defer ctx.Delete()
+	if ctx.Cancelled() {
+		t.Fatal("fresh ctx should not be Cancelled")
+	}
+	ctx.Cancel()
+	if !ctx.Cancelled() {
+		t.Error("post-Cancel: Cancelled should be true")
+	}
+	// Idempotent: a second Cancel is a no-op and leaves Cancelled set.
+	ctx.Cancel()
+	if !ctx.Cancelled() {
+		t.Error("second Cancel: Cancelled should remain true")
+	}
+}
+
+// TestWithContext_NoCancel_ProducesSameResult exercises the happy
+// path: WithContext on a fresh, uncancelled context must not alter
+// the geometric result.
+func TestWithContext_NoCancel_ProducesSameResult(t *testing.T) {
+	ctx := NewExecutionContext()
+	defer ctx.Delete()
+
+	mPlain := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
+	defer runtime.KeepAlive(mPlain)
+	mCtx := mPlain.WithContext(ctx)
+	defer runtime.KeepAlive(mCtx)
+
+	if !floatClose(mCtx.Volume(), mPlain.Volume(), 1e-15, 1e-15) {
+		t.Errorf("Volume differs: plain=%v ctx=%v", mPlain.Volume(), mCtx.Volume())
+	}
+	assertSameBoundingBox(t, mCtx.h, mPlain.h, 1e-15)
+}
+
 // TestSetProperties_PerVertexPosition writes the vertex position into
 // the three user property channels, then verifies via GetMeshGL64
 // that each propVert's user-property slot matches its position slot.

@@ -1392,3 +1392,50 @@ func DeleteManifold(h *handle.Manifold) {
 	C.manifold_delete_manifold((*C.ManifoldManifold)(h.Ptr()))
 }
 
+// ExecutionContext wraps a C++ ExecutionContext. Used to observe
+// progress and request cancellation of long-running evaluations.
+// Pair construction with Delete.
+type ExecutionContext struct{ p *C.ManifoldExecutionContext }
+
+// NewExecutionContext mirrors `ExecutionContext ctx;` — constructs a
+// fresh context whose cancel flag is clear and progress is 1.0 (no
+// work scheduled yet).
+func NewExecutionContext() *ExecutionContext {
+	mem := C.manifold_alloc_execution_context()
+	p := C.manifold_execution_context(unsafe.Pointer(mem))
+	return &ExecutionContext{p: p}
+}
+
+// Cancel mirrors ExecutionContext::Cancel — idempotent, callable from
+// any thread.
+func (c *ExecutionContext) Cancel() {
+	C.manifold_execution_context_cancel(c.p)
+}
+
+// Cancelled mirrors ExecutionContext::Cancelled.
+func (c *ExecutionContext) Cancelled() bool {
+	return C.manifold_execution_context_cancelled(c.p) != 0
+}
+
+// Progress mirrors ExecutionContext::Progress — normalized [0, 1]
+// progress; 1.0 means no work scheduled or evaluation complete.
+func (c *ExecutionContext) Progress() float64 {
+	return float64(C.manifold_execution_context_progress(c.p))
+}
+
+// Delete frees the underlying C++ context. After Delete the Go value
+// must not be used; Cancel/Progress on a deleted context is UB.
+func (c *ExecutionContext) Delete() {
+	C.manifold_delete_execution_context(c.p)
+}
+
+// WithContext mirrors Manifold::WithContext — returns a copy of m with
+// ctx atomically attached. The next eager op on the returned Manifold
+// observes ctx for progress and cancellation.
+func WithContext(h *handle.Manifold, ctx *ExecutionContext) *handle.Manifold {
+	mem := C.manifold_alloc_manifold()
+	p := C.manifold_with_context(unsafe.Pointer(mem),
+		(*C.ManifoldManifold)(h.Ptr()), ctx.p)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
