@@ -237,3 +237,77 @@ func Sind(x float64) float64 {
 
 // Cosd returns cos(x) for x in degrees, exact at every multiple of 90.
 func Cosd(x float64) float64 { return Sind(x + 90.0) }
+
+// Mat2x3 mirrors C++ la::mat<double, 2, 3>: a 2x3 matrix stored as
+// two rows of three doubles, applied to a Vec3 to produce a Vec2.
+// Used by GetAxisAlignedProjection to project a 3D point onto a
+// face-aligned 2D plane.
+type Mat2x3 [2][3]float64
+
+// MulVec3 applies the 2x3 matrix to a Vec3, returning a Vec2.
+func (a Mat2x3) MulVec3(v Vec3) Vec2 {
+	return Vec2{
+		X: a[0][0]*v.X + a[0][1]*v.Y + a[0][2]*v.Z,
+		Y: a[1][0]*v.X + a[1][1]*v.Y + a[1][2]*v.Z,
+	}
+}
+
+// GetAxisAlignedProjection mirrors the C++ inline of the same name in
+// src/shared.h. It builds a 2x3 matrix that projects 3D points onto
+// the plane perpendicular to the dominant axis of `normal`, then
+// orientation-flips the first row if the dominant axis is negative.
+//
+// The projection is axis-aligned (rather than basis-rotated) precisely
+// so it introduces no rounding error: every output coordinate is one
+// of the input vec3 components, possibly negated.
+func GetAxisAlignedProjection(normal Vec3) Mat2x3 {
+	absN := normal.Abs()
+	var p [3][2]float64
+	var xyzMax float64
+	switch {
+	case absN.Z > absN.X && absN.Z > absN.Y:
+		// projection = {{1,0,0},{0,1,0}}, will be transposed below.
+		p = [3][2]float64{{1, 0}, {0, 1}, {0, 0}}
+		xyzMax = normal.Z
+	case absN.Y > absN.X:
+		// C++ mat3x2({0,0,1}, {1,0,0}) — col0 = (0,0,1), col1 = (1,0,0).
+		// Stored row-by-row as (col0[row], col1[row]).
+		p = [3][2]float64{{0, 1}, {0, 0}, {1, 0}}
+		xyzMax = normal.Y
+	default:
+		p = [3][2]float64{{0, 0}, {1, 0}, {0, 1}}
+		xyzMax = normal.X
+	}
+	if xyzMax < 0 {
+		p[0][0] *= -1
+		p[1][0] *= -1
+		p[2][0] *= -1
+	}
+	// Transpose 3x2 -> 2x3.
+	return Mat2x3{
+		{p[0][0], p[1][0], p[2][0]},
+		{p[0][1], p[1][1], p[2][1]},
+	}
+}
+
+// CCW mirrors the C++ inline `CCW` in src/utils.h. Returns 1 for CCW,
+// -1 for CW, 0 for colinear within tol. tol is the absolute distance
+// tolerance for declaring the three points colinear.
+func CCW(p0, p1, p2 Vec2, tol float64) int {
+	v1x := p1.X - p0.X
+	v1y := p1.Y - p0.Y
+	v2x := p2.X - p0.X
+	v2y := p2.Y - p0.Y
+	area := v1x*v2y - v1y*v2x
+	base2 := v1x*v1x + v1y*v1y
+	if d := v2x*v2x + v2y*v2y; d > base2 {
+		base2 = d
+	}
+	if area*area*4 <= base2*tol*tol {
+		return 0
+	}
+	if area > 0 {
+		return 1
+	}
+	return -1
+}

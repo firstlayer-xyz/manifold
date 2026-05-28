@@ -293,3 +293,56 @@ func TestNormalTransform(t *testing.T) {
 		}
 	}
 }
+
+// TestGetAxisAlignedProjection_AxisCases covers the three branch arms
+// in C++ src/shared.h: dominant Z, dominant Y, dominant X. For each,
+// projecting a point picks two of its components (the ones orthogonal
+// to the dominant axis).
+func TestGetAxisAlignedProjection_AxisCases(t *testing.T) {
+	cases := []struct {
+		name   string
+		normal Vec3
+		probe  Vec3
+		wantX  float64
+		wantY  float64
+	}{
+		{"dom +Z", Vec3{0, 0, 1}, Vec3{1, 2, 3}, 1, 2},
+		{"dom +Y", Vec3{0, 1, 0}, Vec3{1, 2, 3}, 3, 1},
+		{"dom +X", Vec3{1, 0, 0}, Vec3{1, 2, 3}, 2, 3},
+		{"dom -Z (orientation flip)", Vec3{0, 0, -1}, Vec3{1, 2, 3}, -1, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := GetAxisAlignedProjection(tc.normal)
+			got := p.MulVec3(tc.probe)
+			if got.X != tc.wantX || got.Y != tc.wantY {
+				t.Errorf("project(%v, %v) = %v, want {%v, %v}",
+					tc.normal, tc.probe, got, tc.wantX, tc.wantY)
+			}
+		})
+	}
+}
+
+// TestCCW_SignAndColinearity covers all three CCW outcomes.
+func TestCCW_SignAndColinearity(t *testing.T) {
+	cases := []struct {
+		name       string
+		p0, p1, p2 Vec2
+		tol        float64
+		want       int
+	}{
+		{"CCW triangle", Vec2{0, 0}, Vec2{1, 0}, Vec2{0, 1}, 0, 1},
+		{"CW triangle", Vec2{0, 0}, Vec2{0, 1}, Vec2{1, 0}, 0, -1},
+		{"colinear (exact)", Vec2{0, 0}, Vec2{1, 1}, Vec2{2, 2}, 0, 0},
+		{"colinear within tol", Vec2{0, 0}, Vec2{1, 0}, Vec2{2, 1e-10}, 1e-3, 0},
+		{"non-colinear above tol", Vec2{0, 0}, Vec2{1, 0}, Vec2{2, 0.1}, 1e-3, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CCW(tc.p0, tc.p1, tc.p2, tc.tol); got != tc.want {
+				t.Errorf("CCW(%v,%v,%v, tol=%v) = %d, want %d",
+					tc.p0, tc.p1, tc.p2, tc.tol, got, tc.want)
+			}
+		})
+	}
+}

@@ -497,10 +497,13 @@ func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *
 //   bool Manifold::MatchesTriNormals() const {
 //     return GetCsgLeafNode().GetImpl()->MatchesTriNormals();
 //   }
+//
+// The inner Impl::MatchesTriNormals is drilled to native Go — see
+// impl_props.go.
 func (m *Manifold) MatchesTriNormals() bool {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
-	return impl.MatchesTriNormals()
+	return implMatchesTriNormals(impl)
 }
 
 // NumDegenerateTris returns the count of triangles with zero or
@@ -510,10 +513,13 @@ func (m *Manifold) MatchesTriNormals() bool {
 //   size_t Manifold::NumDegenerateTris() const {
 //     return GetCsgLeafNode().GetImpl()->NumDegenerateTris();
 //   }
+//
+// The inner Impl::NumDegenerateTris is drilled to native Go — see
+// impl_props.go.
 func (m *Manifold) NumDegenerateTris() int {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
-	return impl.NumDegenerateTris()
+	return implNumDegenerateTris(impl)
 }
 
 // GetEpsilon returns the precision used in this Manifold's boolean

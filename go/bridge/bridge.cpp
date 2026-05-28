@@ -27,6 +27,7 @@ struct ManifoldBridge {
     return m.GetCsgLeafNode().GetImpl();
   }
   static const int* HalfedgeStarts(const Halfedges& he) { return he.start_.data(); }
+  static const int* HalfedgePairs(const Halfedges& he) { return he.paired_.data(); }
   static Manifold PropagateStatus(Manifold::Error status) {
     return Manifold::PropagateStatus(status);
   }
@@ -77,6 +78,18 @@ const void* mb_impl_halfedge_starts(const mb_impl_handle* h, size_t* out_count) 
   const auto& he = h->impl->halfedge_;
   *out_count = he.size();
   return static_cast<const void*>(ManifoldBridge::HalfedgeStarts(he));
+}
+
+const void* mb_impl_halfedge_pairs(const mb_impl_handle* h, size_t* out_count) {
+  const auto& he = h->impl->halfedge_;
+  *out_count = he.size();
+  return static_cast<const void*>(ManifoldBridge::HalfedgePairs(he));
+}
+
+const void* mb_impl_face_normals(const mb_impl_handle* h, size_t* out_count) {
+  const auto& fn = h->impl->faceNormal_;
+  *out_count = fn.size();
+  return static_cast<const void*>(fn.data());
 }
 
 void mb_impl_get_scalars(const mb_impl_handle* h, mb_impl_scalars* out) {

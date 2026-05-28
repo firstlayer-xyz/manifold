@@ -1334,6 +1334,31 @@ func (n *CsgNode) Delete() { C.mb_delete_csg_node(n.p) }
 // Impl's halfedges (the SoA start_ buffer of class Halfedges). Triangle t
 // has vertices at HalfedgeStarts()[3t], [3t+1], [3t+2]. Read-only; valid
 // only while i has not been Deleted.
+// HalfedgePairs returns a Go slice aliasing the paired-edge array of
+// halfedge_. Element value -1 marks a boundary halfedge; otherwise it
+// is the index of the paired halfedge. Read-only; valid only while
+// this Impl is alive.
+func (i *Impl) HalfedgePairs() []int32 {
+	var n C.size_t
+	p := C.mb_impl_halfedge_pairs(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// FaceNormals returns a Go slice aliasing faceNormal_ (one vec3 per
+// triangle). Empty when the impl has no cached face normals. Read-only;
+// valid only while this Impl is alive.
+func (i *Impl) FaceNormals() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_impl_face_normals(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+}
+
 func (i *Impl) HalfedgeStarts() []int32 {
 	var n C.size_t
 	p := C.mb_impl_halfedge_starts(i.p, &n)

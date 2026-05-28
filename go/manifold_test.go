@@ -1371,13 +1371,94 @@ func TestMatchesTriNormals_Tetrahedron(t *testing.T) {
 }
 
 // TestNumDegenerateTris_Tetrahedron checks that a clean tetrahedron
-// has zero degenerate triangles.
+// has zero degenerate triangles. NB: the C++ early-return for an Impl
+// with no cached face normals is "true" (which a tetrahedron from a
+// boolean op can hit) — but Tetrahedron() returns an Impl with normals
+// cached, so we get the loop's count: 0.
 func TestNumDegenerateTris_Tetrahedron(t *testing.T) {
 	hOrig := reference.Tetrahedron()
 	defer reference.DeleteManifold(hOrig)
 	m := &Manifold{h: hOrig}
 	if got := m.NumDegenerateTris(); got != 0 {
 		t.Errorf("Tetrahedron NumDegenerateTris: got %d, want 0", got)
+	}
+}
+
+// TestMatchesTriNormals_DrilledVsCpp_Differential asserts the
+// drilled-Go implementation of Impl::MatchesTriNormals agrees with
+// the C++ Impl::MatchesTriNormals (still accessible through the
+// bridge) for a range of inputs:
+//   - a clean factory tetrahedron
+//   - the union of two overlapping cubes (boolean result; halfedge_
+//     and faceNormal_ may have different shapes than a factory mesh)
+//   - a cube intersected with a sphere (mixed topology + many tris)
+func TestMatchesTriNormals_DrilledVsCpp_Differential(t *testing.T) {
+	cases := []struct {
+		name string
+		make func() *Manifold
+	}{
+		{"tetrahedron", func() *Manifold {
+			return &Manifold{h: reference.Tetrahedron()}
+		}},
+		{"cube union", func() *Manifold {
+			a := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
+			b := Cube(Vec3{X: 2, Y: 2, Z: 2}, true).Translate(Vec3{X: 1, Y: 1, Z: 1})
+			return a.Union(b)
+		}},
+		{"cube ^ sphere", func() *Manifold {
+			c := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
+			s := Sphere(1.2, 24)
+			return c.Intersection(s)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.make()
+			defer runtime.KeepAlive(m)
+			impl := bridge.GetImpl(m.h)
+			defer impl.Delete()
+			gotGo := m.MatchesTriNormals() // drilled Go path
+			gotCpp := impl.MatchesTriNormals()
+			if gotGo != gotCpp {
+				t.Errorf("MatchesTriNormals: drilled-Go=%v cpp=%v", gotGo, gotCpp)
+			}
+		})
+	}
+}
+
+// TestNumDegenerateTris_DrilledVsCpp_Differential is the analog for
+// NumDegenerateTris.
+func TestNumDegenerateTris_DrilledVsCpp_Differential(t *testing.T) {
+	cases := []struct {
+		name string
+		make func() *Manifold
+	}{
+		{"tetrahedron", func() *Manifold {
+			return &Manifold{h: reference.Tetrahedron()}
+		}},
+		{"cube union", func() *Manifold {
+			a := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
+			b := Cube(Vec3{X: 2, Y: 2, Z: 2}, true).Translate(Vec3{X: 1, Y: 1, Z: 1})
+			return a.Union(b)
+		}},
+		{"cube ^ sphere", func() *Manifold {
+			c := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
+			s := Sphere(1.2, 24)
+			return c.Intersection(s)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.make()
+			defer runtime.KeepAlive(m)
+			impl := bridge.GetImpl(m.h)
+			defer impl.Delete()
+			gotGo := m.NumDegenerateTris()
+			gotCpp := impl.NumDegenerateTris()
+			if gotGo != gotCpp {
+				t.Errorf("NumDegenerateTris: drilled-Go=%d cpp=%d", gotGo, gotCpp)
+			}
+		})
 	}
 }
 

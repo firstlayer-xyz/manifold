@@ -44,6 +44,17 @@ size_t          mb_impl_halfedge_size(const mb_impl_handle* h);
 // start[3t+2].
 const void*     mb_impl_halfedge_starts(const mb_impl_handle* h, size_t* out_count);
 
+// mb_impl_halfedge_pairs returns a pointer to the paired-edge array
+// of the impl's Halfedges (halfedge_.paired_). Layout: int32_t[3*NumTri].
+// Value -1 marks a boundary halfedge; otherwise the value is the index
+// of the paired halfedge.
+const void*     mb_impl_halfedge_pairs(const mb_impl_handle* h, size_t* out_count);
+
+// mb_impl_face_normals returns a pointer to faceNormal_ (vec3 per
+// triangle). Layout: 3 packed doubles per element. Empty when the impl
+// has no cached face normals.
+const void*     mb_impl_face_normals(const mb_impl_handle* h, size_t* out_count);
+
 // mb_impl_scalars is a snapshot of small scalar fields on Manifold::Impl.
 // Read together so the Go side can derive NumProp / NumPropVert /
 // GetTolerance / OriginalID / Status without one cgo call per accessor.
