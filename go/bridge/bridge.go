@@ -1,0 +1,1394 @@
+// Package bridge is the cgo seam between Go and the C++ manifold library.
+//
+// It is throwaway scaffolding. Every symbol exported from this package
+// represents a piece of the library not yet ported to pure Go. As inner
+// layers get ported, calls into the corresponding C functions disappear and
+// the bridge shrinks. The package is empty at the end of the port.
+//
+// Bridge functions currently route through the public manifoldc C API.
+// When a port goes deeper than what manifoldc exposes, add a custom shim in
+// bridge.cpp/bridge.h.
+package bridge
+
+// #cgo CFLAGS: -I${SRCDIR}/../../bindings/c/include
+// #cgo CXXFLAGS: -std=c++17 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_PAR=1 -DCLIPPER2_MAX_DECIMAL_PRECISION=8 -I${SRCDIR}/../../include -I${SRCDIR}/../../src -I${SRCDIR}/../../bindings/c -I${SRCDIR}/../../bindings/c/include -I${SRCDIR}/../../build/include -I${SRCDIR}/../../build/_deps/clipper2-src/CPP/Clipper2Lib/include -isystem /opt/homebrew/include
+// #cgo darwin LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -L/opt/homebrew/opt/tbb/lib -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src -Wl,-rpath,/opt/homebrew/opt/tbb/lib
+// #cgo linux LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src
+// #include <manifold/manifoldc.h>
+// #include "bridge.h"
+import "C"
+
+import (
+	"sync"
+	"unsafe"
+
+	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/handle"
+)
+
+// Impl is a Go-side handle to a C++ Manifold::Impl, retained via shared_ptr
+// on the C side. Created by GetImpl, released by Delete. Methods on Impl
+// expose chunks of the Impl's internal state to Go.
+type Impl struct{ p *C.mb_impl_handle }
+
+// GetImpl obtains the leaf impl backing a Manifold (lazy-evaluating any
+// pending CSG ops). Pair with Delete.
+func GetImpl(h *handle.Manifold) *Impl {
+	return &Impl{p: C.mb_get_impl((*C.ManifoldManifold)(h.Ptr()))}
+}
+
+// Delete releases the Go-side hold on the C++ shared_ptr. Slices returned
+// from Verts (and similar accessors) MUST NOT be used after Delete.
+func (i *Impl) Delete() { C.mb_delete_impl(i.p) }
+
+// Verts returns a Go slice aliasing the C++ Impl's vertPos_ array.
+// Read-only; valid only while i has not been Deleted. The slice element
+// layout (three packed float64s) matches the C++ vec<double,3> layout.
+func (i *Impl) Verts() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_impl_vert_data(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(p), int(n))
+}
+
+// HalfedgeCount returns the count of halfedges in the Impl. NumTri,
+// NumEdge, and IsEmpty all derive from this in Go.
+func (i *Impl) HalfedgeCount() int { return int(C.mb_impl_halfedge_size(i.p)) }
+
+// Minkowski calls C++ Impl::Minkowski(other, inset). Returns a Manifold
+// directly (not an Impl) because Impl::Minkowski builds its result via
+// the Boolean machinery, which produces a Manifold.
+func (i *Impl) Minkowski(other *Impl, inset bool) *handle.Manifold {
+	d := C.int(0)
+	if inset {
+		d = 1
+	}
+	return handle.NewManifold(unsafe.Pointer(C.mb_impl_minkowski(i.p, other.p, d)))
+}
+
+// MinGap calls C++ Impl::MinGap(other, searchLength).
+func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
+	return float64(C.mb_impl_min_gap(i.p, other.p, C.double(searchLength)))
+}
+
+// Copy returns a mutable copy of this Impl, suitable for ports that
+// need to call non-const Impl methods (InitializeOriginal, etc.). The
+// source is unaffected. Pair with MutableImpl.Delete.
+func (i *Impl) Copy() *MutableImpl {
+	return &MutableImpl{p: C.mb_impl_copy(i.p)}
+}
+
+// NewMutableImpl returns a fresh empty mutable Impl, mirroring
+// `std::make_shared<Manifold::Impl>()`. Used by ports that need to fill
+// in an Impl from scratch (e.g. Hull builds the hull mesh into a new Impl).
+func NewMutableImpl() *MutableImpl {
+	return &MutableImpl{p: C.mb_new_mutable_impl()}
+}
+
+// NewImplShape wraps the C++ Impl(Shape, mat3x4) constructor. shape
+// values match the C++ enum class Shape: 0=Tetrahedron, 1=Cube,
+// 2=Octahedron. The 12 doubles are the 3x4 column-major affine
+// transform applied at construction.
+func NewImplShape(shape int,
+	x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4 float64,
+) *MutableImpl {
+	return &MutableImpl{p: C.mb_new_impl_shape(
+		C.int(shape),
+		C.double(x1), C.double(y1), C.double(z1),
+		C.double(x2), C.double(y2), C.double(z2),
+		C.double(x3), C.double(y3), C.double(z3),
+		C.double(x4), C.double(y4), C.double(z4),
+	)}
+}
+
+// Invalid wraps Manifold::Invalid() — an empty Manifold whose Impl
+// carries the InvalidConstruction error code.
+func Invalid() *handle.Manifold {
+	return handle.NewManifold(unsafe.Pointer(C.mb_invalid()))
+}
+
+// Verts returns a Go slice aliasing the mutable Impl's vertPos_ array.
+// The slice is writable — modifying it modifies the C++ buffer
+// directly. Same layout assumption as Impl.Verts.
+func (mi *MutableImpl) Verts() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_mutable_impl_verts_data(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+}
+
+// SubdivideN wraps Impl::Subdivide with the constant-n splits-per-edge
+// lambda (mirrors C++ Sphere's subdivision call).
+func (mi *MutableImpl) SubdivideN(n int) {
+	C.mb_mutable_impl_subdivide_n(mi.p, C.int(n))
+}
+
+// CalculateBBox wraps Impl::CalculateBBox — recomputes the impl's
+// cached bBox_ from vertPos_.
+func (mi *MutableImpl) CalculateBBox() {
+	C.mb_mutable_impl_calculate_bbox(mi.p)
+}
+
+// SetEpsilon wraps Impl::SetEpsilon() with default arguments
+// (-1, false) — the form used by the public factory functions.
+func (mi *MutableImpl) SetEpsilon() {
+	C.mb_mutable_impl_set_epsilon(mi.p)
+}
+
+// SetEpsilonMin wraps Impl::SetEpsilon(minEpsilon, false) — the
+// one-arg overload used by ReadOBJ to restore epsilon from the file
+// header.
+func (mi *MutableImpl) SetEpsilonMin(minEpsilon float64) {
+	C.mb_mutable_impl_set_epsilon_min(mi.p, C.double(minEpsilon))
+}
+
+// ImplReserveIDs wraps the static Manifold::Impl::ReserveIDs(n).
+func ImplReserveIDs(n uint32) uint32 {
+	return uint32(C.mb_impl_reserve_ids(C.uint(n)))
+}
+
+// CreateTangentsIdx calls Impl::CreateTangents(normalIdx) — fills
+// halfedgeTangent_ from per-vert normals at the given property slot.
+func (mi *MutableImpl) CreateTangentsIdx(normalIdx int) {
+	C.mb_mutable_impl_create_tangents_idx(mi.p, C.int(normalIdx))
+}
+
+// SmoothnessVec wraps a C++ std::vector<Smoothness> handle returned by
+// SharpenEdges and consumed by CreateTangentsFromSmoothness. Pair every
+// SharpenEdges call with Delete (unless the value is consumed and you
+// know it stays owned by the receiver — currently nothing consumes the
+// vector, so the Go side always Delete()s after CreateTangents).
+type SmoothnessVec struct{ p *C.mb_smoothness_vec_handle }
+
+// SharpenEdges calls Impl::SharpenEdges(minSharpAngle, minSmoothness),
+// returning the smoothness-per-halfedge vector as an opaque handle.
+func (mi *MutableImpl) SharpenEdges(minSharpAngle, minSmoothness float64) *SmoothnessVec {
+	return &SmoothnessVec{p: C.mb_mutable_impl_sharpen_edges(
+		mi.p, C.double(minSharpAngle), C.double(minSmoothness))}
+}
+
+// CreateTangentsFromSmoothness calls Impl::CreateTangents(vector<Smoothness>).
+func (mi *MutableImpl) CreateTangentsFromSmoothness(sv *SmoothnessVec) {
+	C.mb_mutable_impl_create_tangents_from(mi.p, sv.p)
+}
+
+// Delete releases the smoothness vector.
+func (sv *SmoothnessVec) Delete() { C.mb_delete_smoothness_vec(sv.p) }
+
+// CalculateCurvature wraps Impl::CalculateCurvature(gaussianIdx, meanIdx).
+func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
+	C.mb_mutable_impl_calculate_curvature(mi.p,
+		C.int(gaussianIdx), C.int(meanIdx))
+}
+
+// SetNormals wraps Impl::SetNormals(normalIdx, minSharpAngle).
+func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
+	C.mb_mutable_impl_set_normals(mi.p,
+		C.int(normalIdx), C.double(minSharpAngle))
+}
+
+// MarkAllMeshIDHasNormals wraps the per-meshID hasNormals=true loop in
+// Manifold::CalculateNormals (only runs when normalIdx == 0 on the C++
+// side).
+func (mi *MutableImpl) MarkAllMeshIDHasNormals() {
+	C.mb_mutable_impl_mark_all_meshid_has_normals(mi.p)
+}
+
+// PolygonsHandle wraps a C++ manifold::Polygons. Returned by Impl.Slice
+// and Impl.Project; Go reads its contents via NumPolys / Poly. Pair with
+// Delete (or rely on the caller's defer).
+type PolygonsHandle struct{ p *C.mb_polygons_handle }
+
+// Slice calls Impl::Slice(height) — returns an outline of the manifold
+// at the given Z.
+func (i *Impl) Slice(height float64) *PolygonsHandle {
+	return &PolygonsHandle{p: C.mb_impl_slice(i.p, C.double(height))}
+}
+
+// Project calls Impl::Project() — returns the manifold's XY projection.
+func (i *Impl) Project() *PolygonsHandle {
+	return &PolygonsHandle{p: C.mb_impl_project(i.p)}
+}
+
+// NumPolys returns the number of contour polygons.
+func (ph *PolygonsHandle) NumPolys() int {
+	return int(C.mb_polygons_num_polys(ph.p))
+}
+
+// Poly returns a Go-owned copy of contour polygon idx. The data is
+// copied out of C memory so the result remains valid after Delete.
+func (ph *PolygonsHandle) Poly(idx int) []geom.Vec2 {
+	size := int(C.mb_polygons_poly_size(ph.p, C.size_t(idx)))
+	if size == 0 {
+		return nil
+	}
+	p := C.mb_polygons_poly_data(ph.p, C.size_t(idx))
+	src := unsafe.Slice((*geom.Vec2)(unsafe.Pointer(p)), size)
+	out := make([]geom.Vec2, size)
+	copy(out, src)
+	return out
+}
+
+// Delete releases the C++ Polygons.
+func (ph *PolygonsHandle) Delete() { C.mb_delete_polygons(ph.p) }
+
+// AllHaveNormals wraps Impl::AllHaveNormals — true iff every entry of
+// meshRelation_.meshIDtransform has hasNormals set.
+func (i *Impl) AllHaveNormals() bool {
+	return C.mb_impl_all_have_normals(i.p) != 0
+}
+
+// VertNormals returns a Go slice aliasing the Impl's vertNormal_ buffer.
+// Read-only; valid only while i has not been Deleted. May be empty if
+// the impl has no vertex normals computed.
+func (i *Impl) VertNormals() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_impl_vert_normals_data(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+}
+
+// VertNormals returns a writable view of vertNormal_ on the mutable impl.
+func (mi *MutableImpl) VertNormals() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_mutable_impl_vert_normals_data(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+}
+
+// ResizeVerts wraps vertPos_.resize(n).
+func (mi *MutableImpl) ResizeVerts(n int) {
+	C.mb_mutable_impl_resize_verts(mi.p, C.size_t(n))
+}
+
+// ResizeVertNormals wraps vertNormal_.resize(n).
+func (mi *MutableImpl) ResizeVertNormals(n int) {
+	C.mb_mutable_impl_resize_vert_normals(mi.p, C.size_t(n))
+}
+
+// SetEpsilonValue assigns impl->epsilon_ directly (no SetEpsilon
+// computation; just a field write).
+func (mi *MutableImpl) SetEpsilonValue(epsilon float64) {
+	C.mb_mutable_impl_set_epsilon_value(mi.p, C.double(epsilon))
+}
+
+// GatherFaces wraps Impl::GatherFaces(src, faceNew2Old).
+func (mi *MutableImpl) GatherFaces(src *Impl, faceNew2Old []int32) {
+	var fp unsafe.Pointer
+	if len(faceNew2Old) > 0 {
+		fp = unsafe.Pointer(&faceNew2Old[0])
+	}
+	C.mb_mutable_impl_gather_faces(mi.p, src.p, (*C.int)(fp), C.size_t(len(faceNew2Old)))
+}
+
+// ReindexVerts wraps Impl::ReindexVerts(vertNew2Old, numOldVert).
+func (mi *MutableImpl) ReindexVerts(vertNew2Old []int32, numOldVert int) {
+	var vp unsafe.Pointer
+	if len(vertNew2Old) > 0 {
+		vp = unsafe.Pointer(&vertNew2Old[0])
+	}
+	C.mb_mutable_impl_reindex_verts(mi.p, (*C.int)(vp),
+		C.size_t(len(vertNew2Old)), C.size_t(numOldVert))
+}
+
+// DisjointSets wraps src/disjoint_sets.h's class — union-find with
+// connectedComponents. Used by Decompose.
+type DisjointSets struct {
+	p    *C.mb_disjoint_sets_handle
+	size int
+}
+
+func NewDisjointSets(size int) *DisjointSets {
+	return &DisjointSets{
+		p:    C.mb_disjoint_sets_new(C.size_t(size)),
+		size: size,
+	}
+}
+
+func (d *DisjointSets) Unite(a, b int) {
+	C.mb_disjoint_sets_unite(d.p, C.size_t(a), C.size_t(b))
+}
+
+// ConnectedComponents returns (numComponents, perVertLabel).
+func (d *DisjointSets) ConnectedComponents() (int, []int32) {
+	labels := make([]int32, d.size)
+	var lp unsafe.Pointer
+	if d.size > 0 {
+		lp = unsafe.Pointer(&labels[0])
+	}
+	n := int(C.mb_disjoint_sets_connected_components(d.p, (*C.int)(lp)))
+	return n, labels
+}
+
+func (d *DisjointSets) Delete() { C.mb_delete_disjoint_sets(d.p) }
+
+// MeshGL64Handle wraps a C++ manifold::MeshGL64 produced by
+// GetMeshGLImpl. Field accessors copy contents into Go-owned slices;
+// pair with Delete.
+type MeshGL64Handle struct{ p *C.ManifoldMeshGL64 }
+
+// GetMeshGL64 calls GetMeshGLImpl<double, uint64_t>(impl, normalIdx).
+func (i *Impl) GetMeshGL64(normalIdx int) *MeshGL64Handle {
+	return &MeshGL64Handle{p: C.mb_impl_get_meshgl64(i.p, C.int(normalIdx))}
+}
+
+// Delete releases the C++ MeshGL64.
+func (mh *MeshGL64Handle) Delete() { C.manifold_delete_meshgl64(mh.p) }
+
+func (mh *MeshGL64Handle) NumProp() int {
+	return int(C.manifold_meshgl64_num_prop(mh.p))
+}
+
+func (mh *MeshGL64Handle) Tolerance() float64 {
+	return float64(C.manifold_meshgl64_tolerance(mh.p))
+}
+
+func meshGLF64Slice(n C.size_t, fill func(unsafe.Pointer)) []float64 {
+	if n == 0 {
+		return nil
+	}
+	out := make([]float64, n)
+	fill(unsafe.Pointer(&out[0]))
+	return out
+}
+
+func meshGLU64Slice(n C.size_t, fill func(unsafe.Pointer)) []uint64 {
+	if n == 0 {
+		return nil
+	}
+	out := make([]uint64, n)
+	fill(unsafe.Pointer(&out[0]))
+	return out
+}
+
+func meshGLU32Slice(n C.size_t, fill func(unsafe.Pointer)) []uint32 {
+	if n == 0 {
+		return nil
+	}
+	out := make([]uint32, n)
+	fill(unsafe.Pointer(&out[0]))
+	return out
+}
+
+func meshGLU8Slice(n C.size_t, fill func(unsafe.Pointer)) []uint8 {
+	if n == 0 {
+		return nil
+	}
+	out := make([]uint8, n)
+	fill(unsafe.Pointer(&out[0]))
+	return out
+}
+
+func (mh *MeshGL64Handle) VertProperties() []float64 {
+	return meshGLF64Slice(C.manifold_meshgl64_vert_properties_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_vert_properties(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) TriVerts() []uint64 {
+	return meshGLU64Slice(C.manifold_meshgl64_tri_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_tri_verts(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) MergeFromVert() []uint64 {
+	return meshGLU64Slice(C.manifold_meshgl64_merge_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_merge_from_vert(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) MergeToVert() []uint64 {
+	return meshGLU64Slice(C.manifold_meshgl64_merge_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_merge_to_vert(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) RunIndex() []uint64 {
+	return meshGLU64Slice(C.manifold_meshgl64_run_index_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_run_index(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) RunOriginalID() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl64_run_original_id_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_run_original_id(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) RunTransform() []float64 {
+	return meshGLF64Slice(C.manifold_meshgl64_run_transform_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_run_transform(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) RunFlags() []uint8 {
+	return meshGLU8Slice(C.manifold_meshgl64_run_flags_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_run_flags(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) FaceID() []uint64 {
+	return meshGLU64Slice(C.manifold_meshgl64_face_id_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_face_id(p, mh.p) })
+}
+
+func (mh *MeshGL64Handle) HalfedgeTangent() []float64 {
+	return meshGLF64Slice(C.manifold_meshgl64_tangent_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl64_halfedge_tangent(p, mh.p) })
+}
+
+// Triangulate wraps the public free function manifold::Triangulate.
+// Returns a flat []int32 of triangle indices (3 per triangle).
+func Triangulate(polys [][]geom.Vec2, epsilon float64) []int32 {
+	var totalPoints int
+	for _, p := range polys {
+		totalPoints += len(p)
+	}
+	flat := make([]geom.Vec2, 0, totalPoints)
+	sizes := make([]C.size_t, len(polys))
+	for i, p := range polys {
+		flat = append(flat, p...)
+		sizes[i] = C.size_t(len(p))
+	}
+	var fp unsafe.Pointer
+	if totalPoints > 0 {
+		fp = unsafe.Pointer(&flat[0])
+	}
+	var sp unsafe.Pointer
+	if len(sizes) > 0 {
+		sp = unsafe.Pointer(&sizes[0])
+	}
+	h := C.mb_triangulate(
+		(*C.double)(fp), (*C.size_t)(sp), C.size_t(len(polys)),
+		C.double(epsilon),
+	)
+	defer C.mb_delete_tri_verts(h)
+	n := int(C.mb_tri_verts_count(h))
+	if n == 0 {
+		return nil
+	}
+	src := unsafe.Slice((*int32)(unsafe.Pointer(C.mb_tri_verts_data(h))), n*3)
+	out := make([]int32, n*3)
+	copy(out, src)
+	return out
+}
+
+// CreateHalfedges wraps Impl::CreateHalfedges(triVerts). triVerts is
+// 3 ints per triangle.
+func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
+	var tp unsafe.Pointer
+	if len(triVerts) > 0 {
+		tp = unsafe.Pointer(&triVerts[0])
+	}
+	C.mb_mutable_impl_create_halfedges(mi.p, (*C.int)(tp),
+		C.size_t(len(triVerts)/3))
+}
+
+// warpRegistry tracks Go callback functions across a cgo call into
+// Impl::Warp. Each call gets a fresh ID that the C++ side passes back
+// through mbWarpTrampoline (declared via //export below).
+var warpRegistry = struct {
+	sync.Mutex
+	next uintptr
+	fns  map[uintptr]func(*geom.Vec3)
+}{fns: map[uintptr]func(*geom.Vec3){}}
+
+func registerWarpFn(fn func(*geom.Vec3)) uintptr {
+	warpRegistry.Lock()
+	defer warpRegistry.Unlock()
+	warpRegistry.next++
+	id := warpRegistry.next
+	warpRegistry.fns[id] = fn
+	return id
+}
+
+func unregisterWarpFn(id uintptr) {
+	warpRegistry.Lock()
+	defer warpRegistry.Unlock()
+	delete(warpRegistry.fns, id)
+}
+
+//export mbWarpTrampoline
+func mbWarpTrampoline(id C.uintptr_t, xyz *C.double) {
+	warpRegistry.Lock()
+	fn := warpRegistry.fns[uintptr(id)]
+	warpRegistry.Unlock()
+	if fn == nil {
+		return
+	}
+	arr := unsafe.Slice((*float64)(unsafe.Pointer(xyz)), 3)
+	v := &geom.Vec3{X: arr[0], Y: arr[1], Z: arr[2]}
+	fn(v)
+	arr[0] = v.X
+	arr[1] = v.Y
+	arr[2] = v.Z
+}
+
+// Warp calls Impl::Warp with the Go-supplied per-vertex function. The
+// callback receives a pointer to a Vec3 and may mutate it in place to
+// change that vertex's position.
+func (mi *MutableImpl) Warp(fn func(*geom.Vec3)) {
+	id := registerWarpFn(fn)
+	defer unregisterWarpFn(id)
+	C.mb_mutable_impl_warp(mi.p, C.uintptr_t(id))
+}
+
+// warpBatchRegistry tracks Go callbacks for Impl::WarpBatch.
+var warpBatchRegistry = struct {
+	sync.Mutex
+	next uintptr
+	fns  map[uintptr]func([]geom.Vec3)
+}{fns: map[uintptr]func([]geom.Vec3){}}
+
+func registerWarpBatchFn(fn func([]geom.Vec3)) uintptr {
+	warpBatchRegistry.Lock()
+	defer warpBatchRegistry.Unlock()
+	warpBatchRegistry.next++
+	id := warpBatchRegistry.next
+	warpBatchRegistry.fns[id] = fn
+	return id
+}
+
+func unregisterWarpBatchFn(id uintptr) {
+	warpBatchRegistry.Lock()
+	defer warpBatchRegistry.Unlock()
+	delete(warpBatchRegistry.fns, id)
+}
+
+// setPropertiesRegistry tracks Go callbacks across a cgo call into
+// Manifold::SetProperties. The C++ side invokes mbSetPropertiesTrampoline
+// once per halfedge per triangle, with both new and old property
+// pointers (and their per-vertex lengths).
+var setPropertiesRegistry = struct {
+	sync.Mutex
+	next uintptr
+	fns  map[uintptr]func(newProp []float64, pos geom.Vec3, oldProp []float64)
+}{fns: map[uintptr]func(newProp []float64, pos geom.Vec3, oldProp []float64){}}
+
+func registerSetPropertiesFn(fn func([]float64, geom.Vec3, []float64)) uintptr {
+	setPropertiesRegistry.Lock()
+	defer setPropertiesRegistry.Unlock()
+	setPropertiesRegistry.next++
+	id := setPropertiesRegistry.next
+	setPropertiesRegistry.fns[id] = fn
+	return id
+}
+
+func unregisterSetPropertiesFn(id uintptr) {
+	setPropertiesRegistry.Lock()
+	defer setPropertiesRegistry.Unlock()
+	delete(setPropertiesRegistry.fns, id)
+}
+
+//export mbSetPropertiesTrampoline
+func mbSetPropertiesTrampoline(
+	id C.uintptr_t,
+	newProp *C.double, newLen C.size_t,
+	px, py, pz C.double,
+	oldProp *C.double, oldLen C.size_t,
+) {
+	setPropertiesRegistry.Lock()
+	fn := setPropertiesRegistry.fns[uintptr(id)]
+	setPropertiesRegistry.Unlock()
+	if fn == nil {
+		return
+	}
+	var newSlice []float64
+	if newLen > 0 {
+		newSlice = unsafe.Slice((*float64)(unsafe.Pointer(newProp)), int(newLen))
+	}
+	var oldSlice []float64
+	if oldLen > 0 {
+		oldSlice = unsafe.Slice((*float64)(unsafe.Pointer(oldProp)), int(oldLen))
+	}
+	pos := geom.Vec3{X: float64(px), Y: float64(py), Z: float64(pz)}
+	fn(newSlice, pos, oldSlice)
+}
+
+// SetProperties wraps the public Manifold::SetProperties via a Go-side
+// callback. Passing fn=nil mirrors the C++ propFunc=nullptr path
+// (parallel zero-fill of every new property).
+func SetProperties(
+	m *handle.Manifold, numProp int,
+	fn func(newProp []float64, pos geom.Vec3, oldProp []float64),
+) *handle.Manifold {
+	var id uintptr
+	if fn != nil {
+		id = registerSetPropertiesFn(fn)
+		defer unregisterSetPropertiesFn(id)
+	}
+	p := C.mb_manifold_set_properties(
+		(*C.ManifoldManifold)(m.Ptr()),
+		C.int(numProp),
+		C.uintptr_t(id),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// levelSetRegistry tracks Go SDF callbacks across a cgo call into
+// Manifold::LevelSet. The C++ side captures the ID in a lambda and
+// invokes mbLevelSetTrampoline once per voxel.
+var levelSetRegistry = struct {
+	sync.Mutex
+	next uintptr
+	fns  map[uintptr]func(geom.Vec3) float64
+}{fns: map[uintptr]func(geom.Vec3) float64{}}
+
+func registerLevelSetFn(fn func(geom.Vec3) float64) uintptr {
+	levelSetRegistry.Lock()
+	defer levelSetRegistry.Unlock()
+	levelSetRegistry.next++
+	id := levelSetRegistry.next
+	levelSetRegistry.fns[id] = fn
+	return id
+}
+
+func unregisterLevelSetFn(id uintptr) {
+	levelSetRegistry.Lock()
+	defer levelSetRegistry.Unlock()
+	delete(levelSetRegistry.fns, id)
+}
+
+//export mbLevelSetTrampoline
+func mbLevelSetTrampoline(id C.uintptr_t, x, y, z C.double) C.double {
+	levelSetRegistry.Lock()
+	fn := levelSetRegistry.fns[uintptr(id)]
+	levelSetRegistry.Unlock()
+	if fn == nil {
+		return 0
+	}
+	return C.double(fn(geom.Vec3{X: float64(x), Y: float64(y), Z: float64(z)}))
+}
+
+// LevelSet wraps the static Manifold::LevelSet with a Go-side SDF
+// callback. bbox is given as (min, max); edgeLength, level and
+// tolerance map to the C++ arguments. canParallel must only be true
+// when the Go callback is safe to call from multiple TBB threads
+// concurrently (the registry lookup is safe, but the user-provided
+// function may not be).
+func LevelSet(
+	sdf func(geom.Vec3) float64,
+	bboxMin, bboxMax geom.Vec3,
+	edgeLength, level, tolerance float64,
+	canParallel bool,
+) *handle.Manifold {
+	id := registerLevelSetFn(sdf)
+	defer unregisterLevelSetFn(id)
+	canP := C.int(0)
+	if canParallel {
+		canP = 1
+	}
+	p := C.mb_manifold_level_set(
+		C.uintptr_t(id),
+		C.double(bboxMin.X), C.double(bboxMin.Y), C.double(bboxMin.Z),
+		C.double(bboxMax.X), C.double(bboxMax.Y), C.double(bboxMax.Z),
+		C.double(edgeLength), C.double(level), C.double(tolerance),
+		canP,
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+//export mbWarpBatchTrampoline
+func mbWarpBatchTrampoline(id C.uintptr_t, p *C.double, n C.size_t) {
+	warpBatchRegistry.Lock()
+	fn := warpBatchRegistry.fns[uintptr(id)]
+	warpBatchRegistry.Unlock()
+	if fn == nil || n == 0 {
+		return
+	}
+	verts := unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+	fn(verts)
+}
+
+// WarpBatch calls Impl::WarpBatch with the Go-supplied function. The
+// callback receives the entire vertex slice aliasing C++ memory and
+// may mutate in place.
+func (mi *MutableImpl) WarpBatch(fn func([]geom.Vec3)) {
+	id := registerWarpBatchFn(fn)
+	defer unregisterWarpBatchFn(id)
+	C.mb_mutable_impl_warp_batch(mi.p, C.uintptr_t(id))
+}
+
+// ManifoldFromMeshGL64 wraps the C++ Manifold(MeshGL64) constructor.
+// All optional fields may be nil; only NumProp/vertProperties/triVerts
+// and tolerance are required.
+func ManifoldFromMeshGL64(
+	numProp int,
+	vertProperties []float64,
+	triVerts []uint64,
+	mergeFromVert []uint64,
+	mergeToVert []uint64,
+	runIndex []uint64,
+	runOriginalID []uint32,
+	runTransform []float64,
+	runFlags []uint8,
+	faceID []uint64,
+	halfedgeTangent []float64,
+	tolerance float64,
+) *handle.Manifold {
+	ptrF64 := func(s []float64) (*C.double, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.double)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU64 := func(s []uint64) (*C.uint64_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint64_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU32 := func(s []uint32) (*C.uint32_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint32_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU8 := func(s []uint8) (*C.uint8_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint8_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	vpPtr, vpLen := ptrF64(vertProperties)
+	tvPtr, tvLen := ptrU64(triVerts)
+	mfPtr, mfLen := ptrU64(mergeFromVert)
+	mtPtr, mtLen := ptrU64(mergeToVert)
+	riPtr, riLen := ptrU64(runIndex)
+	roPtr, roLen := ptrU32(runOriginalID)
+	rtPtr, rtLen := ptrF64(runTransform)
+	rfPtr, rfLen := ptrU8(runFlags)
+	fiPtr, fiLen := ptrU64(faceID)
+	htPtr, htLen := ptrF64(halfedgeTangent)
+	p := C.mb_manifold_from_meshgl64(
+		C.size_t(numProp),
+		vpPtr, vpLen,
+		tvPtr, tvLen,
+		mfPtr, mfLen,
+		mtPtr, mtLen,
+		riPtr, riLen,
+		roPtr, roLen,
+		rtPtr, rtLen,
+		rfPtr, rfLen,
+		fiPtr, fiLen,
+		htPtr, htLen,
+		C.double(tolerance),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// ManifoldFromMeshGL wraps the C++ Manifold(MeshGL) constructor
+// (float/uint32 variant).
+func ManifoldFromMeshGL(
+	numProp int,
+	vertProperties []float32,
+	triVerts []uint32,
+	mergeFromVert []uint32,
+	mergeToVert []uint32,
+	runIndex []uint32,
+	runOriginalID []uint32,
+	runTransform []float32,
+	runFlags []uint8,
+	faceID []uint32,
+	halfedgeTangent []float32,
+	tolerance float32,
+) *handle.Manifold {
+	ptrF32 := func(s []float32) (*C.float, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.float)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU32 := func(s []uint32) (*C.uint32_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint32_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU8 := func(s []uint8) (*C.uint8_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint8_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	vpPtr, vpLen := ptrF32(vertProperties)
+	tvPtr, tvLen := ptrU32(triVerts)
+	mfPtr, mfLen := ptrU32(mergeFromVert)
+	mtPtr, mtLen := ptrU32(mergeToVert)
+	riPtr, riLen := ptrU32(runIndex)
+	roPtr, roLen := ptrU32(runOriginalID)
+	rtPtr, rtLen := ptrF32(runTransform)
+	rfPtr, rfLen := ptrU8(runFlags)
+	fiPtr, fiLen := ptrU32(faceID)
+	htPtr, htLen := ptrF32(halfedgeTangent)
+	p := C.mb_manifold_from_meshgl(
+		C.size_t(numProp),
+		vpPtr, vpLen,
+		tvPtr, tvLen,
+		mfPtr, mfLen,
+		mtPtr, mtLen,
+		riPtr, riLen,
+		roPtr, roLen,
+		rtPtr, rtLen,
+		rfPtr, rfLen,
+		fiPtr, fiLen,
+		htPtr, htLen,
+		C.float(tolerance),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// Smoothness mirrors manifold::Smoothness (include/manifold/common.h).
+// The halfedge index = 3*tri + i, paired with a smoothness factor in
+// [0, 1] (0 = sharp crease, 1 = fully smooth).
+type Smoothness struct {
+	Halfedge   uint64
+	Smoothness float64
+}
+
+// SmoothFromMeshGL64 wraps the static Manifold::Smooth(MeshGL64,
+// sharpenedEdges). Mirrors ManifoldFromMeshGL64 plus the sharpened
+// edges array. All optional mesh fields may be nil.
+func SmoothFromMeshGL64(
+	numProp int,
+	vertProperties []float64,
+	triVerts []uint64,
+	mergeFromVert []uint64,
+	mergeToVert []uint64,
+	runIndex []uint64,
+	runOriginalID []uint32,
+	runTransform []float64,
+	runFlags []uint8,
+	faceID []uint64,
+	halfedgeTangent []float64,
+	tolerance float64,
+	sharpenedEdges []Smoothness,
+) *handle.Manifold {
+	ptrF64 := func(s []float64) (*C.double, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.double)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU64 := func(s []uint64) (*C.uint64_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint64_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU32 := func(s []uint32) (*C.uint32_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint32_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU8 := func(s []uint8) (*C.uint8_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint8_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	vpPtr, vpLen := ptrF64(vertProperties)
+	tvPtr, tvLen := ptrU64(triVerts)
+	mfPtr, mfLen := ptrU64(mergeFromVert)
+	mtPtr, mtLen := ptrU64(mergeToVert)
+	riPtr, riLen := ptrU64(runIndex)
+	roPtr, roLen := ptrU32(runOriginalID)
+	rtPtr, rtLen := ptrF64(runTransform)
+	rfPtr, rfLen := ptrU8(runFlags)
+	fiPtr, fiLen := ptrU64(faceID)
+	htPtr, htLen := ptrF64(halfedgeTangent)
+
+	// Split the Smoothness pairs into two parallel arrays for the C ABI.
+	halfedges := make([]C.size_t, len(sharpenedEdges))
+	smooths := make([]C.double, len(sharpenedEdges))
+	for i, s := range sharpenedEdges {
+		halfedges[i] = C.size_t(s.Halfedge)
+		smooths[i] = C.double(s.Smoothness)
+	}
+	var shePtr *C.size_t
+	var shsPtr *C.double
+	if len(sharpenedEdges) > 0 {
+		shePtr = (*C.size_t)(unsafe.Pointer(&halfedges[0]))
+		shsPtr = (*C.double)(unsafe.Pointer(&smooths[0]))
+	}
+
+	p := C.mb_manifold_smooth_meshgl64(
+		C.size_t(numProp),
+		vpPtr, vpLen,
+		tvPtr, tvLen,
+		mfPtr, mfLen,
+		mtPtr, mtLen,
+		riPtr, riLen,
+		roPtr, roLen,
+		rtPtr, rtLen,
+		rfPtr, rfLen,
+		fiPtr, fiLen,
+		htPtr, htLen,
+		C.double(tolerance),
+		shePtr, shsPtr, C.size_t(len(sharpenedEdges)),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// SmoothFromMeshGL wraps the static Manifold::Smooth(MeshGL,
+// sharpenedEdges) — float/uint32 variant.
+func SmoothFromMeshGL(
+	numProp int,
+	vertProperties []float32,
+	triVerts []uint32,
+	mergeFromVert []uint32,
+	mergeToVert []uint32,
+	runIndex []uint32,
+	runOriginalID []uint32,
+	runTransform []float32,
+	runFlags []uint8,
+	faceID []uint32,
+	halfedgeTangent []float32,
+	tolerance float32,
+	sharpenedEdges []Smoothness,
+) *handle.Manifold {
+	ptrF32 := func(s []float32) (*C.float, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.float)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU32 := func(s []uint32) (*C.uint32_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint32_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	ptrU8 := func(s []uint8) (*C.uint8_t, C.size_t) {
+		if len(s) == 0 {
+			return nil, 0
+		}
+		return (*C.uint8_t)(unsafe.Pointer(&s[0])), C.size_t(len(s))
+	}
+	vpPtr, vpLen := ptrF32(vertProperties)
+	tvPtr, tvLen := ptrU32(triVerts)
+	mfPtr, mfLen := ptrU32(mergeFromVert)
+	mtPtr, mtLen := ptrU32(mergeToVert)
+	riPtr, riLen := ptrU32(runIndex)
+	roPtr, roLen := ptrU32(runOriginalID)
+	rtPtr, rtLen := ptrF32(runTransform)
+	rfPtr, rfLen := ptrU8(runFlags)
+	fiPtr, fiLen := ptrU32(faceID)
+	htPtr, htLen := ptrF32(halfedgeTangent)
+
+	halfedges := make([]C.size_t, len(sharpenedEdges))
+	smooths := make([]C.double, len(sharpenedEdges))
+	for i, s := range sharpenedEdges {
+		halfedges[i] = C.size_t(s.Halfedge)
+		smooths[i] = C.double(s.Smoothness)
+	}
+	var shePtr *C.size_t
+	var shsPtr *C.double
+	if len(sharpenedEdges) > 0 {
+		shePtr = (*C.size_t)(unsafe.Pointer(&halfedges[0]))
+		shsPtr = (*C.double)(unsafe.Pointer(&smooths[0]))
+	}
+
+	p := C.mb_manifold_smooth_meshgl(
+		C.size_t(numProp),
+		vpPtr, vpLen,
+		tvPtr, tvLen,
+		mfPtr, mfLen,
+		mtPtr, mtLen,
+		riPtr, riLen,
+		roPtr, roLen,
+		rtPtr, rtLen,
+		rfPtr, rfLen,
+		fiPtr, fiLen,
+		htPtr, htLen,
+		C.float(tolerance),
+		shePtr, shsPtr, C.size_t(len(sharpenedEdges)),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// MatchesTriNormals wraps Impl::MatchesTriNormals() — returns true when
+// every face normal agrees with the cross product of its triangle's
+// halfedges (a validity check used by tests).
+func (i *Impl) MatchesTriNormals() bool {
+	return C.mb_impl_matches_tri_normals(i.p) != 0
+}
+
+// NumDegenerateTris wraps Impl::NumDegenerateTris() — number of
+// triangles with zero or near-zero area.
+func (i *Impl) NumDegenerateTris() int {
+	return int(C.mb_impl_num_degenerate_tris(i.p))
+}
+
+// Boolean3 wraps the C++ Boolean3 helper (src/boolean3.h). Used by
+// Split: a single Boolean3 evaluation can yield both the Intersect and
+// the Subtract result, which is cheaper than running two booleans.
+// Pair with Delete.
+type Boolean3 struct{ p *C.mb_boolean3_handle }
+
+// NewBoolean3 mirrors `Boolean3 boolean(*a, *b, op);` — the op (using
+// the same integer values as the C++ OpType enum: 0=Add, 1=Subtract,
+// 2=Intersect) passed at construction selects the
+// intersection-extraction strategy used internally; Result(op) can then
+// be called for any of the three op types.
+func NewBoolean3(a, b *Impl, op int) *Boolean3 {
+	return &Boolean3{p: C.mb_boolean3_new(a.p, b.p, C.int(op))}
+}
+
+// Result(op) calls Boolean3::Result(op) and returns the resulting
+// Manifold (wrapped in a fresh ManifoldManifold handle).
+func (b *Boolean3) Result(op int) *handle.Manifold {
+	return handle.NewManifold(unsafe.Pointer(C.mb_boolean3_result_as_manifold(b.p, C.int(op))))
+}
+
+func (b *Boolean3) Delete() { C.mb_delete_boolean3(b.p) }
+
+// RayHit is the Go mirror of C++ struct RayHit / C ManifoldRayHit.
+type RayHit struct {
+	FaceID   uint64
+	Distance float64
+	Position geom.Vec3
+	Normal   geom.Vec3
+}
+
+// RayCast wraps Impl::RayCast(origin, endpoint). Returns the hits in
+// Go-owned form; no handle to release.
+func (i *Impl) RayCast(origin, endpoint geom.Vec3) []RayHit {
+	vec := C.mb_impl_ray_cast(i.p,
+		C.double(origin.X), C.double(origin.Y), C.double(origin.Z),
+		C.double(endpoint.X), C.double(endpoint.Y), C.double(endpoint.Z))
+	defer C.manifold_delete_ray_hit_vec(vec)
+	n := int(C.manifold_ray_hit_vec_length(vec))
+	out := make([]RayHit, n)
+	for j := 0; j < n; j++ {
+		h := C.manifold_ray_hit_vec_get(vec, C.size_t(j))
+		out[j] = RayHit{
+			FaceID:   uint64(h.face_id),
+			Distance: float64(h.distance),
+			Position: geom.Vec3{X: float64(h.position.x), Y: float64(h.position.y), Z: float64(h.position.z)},
+			Normal:   geom.Vec3{X: float64(h.normal.x), Y: float64(h.normal.y), Z: float64(h.normal.z)},
+		}
+	}
+	return out
+}
+
+// MeshGLHandle wraps a C++ manifold::MeshGL (float / uint32) produced
+// by GetMeshGLImpl. Pair with Delete.
+type MeshGLHandle struct{ p *C.ManifoldMeshGL }
+
+// GetMeshGL calls GetMeshGLImpl<float, uint32_t>(impl, normalIdx).
+func (i *Impl) GetMeshGL(normalIdx int) *MeshGLHandle {
+	return &MeshGLHandle{p: C.mb_impl_get_meshgl(i.p, C.int(normalIdx))}
+}
+
+func (mh *MeshGLHandle) Delete() { C.manifold_delete_meshgl(mh.p) }
+
+func (mh *MeshGLHandle) NumProp() int {
+	return int(C.manifold_meshgl_num_prop(mh.p))
+}
+
+func (mh *MeshGLHandle) Tolerance() float32 {
+	return float32(C.manifold_meshgl_tolerance(mh.p))
+}
+
+func meshGLF32Slice(n C.size_t, fill func(unsafe.Pointer)) []float32 {
+	if n == 0 {
+		return nil
+	}
+	out := make([]float32, n)
+	fill(unsafe.Pointer(&out[0]))
+	return out
+}
+
+func (mh *MeshGLHandle) VertProperties() []float32 {
+	return meshGLF32Slice(C.manifold_meshgl_vert_properties_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_vert_properties(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) TriVerts() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_tri_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_tri_verts(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) MergeFromVert() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_merge_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_merge_from_vert(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) MergeToVert() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_merge_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_merge_to_vert(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) RunIndex() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_run_index_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_run_index(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) RunOriginalID() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_run_original_id_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_run_original_id(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) RunTransform() []float32 {
+	return meshGLF32Slice(C.manifold_meshgl_run_transform_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_run_transform(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) RunFlags() []uint8 {
+	return meshGLU8Slice(C.manifold_meshgl_run_flags_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_run_flags(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) FaceID() []uint32 {
+	return meshGLU32Slice(C.manifold_meshgl_face_id_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_face_id(p, mh.p) })
+}
+
+func (mh *MeshGLHandle) HalfedgeTangent() []float32 {
+	return meshGLF32Slice(C.manifold_meshgl_tangent_length(mh.p),
+		func(p unsafe.Pointer) { C.manifold_meshgl_halfedge_tangent(p, mh.p) })
+}
+
+// QualityGetCircularSegments wraps Quality::GetCircularSegments(radius)
+// — the default segment count for the given radius based on the
+// global Quality params (circularAngle_, circularEdgeLength_, etc.).
+func QualityGetCircularSegments(radius float64) int {
+	return int(C.mb_quality_get_circular_segments(C.double(radius)))
+}
+
+// Extrude wraps Manifold::Extrude. polys is the cross-section: each
+// inner []geom.Vec2 is a SimplePolygon, the outer slice is Polygons.
+// Other parameters match the C++ signature.
+func Extrude(polys [][]geom.Vec2, height float64, nDivisions int,
+	twistDegrees, scaleX, scaleY float64,
+) *handle.Manifold {
+	var totalPoints int
+	for _, p := range polys {
+		totalPoints += len(p)
+	}
+	flat := make([]geom.Vec2, 0, totalPoints)
+	sizes := make([]C.size_t, len(polys))
+	for i, p := range polys {
+		flat = append(flat, p...)
+		sizes[i] = C.size_t(len(p))
+	}
+	var fp unsafe.Pointer
+	if totalPoints > 0 {
+		fp = unsafe.Pointer(&flat[0])
+	}
+	var sp unsafe.Pointer
+	if len(sizes) > 0 {
+		sp = unsafe.Pointer(&sizes[0])
+	}
+	p := C.mb_manifold_extrude(
+		(*C.double)(fp), (*C.size_t)(sp), C.size_t(len(polys)),
+		C.double(height), C.int(nDivisions), C.double(twistDegrees),
+		C.double(scaleX), C.double(scaleY),
+	)
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+// MutableImpl wraps a non-const shared_ptr<Manifold::Impl>. Returned by
+// Impl.Copy. Mutator methods on MutableImpl mirror the non-const
+// methods on C++ Manifold::Impl.
+type MutableImpl struct{ p *C.mb_mutable_impl_handle }
+
+// InitializeOriginal calls C++ Impl::InitializeOriginal on the wrapped
+// impl.
+func (mi *MutableImpl) InitializeOriginal() {
+	C.mb_mutable_impl_initialize_original(mi.p)
+}
+
+// SetNormalsAndCoplanar calls C++ Impl::SetNormalsAndCoplanar.
+func (mi *MutableImpl) SetNormalsAndCoplanar() {
+	C.mb_mutable_impl_set_normals_and_coplanar(mi.p)
+}
+
+// SimplifyTopology calls C++ Impl::SimplifyTopology.
+func (mi *MutableImpl) SimplifyTopology() {
+	C.mb_mutable_impl_simplify_topology(mi.p)
+}
+
+// SortGeometry calls C++ Impl::SortGeometry.
+func (mi *MutableImpl) SortGeometry() {
+	C.mb_mutable_impl_sort_geometry(mi.p)
+}
+
+// SetToleranceValue mirrors the C++ direct field assignment
+// `impl->tolerance_ = tol`. It does not run the higher-level
+// SetTolerance public API (which also calls SetNormalsAndCoplanar etc.).
+func (mi *MutableImpl) SetToleranceValue(tol float64) {
+	C.mb_mutable_impl_set_tolerance_value(mi.p, C.double(tol))
+}
+
+// Hull calls C++ Impl::Hull(vertPos, nullptr) — fills this (empty)
+// Impl with the convex hull of the supplied vertex array.
+func (mi *MutableImpl) Hull(verts []geom.Vec3) {
+	var vp unsafe.Pointer
+	if len(verts) > 0 {
+		vp = unsafe.Pointer(&verts[0])
+	}
+	C.mb_mutable_impl_hull(mi.p, (*C.double)(vp), C.size_t(len(verts)))
+}
+
+// RefineN calls Impl::Refine with the constant n-1 splits-per-edge
+// lambda from C++ Manifold::Refine.
+func (mi *MutableImpl) RefineN(n int) {
+	C.mb_mutable_impl_refine_n(mi.p, C.int(n))
+}
+
+// RefineToLength calls Impl::Refine with the |edge|/length lambda from
+// C++ Manifold::RefineToLength.
+func (mi *MutableImpl) RefineToLength(length float64) {
+	C.mb_mutable_impl_refine_to_length(mi.p, C.double(length))
+}
+
+// RefineToTolerance calls Impl::Refine with the tangent-aware lambda
+// from C++ Manifold::RefineToTolerance. Caller must check that the Impl
+// actually has halfedgeTangents before calling (matches C++ behavior).
+func (mi *MutableImpl) RefineToTolerance(tolerance float64) {
+	C.mb_mutable_impl_refine_to_tolerance(mi.p, C.double(tolerance))
+}
+
+// ToManifold wraps the mutable Impl in a Manifold via FromImpl. The Impl
+// continues to be reference-counted by both this MutableImpl and the
+// resulting Manifold; either may be deleted independently.
+func (mi *MutableImpl) ToManifold() *handle.Manifold {
+	return handle.NewManifold(unsafe.Pointer(C.mb_manifold_from_mutable_impl(mi.p)))
+}
+
+// Delete releases the Go-side hold on the C++ shared_ptr<Impl>.
+func (mi *MutableImpl) Delete() { C.mb_delete_mutable_impl(mi.p) }
+
+// PropagateStatus builds an empty Manifold whose Impl carries the given
+// Error code. Mirrors C++ Manifold::PropagateStatus.
+func PropagateStatus(status int) *handle.Manifold {
+	return handle.NewManifold(unsafe.Pointer(C.mb_propagate_status(C.int(status))))
+}
+
+// CsgNode wraps a C++ shared_ptr<CsgNode>. Produced by LoadPNode (mirror
+// of Manifold::LoadPNode) and CsgNode.Transform (mirror of
+// CsgNode::Transform). Pair every CsgNode with Delete.
+type CsgNode struct{ p *C.mb_csg_node_handle }
+
+// LoadPNode wraps the private Manifold::LoadPNode, which returns the
+// underlying CsgNode tree without forcing leaf evaluation.
+func LoadPNode(h *handle.Manifold) *CsgNode {
+	return &CsgNode{p: C.mb_manifold_load_pnode((*C.ManifoldManifold)(h.Ptr()))}
+}
+
+// Transform calls C++ CsgNode::Transform with the 12-element 3x4
+// matrix (column-major), returning a new CsgNode that represents the
+// deferred transform.
+func (n *CsgNode) Transform(
+	x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4 float64,
+) *CsgNode {
+	return &CsgNode{p: C.mb_csg_node_transform(
+		n.p,
+		C.double(x1), C.double(y1), C.double(z1),
+		C.double(x2), C.double(y2), C.double(z2),
+		C.double(x3), C.double(y3), C.double(z3),
+		C.double(x4), C.double(y4), C.double(z4),
+	)}
+}
+
+// Boolean calls C++ CsgNode::Boolean(other, op), returning a new
+// CsgNode (typically a CsgOpNode) representing the deferred operation.
+// op uses the same integer values as the C++ OpType enum:
+// 0 = Add (Union), 1 = Subtract (Difference), 2 = Intersect.
+func (n *CsgNode) Boolean(other *CsgNode, op int) *CsgNode {
+	return &CsgNode{p: C.mb_csg_node_boolean(n.p, other.p, C.int(op))}
+}
+
+// NewCsgOpNode wraps `make_shared<CsgOpNode>(children, op)` — combines
+// many CsgNode children under a single op (e.g. union of N manifolds).
+// Used by BatchBoolean / Compose.
+func NewCsgOpNode(nodes []*CsgNode, op int) *CsgNode {
+	if len(nodes) == 0 {
+		return nil
+	}
+	cnodes := make([]*C.mb_csg_node_handle, len(nodes))
+	for i, n := range nodes {
+		cnodes[i] = n.p
+	}
+	return &CsgNode{p: C.mb_csg_op_node(
+		(**C.mb_csg_node_handle)(unsafe.Pointer(&cnodes[0])),
+		C.size_t(len(nodes)),
+		C.int(op),
+	)}
+}
+
+// ToManifold wraps this CsgNode in a Manifold via the private
+// Manifold(shared_ptr<CsgNode>) constructor (accessed through the
+// ManifoldBridge friend).
+func (n *CsgNode) ToManifold() *handle.Manifold {
+	return handle.NewManifold(unsafe.Pointer(C.mb_manifold_from_csg_node(n.p)))
+}
+
+// Delete releases the Go-side hold on the shared_ptr<CsgNode>.
+func (n *CsgNode) Delete() { C.mb_delete_csg_node(n.p) }
+
+// HalfedgeStarts returns a Go slice aliasing the start-vert array of the
+// Impl's halfedges (the SoA start_ buffer of class Halfedges). Triangle t
+// has vertices at HalfedgeStarts()[3t], [3t+1], [3t+2]. Read-only; valid
+// only while i has not been Deleted.
+func (i *Impl) HalfedgeStarts() []int32 {
+	var n C.size_t
+	p := C.mb_impl_halfedge_starts(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(p), int(n))
+}
+
+// ImplScalars is a Go-side view of small scalar fields on Manifold::Impl.
+type ImplScalars struct {
+	NumProp             int
+	PropertiesSize      int
+	HalfedgeTangentSize int
+	Tolerance           float64
+	Epsilon             float64
+	OriginalID          int
+	Status              int
+}
+
+// Scalars reads all the small scalar fields off the Impl in one cgo call.
+// Used by accessor ports that previously each made their own bridge call.
+func (i *Impl) Scalars() ImplScalars {
+	var s C.mb_impl_scalars
+	C.mb_impl_get_scalars(i.p, &s)
+	return ImplScalars{
+		NumProp:             int(s.num_prop),
+		PropertiesSize:      int(s.properties_size),
+		HalfedgeTangentSize: int(s.halfedge_tangent_size),
+		Tolerance:           float64(s.tolerance),
+		Epsilon:             float64(s.epsilon),
+		OriginalID:          int(s.original_id),
+		Status:              int(s.status),
+	}
+}
+
+// NumVert returns the vertex count. Drilled fully: the Impl exposes its
+// vertPos_ buffer; Go computes len() of the resulting slice.
+func NumVert(h *handle.Manifold) int {
+	impl := GetImpl(h)
+	defer impl.Delete()
+	return len(impl.Verts())
+}
+
+// Empty returns a handle to a new empty Manifold. The C++ Manifold default
+// constructor's role; needed by ports that have an "invalid input → empty
+// result" branch (e.g. Mirror with a zero normal).
+func Empty() *handle.Manifold {
+	mem := C.manifold_alloc_manifold()
+	p := C.manifold_empty(unsafe.Pointer(mem))
+	return handle.NewManifold(unsafe.Pointer(p))
+}
+
+
+func DeleteManifold(h *handle.Manifold) {
+	C.manifold_delete_manifold((*C.ManifoldManifold)(h.Ptr()))
+}
+
