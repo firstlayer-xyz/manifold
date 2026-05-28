@@ -2,11 +2,11 @@ package manifold
 
 import (
 	"runtime"
-	"sort"
 	"sync"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
 // dedupeState holds Go-side copies of all the impl arrays that
@@ -362,9 +362,9 @@ func (s *dedupeState) findDuplicatesParallel() []int {
 		}(s, lo, hi)
 	}
 	wg.Wait()
-	// C++ stable_sort + unique. We use sort.Ints (sort.Slice with
-	// stable is unnecessary for ints) and a dedupe pass.
-	sort.Ints(results)
+	// C++ manifold::stable_sort + unique (src/edge_op.cpp:920). Match
+	// the primitive (default stable_sort threshold 1e4), then dedupe.
+	parallel.StableSort(parallel.AutoPolicy(len(results), 10000), results, func(a, b int) bool { return a < b })
 	if len(results) > 1 {
 		w := 1
 		for i := 1; i < len(results); i++ {

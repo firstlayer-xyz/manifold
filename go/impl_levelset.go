@@ -109,25 +109,23 @@ func LevelSet(
 				bounds.Min, gridSize, gridPow, spacing, level, tolerance)
 		})
 
-		if gridVerts.Full() {
-			// Grow ratio from a sample lastVert. Mirrors C++.
-			vidx := vertIndex.Load() - 1
-			if vidx < 0 {
+		if gridVerts.Full() { // Resize HashTable
+			// Grow tableSize from a sample lastVert, matching C++
+			// (src/sdf.cpp:520-529). C++ reads vertPos[index[0]-1]
+			// unconditionally — when the table is Full the vertex
+			// counter index[0] is always > 0, so no guard is needed.
+			lastVert := vertPos[vertIndex.Load()-1]
+			lastIndex := encodeIndex([4]int{
+				int((lastVert.X - bounds.Min.X) / spacing.X),
+				int((lastVert.Y - bounds.Min.Y) / spacing.Y),
+				int((lastVert.Z - bounds.Min.Z) / spacing.Z),
+				1,
+			}, gridPow)
+			ratio := float64(maxIndex) / float64(lastIndex)
+			if ratio > 1000 { // do not trust the ratio if it is too large
 				tableSize *= 2
 			} else {
-				lastVert := vertPos[vidx]
-				lastIndex := encodeIndex([4]int{
-					int((lastVert.X - bounds.Min.X) / spacing.X),
-					int((lastVert.Y - bounds.Min.Y) / spacing.Y),
-					int((lastVert.Z - bounds.Min.Z) / spacing.Z),
-					1,
-				}, gridPow)
-				ratio := float64(maxIndex) / float64(lastIndex)
-				if ratio > 1000 {
-					tableSize *= 2
-				} else {
-					tableSize = uint64(float64(tableSize) * ratio)
-				}
+				tableSize = uint64(float64(tableSize) * ratio)
 			}
 			gridVerts = hashtable.New[gridVert](int(tableSize), 1)
 			vertPos = make([]Vec3, gridVerts.Size()*7)
@@ -171,10 +169,10 @@ func LevelSet(
 // LevelSet constants — mirror src/sdf.cpp:27-35.
 
 const (
-	lsCrossing   = -2
-	lsNone       = -1
-	lsKS         = 0.25
-	lsKD         = 1/lsKS - 1
+	lsCrossing    = -2
+	lsNone        = -1
+	lsKS          = 0.25
+	lsKD          = 1/lsKS - 1
 	lsKMaxOpposed = 3
 )
 

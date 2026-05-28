@@ -140,18 +140,38 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `bridge.Impl` with a Go finalizer or a
   `sync.Map[bridgeHandlePtr, *Collider]` sidecar).
 
-### `Impl::Transform` — full Collider rebuild
+### `Impl::Transform` — Collider refresh (now faithful)
 
 - C++ `Impl::Transform` updates `collider_` via
   `Collider::Transform` (axis-aligned) or `Collider::UpdateBoxes`
-  (otherwise) — both reuse the existing radix tree.
-- Go uses the full bridge `BuildCollider` rebuild because (a) the
-  Go Collider isn't persisted and (b) the bridge doesn't expose
-  those fast-paths.
-- Algorithmically different — the radix tree is rebuilt from
-  scratch instead of transformed in place.
-- **Fix when:** Go-side Collider gets a persistent home AND bridge
-  Collider::Transform / UpdateBoxes accessors are exposed.
+  (otherwise) — both reuse the existing radix tree, leaving the
+  mesh's face order untouched.
+- Go now mirrors this exactly: `result := i.Copy()` carries a copy
+  of the source's C++ `collider_` (the copy ctor copies it), and
+  the bridge fast-paths `ColliderTransform` /
+  `ColliderUpdateBoxes` update it in place — `collider.IsAxisAligned`
+  picks the branch.
+- **History (fixed):** an earlier port called `SortFaces`
+  (→ `GatherFacesInPlace`) before a full `BuildCollider` rebuild,
+  which **physically Morton-reordered** the result's
+  halfedges/triRef/normals/tangents — violating Transform's
+  "preserves triangulation/halfedge ordering" contract. Removed.
+- **Remaining deviation:** the collider still lives C++-side (the
+  two new bridge fns), because the Go Collider isn't persisted on
+  the bridge Impl. Goes away with the persistent-Collider home
+  noted above.
+
+### `SetProperties` nil-callback zero-fill — benign-race adaptation
+
+- C++ runs a `Par` loop over triangles writing 0 into each
+  referenced propVert slot (src/manifold.cpp:636-646). Adjacent
+  triangles share propVerts, so concurrent threads write 0 to the
+  same slot — a benign idempotent-zero race C++ tolerates.
+- Go's `make([]float64, …)` already zero-initializes the buffer (as
+  C++'s `Vec(…, 0)` does), so the fill is redundant; the nil case is
+  a no-op. Replaying it as a parallel write would be a benign race
+  that `-race` flags, so Go skips it. Output is identical. The
+  callback case keeps C++'s `Seq` policy.
 
 ### `Manifold::Transform` bypasses CSG lazy fusion
 

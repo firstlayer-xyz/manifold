@@ -130,9 +130,10 @@ func extrude(crossSection Polygons, height float64,
 		polyFlat[i] = make([]geom.Vec2, len(poly))
 		copy(polyFlat[i], poly)
 	}
-	// Use a tolerance of 0 (the C++ uses pImpl_->epsilon_, which is
-	// -1 for a fresh Impl — same as 0 here).
-	top := bridge.Triangulate(polyFlat, 0)
+	// C++ Extrude calls TriangulateIdx(polygonsIndexed) with no epsilon
+	// (src/constructors.cpp:309), so epsilon takes its default of -1
+	// (include/manifold/polygon.h:55) — NOT 0.
+	top := bridge.Triangulate(polyFlat, -1)
 	for t := 0; t < len(top); t += 3 {
 		// Bottom: flipped winding to face -Z.
 		tris = append(tris, int32(top[t+0]), int32(top[t+2]), int32(top[t+1]))

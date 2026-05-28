@@ -3,7 +3,6 @@ package manifold
 import (
 	"math"
 	"runtime"
-	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -86,10 +85,10 @@ func (mi *MutableImpl) splitPinchedVertsSerial() {
 //     - walk the ForVert fan, marking all visited locally;
 //     - find the smallest halfedge index in the fan;
 //     - atomically try CAS(largestEdge[vert], MAX, smallest). If
-//       it succeeds, this fan is the first one rooted at this vert.
-//       If it fails AND the existing value != smallest, this vert
-//       has multiple fans → pinched. Push (smallest, existing) onto
-//       a per-worker pinched list.
+//     it succeeds, this fan is the first one rooted at this vert.
+//     If it fails AND the existing value != smallest, this vert
+//     has multiple fans → pinched. Push (smallest, existing) onto
+//     a per-worker pinched list.
 //  3. After parallel: gather worker pinched lists, sort + dedupe.
 //  4. Serial walk over `pinched`: for each halfedge index, if its
 //     startVert hasn't been processed yet, mark processed; otherwise
@@ -184,8 +183,9 @@ func (mi *MutableImpl) splitPinchedVertsParallel() {
 	}
 	wg.Wait()
 
-	// Step 3: sort + dedupe pinched.
-	sort.Ints(pinched)
+	// Step 3: sort + dedupe pinched. C++ uses manifold::stable_sort
+	// (src/edge_op.cpp:779) — match the primitive (default threshold 1e4).
+	parallel.StableSort(parallel.AutoPolicy(len(pinched), 10000), pinched, func(a, b int) bool { return a < b })
 	if len(pinched) > 1 {
 		w := 1
 		for i := 1; i < len(pinched); i++ {

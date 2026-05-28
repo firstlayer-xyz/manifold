@@ -101,19 +101,20 @@ func (m *Manifold) Volume() float64 {
 	if numTri == 0 {
 		return 0
 	}
-	var sum, comp float64
+	// Kahan-Babuška/Neumaier summation, matching C++ GetProperty
+	// (src/properties.cpp:283-292).
+	var value, valueComp float64
 	for t := 0; t < numTri; t++ {
 		v0 := verts[starts[3*t]]
 		v1 := verts[starts[3*t+1]]
 		v2 := verts[starts[3*t+2]]
 		cross := v1.Sub(v0).Cross(v2.Sub(v0))
 		val := cross.Dot(v0) / 6.0
-		y := val - comp
-		t1 := sum + y
-		comp = (t1 - sum) - y
-		sum = t1
+		next := value + val
+		valueComp += (value - next) + val
+		value = next
 	}
-	return sum + comp
+	return value + valueComp
 }
 
 // SurfaceArea returns the total surface area of the mesh.
@@ -129,19 +130,20 @@ func (m *Manifold) SurfaceArea() float64 {
 	if numTri == 0 {
 		return 0
 	}
-	var sum, comp float64
+	// Kahan-Babuška/Neumaier summation, matching C++ GetProperty
+	// (src/properties.cpp:283-292).
+	var value, valueComp float64
 	for t := 0; t < numTri; t++ {
 		v0 := verts[starts[3*t]]
 		v1 := verts[starts[3*t+1]]
 		v2 := verts[starts[3*t+2]]
 		cross := v1.Sub(v0).Cross(v2.Sub(v0))
 		val := math.Sqrt(cross.Dot(cross)) / 2.0
-		y := val - comp
-		t1 := sum + y
-		comp = (t1 - sum) - y
-		sum = t1
+		next := value + val
+		valueComp += (value - next) + val
+		value = next
 	}
-	return sum + comp
+	return value + valueComp
 }
 
 // NumProp returns the number of properties per vertex (3 = position only).
@@ -201,6 +203,7 @@ func (m *Manifold) OriginalID() int {
 //   - newImpl->InitializeOriginal() — newImpl.InitializeOriginal()
 //   - newImpl->SetNormalsAndCoplanar() — newImpl.SetNormalsAndCoplanar()
 //   - Manifold(make_shared<CsgLeafNode>(newImpl)) — newImpl.ToManifold()
+//
 // Each line of the C++ body has a matching Go statement that calls into
 // the corresponding inner C++ function unchanged. Future drilling will
 // replace InitializeOriginal / SetNormalsAndCoplanar with Go ports.
@@ -342,7 +345,7 @@ func ReserveIDs(n uint32) uint32 {
 //   - status check / PropagateStatus — bridge.PropagateStatus
 //   - make_shared<Impl>(*leafImpl)   — impl.Copy() → MutableImpl
 //   - if tol > impl->tolerance_      — read from source via Scalars()
-//       set tolerance / Normals / SimplifyTopology / SortGeometry
+//     set tolerance / Normals / SimplifyTopology / SortGeometry
 //   - else                            — set tol to max(epsilon, tol)
 //   - return Manifold(impl)           — newImpl.ToManifold()
 func (m *Manifold) SetTolerance(tol float64) *Manifold {
@@ -384,9 +387,10 @@ func halfspace(bBox Box, normal Vec3, originOffset float64) *Manifold {
 // normal, with the cut sealed.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::TrimByPlane(vec3 normal, double originOffset) const {
-//     return *this ^ Halfspace(BoundingBox(), normal, originOffset);
-//   }
+//
+//	Manifold Manifold::TrimByPlane(vec3 normal, double originOffset) const {
+//	  return *this ^ Halfspace(BoundingBox(), normal, originOffset);
+//	}
 func (m *Manifold) TrimByPlane(normal Vec3, offset float64) *Manifold {
 	return m.Intersection(halfspace(m.BoundingBox(), normal, offset))
 }
@@ -395,11 +399,12 @@ func (m *Manifold) TrimByPlane(normal Vec3, offset float64) *Manifold {
 // when they overlap. The search is bounded by searchLength.
 //
 // Ported top-down from C++:
-//   double Manifold::MinGap(const Manifold& other, double searchLength) const {
-//     auto intersect = *this ^ other;
-//     if (!intersect.IsEmpty()) return 0.0;
-//     return GetCsgLeafNode().GetImpl()->MinGap(*other...->GetImpl(), searchLength);
-//   }
+//
+//	double Manifold::MinGap(const Manifold& other, double searchLength) const {
+//	  auto intersect = *this ^ other;
+//	  if (!intersect.IsEmpty()) return 0.0;
+//	  return GetCsgLeafNode().GetImpl()->MinGap(*other...->GetImpl(), searchLength);
+//	}
 func (m *Manifold) MinGap(other *Manifold, searchLength float64) float64 {
 	if !m.Intersection(other).IsEmpty() {
 		return 0
@@ -424,9 +429,10 @@ const (
 // Boolean performs the given boolean operation between m and other.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Boolean(const Manifold& second, OpType op) const {
-//     return Manifold(LoadPNode()->Boolean(second.LoadPNode(), op));
-//   }
+//
+//	Manifold Manifold::Boolean(const Manifold& second, OpType op) const {
+//	  return Manifold(LoadPNode()->Boolean(second.LoadPNode(), op));
+//	}
 func (m *Manifold) Boolean(other *Manifold, op OpType) *Manifold {
 	a := bridge.LoadPNode(m.h)
 	defer a.Delete()
@@ -461,12 +467,13 @@ func (m *Manifold) Intersection(other *Manifold) *Manifold {
 // separately.
 //
 // Ported top-down from C++ Manifold::Split:
-//   auto impl1 = GetCsgLeafNode().GetImpl();
-//   auto impl2 = cutter.GetCsgLeafNode().GetImpl();
-//   Boolean3 boolean(*impl1, *impl2, OpType::Subtract);
-//   auto result1 = ...Impl(boolean.Result(OpType::Intersect));
-//   auto result2 = ...Impl(boolean.Result(OpType::Subtract));
-//   return std::make_pair(Manifold(result1), Manifold(result2));
+//
+//	auto impl1 = GetCsgLeafNode().GetImpl();
+//	auto impl2 = cutter.GetCsgLeafNode().GetImpl();
+//	Boolean3 boolean(*impl1, *impl2, OpType::Subtract);
+//	auto result1 = ...Impl(boolean.Result(OpType::Intersect));
+//	auto result2 = ...Impl(boolean.Result(OpType::Subtract));
+//	return std::make_pair(Manifold(result1), Manifold(result2));
 func (m *Manifold) Split(cutter *Manifold) (*Manifold, *Manifold) {
 	impl1 := getImpl(m)
 	defer impl1.Delete()
@@ -483,13 +490,14 @@ func (m *Manifold) Split(cutter *Manifold) (*Manifold, *Manifold) {
 // result is the half on the normal side, the second on the opposite.
 //
 // Ported top-down from C++ Manifold::SplitByPlane:
-//   auto leafImpl = GetCsgLeafNode().GetImpl();
-//   if (leafImpl->status_ != Error::NoError) {
-//     Manifold err = PropagateStatus(leafImpl->status_);
-//     return {err, err};
-//   }
-//   if (IsEmpty()) return {Manifold(), Manifold()};
-//   return Split(Halfspace(BoundingBox(), normal, originOffset));
+//
+//	auto leafImpl = GetCsgLeafNode().GetImpl();
+//	if (leafImpl->status_ != Error::NoError) {
+//	  Manifold err = PropagateStatus(leafImpl->status_);
+//	  return {err, err};
+//	}
+//	if (IsEmpty()) return {Manifold(), Manifold()};
+//	return Split(Halfspace(BoundingBox(), normal, originOffset));
 func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *Manifold) {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -563,9 +571,10 @@ func (m *Manifold) IsSelfIntersecting() bool {
 // tests.
 //
 // Ported top-down from C++:
-//   bool Manifold::MatchesTriNormals() const {
-//     return GetCsgLeafNode().GetImpl()->MatchesTriNormals();
-//   }
+//
+//	bool Manifold::MatchesTriNormals() const {
+//	  return GetCsgLeafNode().GetImpl()->MatchesTriNormals();
+//	}
 //
 // The inner Impl::MatchesTriNormals is drilled to native Go — see
 // impl_props.go.
@@ -579,9 +588,10 @@ func (m *Manifold) MatchesTriNormals() bool {
 // near-zero area. Used as a sanity check in tests.
 //
 // Ported top-down from C++:
-//   size_t Manifold::NumDegenerateTris() const {
-//     return GetCsgLeafNode().GetImpl()->NumDegenerateTris();
-//   }
+//
+//	size_t Manifold::NumDegenerateTris() const {
+//	  return GetCsgLeafNode().GetImpl()->NumDegenerateTris();
+//	}
 //
 // The inner Impl::NumDegenerateTris is drilled to native Go — see
 // impl_props.go.
@@ -595,9 +605,10 @@ func (m *Manifold) NumDegenerateTris() int {
 // operations and tolerance-based geometry tests (Impl::epsilon_).
 //
 // Ported top-down from C++:
-//   double Manifold::GetEpsilon() const {
-//     return GetCsgLeafNode().GetImpl()->epsilon_;
-//   }
+//
+//	double Manifold::GetEpsilon() const {
+//	  return GetCsgLeafNode().GetImpl()->epsilon_;
+//	}
 func (m *Manifold) GetEpsilon() float64 {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -742,11 +753,12 @@ func (m *Manifold) Status() Error {
 // HullPts returns the convex hull of a free-standing set of points.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Hull(const std::vector<vec3>& pts) {
-//     std::shared_ptr<Impl> impl = std::make_shared<Impl>();
-//     impl->Hull(Vec<vec3>(pts));
-//     return Manifold(std::make_shared<CsgLeafNode>(impl));
-//   }
+//
+//	Manifold Manifold::Hull(const std::vector<vec3>& pts) {
+//	  std::shared_ptr<Impl> impl = std::make_shared<Impl>();
+//	  impl->Hull(Vec<vec3>(pts));
+//	  return Manifold(std::make_shared<CsgLeafNode>(impl));
+//	}
 func HullPts(pts []Vec3) *Manifold {
 	impl := newImpl()
 	defer impl.Delete()
@@ -834,11 +846,12 @@ type MeshGL struct {
 // GetMeshGL exports the mesh as a single-precision MeshGL.
 //
 // Ported top-down from C++:
-//   MeshGL Manifold::GetMeshGL(int normalIdx) const {
-//     const Impl& impl = *GetCsgLeafNode().GetImpl();
-//     if (normalIdx < 0 && impl.AllHaveNormals()) normalIdx = 0;
-//     return GetMeshGLImpl<float, uint32_t>(impl, normalIdx);
-//   }
+//
+//	MeshGL Manifold::GetMeshGL(int normalIdx) const {
+//	  const Impl& impl = *GetCsgLeafNode().GetImpl();
+//	  if (normalIdx < 0 && impl.AllHaveNormals()) normalIdx = 0;
+//	  return GetMeshGLImpl<float, uint32_t>(impl, normalIdx);
+//	}
 func (m *Manifold) GetMeshGL(normalIdx int) MeshGL {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -924,7 +937,8 @@ type Smoothness struct {
 //
 // Ported top-down from C++ Manifold::Smooth(const MeshGL64&, const
 // std::vector<Smoothness>&):
-//   return Manifold(SmoothImpl(meshGL64, sharpenedEdges));
+//
+//	return Manifold(SmoothImpl(meshGL64, sharpenedEdges));
 func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 	edges := make([]bridge.Smoothness, len(sharpenedEdges))
 	for i, s := range sharpenedEdges {
@@ -947,11 +961,12 @@ func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 // bridge.Invalid wrapper around C++ Manifold::Invalid.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Invalid() {
-//     auto pImpl_ = std::make_shared<Impl>();
-//     pImpl_->status_ = Error::InvalidConstruction;
-//     return Manifold(pImpl_);
-//   }
+//
+//	Manifold Manifold::Invalid() {
+//	  auto pImpl_ = std::make_shared<Impl>();
+//	  pImpl_->status_ = Error::InvalidConstruction;
+//	  return Manifold(pImpl_);
+//	}
 func invalidManifold() *Manifold {
 	mi := newImpl()
 	defer mi.Delete()
@@ -964,11 +979,12 @@ func invalidManifold() *Manifold {
 // bridge.PropagateStatus wrapper.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::PropagateStatus(Error status) {
-//     auto pImpl = std::make_shared<Impl>();
-//     pImpl->status_ = status;
-//     return Manifold(pImpl);
-//   }
+//
+//	Manifold Manifold::PropagateStatus(Error status) {
+//	  auto pImpl = std::make_shared<Impl>();
+//	  pImpl->status_ = status;
+//	  return Manifold(pImpl);
+//	}
 func propagateStatus(status Error) *Manifold {
 	mi := newImpl()
 	defer mi.Delete()
@@ -998,7 +1014,8 @@ type ExecutionContext struct {
 // flag is clear and Progress is 1.0 (no work scheduled).
 //
 // Ported top-down from C++:
-//   ExecutionContext ctx;
+//
+//	ExecutionContext ctx;
 func NewExecutionContext() *ExecutionContext {
 	return &ExecutionContext{c: bridge.NewExecutionContext()}
 }
@@ -1032,9 +1049,10 @@ func (ctx *ExecutionContext) Delete() { ctx.c.Delete() }
 // ctx. The original m is unaffected.
 //
 // Ported top-down from C++ Manifold::WithContext:
-//   Manifold result = *this;
-//   std::atomic_store(&result.ctx_, ctx.impl_);
-//   return result;
+//
+//	Manifold result = *this;
+//	std::atomic_store(&result.ctx_, ctx.impl_);
+//	return result;
 func (m *Manifold) WithContext(ctx *ExecutionContext) *Manifold {
 	return wrap(bridge.WithContext(m.h, ctx.c))
 }
@@ -1084,29 +1102,26 @@ func (m *Manifold) SetProperties(
 	starts := newImpl.HalfedgeStarts()
 	props := newImpl.HalfedgeProps()
 	numTri := newImpl.NumTri()
-	// C++ picks Par when no user callback (idempotent zero-fill) and
-	// Seq when there is one (user fn may have side effects). Mirror.
-	policy := parallel.Seq
-	if fn == nil {
-		policy = parallel.AutoPolicy(numTri)
-	}
-	parallel.ForEachN(policy, numTri, func(tri int) {
-		for i := 0; i < 3; i++ {
-			edge := 3*tri + i
-			propVert := int(props[edge])
-			if fn == nil {
-				for p := 0; p < numProp; p++ {
-					newProperties[numProp*propVert+p] = 0
-				}
-				continue
+	// C++ runs a parallel loop over triangles that, for a nil callback,
+	// writes 0 into each referenced propVert slot (src/manifold.cpp:636-646,
+	// ExecutionPolicy::Par). In Go that fill is redundant — make() already
+	// zero-initialized newProperties (as C++'s Vec(..., 0) did) — so the
+	// nil case needs no loop. Replaying it as a parallel write would be a
+	// benign idempotent-zero data race that -race flags. The callback case
+	// mirrors C++'s Seq policy (the user fn may have side effects).
+	if fn != nil {
+		parallel.ForEachN(parallel.Seq, numTri, func(tri int) {
+			for i := 0; i < 3; i++ {
+				edge := 3*tri + i
+				propVert := int(props[edge])
+				vert := int(starts[edge])
+				oldStart := propVert * oldNumProp
+				oldEnd := oldStart + oldNumProp
+				fn(newProperties[propVert*numProp:propVert*numProp+numProp],
+					verts[vert], oldProperties[oldStart:oldEnd])
 			}
-			vert := int(starts[edge])
-			oldStart := propVert * oldNumProp
-			oldEnd := oldStart + oldNumProp
-			fn(newProperties[propVert*numProp:propVert*numProp+numProp],
-				verts[vert], oldProperties[oldStart:oldEnd])
-		}
-	})
+		})
+	}
 
 	newImpl.h.SetNumProp(numProp)
 	newImpl.h.SetProperties(newProperties)
@@ -1119,7 +1134,8 @@ func (m *Manifold) SetProperties(
 //
 // Ported top-down from C++ Manifold::Smooth(const MeshGL&, const
 // std::vector<Smoothness>&):
-//   return Manifold(SmoothImpl(meshGL, sharpenedEdges));
+//
+//	return Manifold(SmoothImpl(meshGL, sharpenedEdges));
 func SmoothFromMeshGL(m MeshGL, sharpenedEdges []Smoothness) *Manifold {
 	edges := make([]bridge.Smoothness, len(sharpenedEdges))
 	for i, s := range sharpenedEdges {
@@ -1142,11 +1158,12 @@ func SmoothFromMeshGL(m MeshGL, sharpenedEdges []Smoothness) *Manifold {
 // normals).
 //
 // Ported top-down from C++:
-//   MeshGL64 Manifold::GetMeshGL64(int normalIdx) const {
-//     const Impl& impl = *GetCsgLeafNode().GetImpl();
-//     if (normalIdx < 0 && impl.AllHaveNormals()) normalIdx = 0;
-//     return GetMeshGLImpl<double, uint64_t>(impl, normalIdx);
-//   }
+//
+//	MeshGL64 Manifold::GetMeshGL64(int normalIdx) const {
+//	  const Impl& impl = *GetCsgLeafNode().GetImpl();
+//	  if (normalIdx < 0 && impl.AllHaveNormals()) normalIdx = 0;
+//	  return GetMeshGLImpl<double, uint64_t>(impl, normalIdx);
+//	}
 func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -1177,9 +1194,10 @@ type RayHit = bridge.RayHit
 // manifold's surface, returning all hits sorted by distance.
 //
 // Ported top-down from C++:
-//   std::vector<RayHit> Manifold::RayCast(vec3 origin, vec3 endpoint) const {
-//     return GetCsgLeafNode().GetImpl()->RayCast(origin, endpoint);
-//   }
+//
+//	std::vector<RayHit> Manifold::RayCast(vec3 origin, vec3 endpoint) const {
+//	  return GetCsgLeafNode().GetImpl()->RayCast(origin, endpoint);
+//	}
 func (m *Manifold) RayCast(origin, endpoint Vec3) []RayHit {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -1499,9 +1517,10 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 // height as a set of 2D polygons.
 //
 // Ported top-down from C++:
-//   Polygons Manifold::Slice(double height) const {
-//     return GetCsgLeafNode().GetImpl()->Slice(height);
-//   }
+//
+//	Polygons Manifold::Slice(double height) const {
+//	  return GetCsgLeafNode().GetImpl()->Slice(height);
+//	}
 func (m *Manifold) Slice(height float64) Polygons {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -1513,9 +1532,10 @@ func (m *Manifold) Slice(height float64) Polygons {
 // positive fill rule for a clean result.
 //
 // Ported top-down from C++:
-//   Polygons Manifold::Project() const {
-//     return GetCsgLeafNode().GetImpl()->Project();
-//   }
+//
+//	Polygons Manifold::Project() const {
+//	  return GetCsgLeafNode().GetImpl()->Project();
+//	}
 func (m *Manifold) Project() Polygons {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -1525,15 +1545,16 @@ func (m *Manifold) Project() Polygons {
 // Hull returns the convex hull of the Manifold's vertices.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Hull() const {
-//     auto ctx = std::atomic_load(&ctx_);
-//     auto srcImpl = GetCsgLeafNode(ctx.get()).GetImpl();
-//     if (srcImpl->status_ != Error::NoError)
-//       return PropagateStatus(srcImpl->status_);
-//     auto impl = std::make_shared<Impl>();
-//     impl->Hull(srcImpl->vertPos_, ctx.get());
-//     return Manifold(std::make_shared<CsgLeafNode>(impl));
-//   }
+//
+//	Manifold Manifold::Hull() const {
+//	  auto ctx = std::atomic_load(&ctx_);
+//	  auto srcImpl = GetCsgLeafNode(ctx.get()).GetImpl();
+//	  if (srcImpl->status_ != Error::NoError)
+//	    return PropagateStatus(srcImpl->status_);
+//	  auto impl = std::make_shared<Impl>();
+//	  impl->Hull(srcImpl->vertPos_, ctx.get());
+//	  return Manifold(std::make_shared<CsgLeafNode>(impl));
+//	}
 //
 // The ExecutionContext (ctx_) field is not yet ported to Go; the Go body
 // behaves as if ctx is null, which matches the default path in C++.
@@ -1675,9 +1696,11 @@ func (m *Manifold) BoundingBox() Box {
 // Transform applies an arbitrary 3x4 affine transform.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Transform(const mat3x4& m) const {
-//     return Manifold(LoadPNode()->Transform(m));
-//   }
+//
+//	Manifold Manifold::Transform(const mat3x4& m) const {
+//	  return Manifold(LoadPNode()->Transform(m));
+//	}
+//
 // Each inner call goes through its own bridge: LoadPNode (private,
 // reached via ManifoldBridge friend), CsgNode::Transform, and the
 // private Manifold(shared_ptr<CsgNode>) constructor.
@@ -1693,9 +1716,11 @@ func (m *Manifold) Transform(t Mat3x4) *Manifold {
 // centered on the origin.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Tetrahedron() {
-//     return Manifold(std::make_shared<Impl>(Impl::Shape::Tetrahedron));
-//   }
+//
+//	Manifold Manifold::Tetrahedron() {
+//	  return Manifold(std::make_shared<Impl>(Impl::Shape::Tetrahedron));
+//	}
+//
 // The Shape constructor uses the default mat3x4 (identity).
 func Tetrahedron() *Manifold {
 	identity := Mat3x4{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
@@ -1710,15 +1735,16 @@ func Tetrahedron() *Manifold {
 // Manifold.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::Cube(vec3 size, bool center) {
-//     if (size.x < 0.0 || size.y < 0.0 || size.z < 0.0 ||
-//         la::length(size) == 0.) {
-//       return Invalid();
-//     }
-//     mat3x4 m({{size.x,0,0},{0,size.y,0},{0,0,size.z}},
-//              center ? (-size/2.0) : vec3(0.0));
-//     return Manifold(std::make_shared<Impl>(Impl::Shape::Cube, m));
-//   }
+//
+//	Manifold Manifold::Cube(vec3 size, bool center) {
+//	  if (size.x < 0.0 || size.y < 0.0 || size.z < 0.0 ||
+//	      la::length(size) == 0.) {
+//	    return Invalid();
+//	  }
+//	  mat3x4 m({{size.x,0,0},{0,size.y,0},{0,0,size.z}},
+//	           center ? (-size/2.0) : vec3(0.0));
+//	  return Manifold(std::make_shared<Impl>(Impl::Shape::Cube, m));
+//	}
 func Cube(size Vec3, center bool) *Manifold {
 	if size.X < 0 || size.Y < 0 || size.Z < 0 || size.Length() == 0 {
 		return invalidManifold()
@@ -1769,6 +1795,14 @@ func (m *Manifold) Scale(v Vec3) *Manifold {
 // Householder reflection matrix I - 2·n·nᵀ, call Transform with a
 // zero translation column.
 func (m *Manifold) Mirror(normal Vec3) *Manifold {
+	// C++ checks the leaf impl's status and propagates it BEFORE the
+	// zero-normal test (src/manifold.cpp:549-552).
+	impl := getImpl(m)
+	status := Error(impl.Scalars().Status)
+	impl.Delete()
+	if status != NoError {
+		return propagateStatus(status)
+	}
 	lenSq := normal.X*normal.X + normal.Y*normal.Y + normal.Z*normal.Z
 	if lenSq == 0 {
 		return wrap(bridge.Empty())

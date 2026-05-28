@@ -151,7 +151,6 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 // (PolygonsHandle / Impl.Slice / Impl.Project removed — Slice and
 // Project are now native Go; see impl_slice.go and impl_project.go.)
 
-
 // VertNormals returns a Go slice aliasing the Impl's vertNormal_ buffer.
 // Read-only; valid only while i has not been Deleted. May be empty if
 // the impl has no vertex normals computed.
@@ -1008,6 +1007,30 @@ func (mi *MutableImpl) BuildCollider(boxes []float64, morton []uint32) {
 		C.size_t(n))
 }
 
+// ColliderTransform applies Collider::Transform to the existing collider_
+// (axis-aligned transforms only), reusing the radix tree. Mirrors the
+// axis-aligned branch of Impl::Transform's collider refresh. t is the
+// mat3x4 as [column][row] (same layout as AddMeshIDTransform).
+func (mi *MutableImpl) ColliderTransform(t [4][3]float64) {
+	C.mb_mutable_impl_collider_transform(mi.p,
+		C.double(t[0][0]), C.double(t[0][1]), C.double(t[0][2]),
+		C.double(t[1][0]), C.double(t[1][1]), C.double(t[1][2]),
+		C.double(t[2][0]), C.double(t[2][1]), C.double(t[2][2]),
+		C.double(t[3][0]), C.double(t[3][1]), C.double(t[3][2]))
+}
+
+// ColliderUpdateBoxes recomputes collider_ leaf boxes from the supplied
+// per-face boxes (flat, 6 doubles each), reusing the radix tree topology.
+// Mirrors the non-axis-aligned branch of Impl::Transform's collider refresh.
+func (mi *MutableImpl) ColliderUpdateBoxes(boxes []float64) {
+	if len(boxes) == 0 {
+		return
+	}
+	C.mb_mutable_impl_collider_update_boxes(mi.p,
+		(*C.double)(unsafe.Pointer(&boxes[0])),
+		C.size_t(len(boxes)/6))
+}
+
 // SetToleranceValue mirrors the C++ direct field assignment
 // `impl->tolerance_ = tol`. It does not run the higher-level
 // SetTolerance public API (which also calls SetNormalsAndCoplanar etc.).
@@ -1185,8 +1208,8 @@ func (i *Impl) TriRefs() []TriRef {
 // MeshIDRelation is the Go mirror of one entry in
 // meshRelation_.meshIDtransform.
 type MeshIDRelation struct {
-	MeshID, OriginalID  int32
-	Transform           [4][3]float64
+	MeshID, OriginalID   int32
+	Transform            [4][3]float64
 	BackSide, HasNormals bool
 }
 
@@ -1297,7 +1320,6 @@ func Empty() *handle.Manifold {
 	return handle.NewManifold(unsafe.Pointer(p))
 }
 
-
 func DeleteManifold(h *handle.Manifold) {
 	C.manifold_delete_manifold((*C.ManifoldManifold)(h.Ptr()))
 }
@@ -1348,4 +1370,3 @@ func WithContext(h *handle.Manifold, ctx *ExecutionContext) *handle.Manifold {
 		(*C.ManifoldManifold)(h.Ptr()), ctx.p)
 	return handle.NewManifold(unsafe.Pointer(p))
 }
-

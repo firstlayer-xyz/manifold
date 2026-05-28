@@ -3,6 +3,7 @@ package manifold
 import (
 	"math"
 
+	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -41,14 +42,20 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	if isIdentityMat3x4(t) {
 		return i.Copy()
 	}
-	result := i.Copy()
+	// C++ builds a fresh `Impl result;` and, on an inherited error or a
+	// non-finite transform, returns it carrying ONLY the status — not a
+	// copy of the source geometry (src/impl.cpp:614-621).
 	if Error(i.Scalars().Status) != NoError {
-		return result
+		r := newImpl()
+		r.h.MakeEmpty(int(i.Scalars().Status))
+		return r
 	}
 	if !mat3x4IsFinite(t) {
-		result.h.MakeEmpty(int(NonFiniteVertex))
-		return result
+		r := newImpl()
+		r.h.MakeEmpty(int(NonFiniteVertex))
+		return r
 	}
+	result := i.Copy()
 
 	// Mark not-original; compose meshIDtransform.transform with t.
 	result.h.SetMeshRelationOriginalID(-1)
@@ -64,34 +71,35 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	// the C++ std::transform call. The src is i.Verts() (read-only view
 	// on the source impl); the dst is result.Verts() (aliased buffer on
 	// the copy). Same length.
+	// C++ uses the bare manifold::transform (threshold 1e5) for vertPos /
+	// faceNormal / vertNormal; the explicit `policy = autoPolicy(NumVert())`
+	// (threshold 1e4) is only used for tangents and FlipTris below.
 	policy := parallel.AutoPolicy(i.NumVert())
-	parallel.Transform(policy, i.Verts(), result.Verts(), func(v geom.Vec3) geom.Vec3 {
+	transformPolicy := parallel.AutoPolicy(i.NumVert(), 100000)
+	parallel.Transform(transformPolicy, i.Verts(), result.Verts(), func(v geom.Vec3) geom.Vec3 {
 		return t.ApplyAffine(v)
 	})
 
 	// Normal transform: NormalTransform(t) is inv(transpose(linear)).
+	// C++ TransformNormals (src/mesh_fixes.h:29-32) zeroes the normal only
+	// when its x-component is NaN — NOT a full !isfinite check.
 	normalTransform := geom.NormalTransform(t)
+	transformNormal := func(n geom.Vec3) geom.Vec3 {
+		out := normalTransform.MulVec3(n).Normalize()
+		if math.IsNaN(out.X) {
+			return geom.Vec3{}
+		}
+		return out
+	}
 	srcFN := i.FaceNormals()
 	dstFN := result.FaceNormals()
 	if len(srcFN) > 0 && len(dstFN) == len(srcFN) {
-		parallel.Transform(policy, srcFN, dstFN, func(n geom.Vec3) geom.Vec3 {
-			out := normalTransform.MulVec3(n).Normalize()
-			if !out.IsFinite() {
-				return geom.Vec3{}
-			}
-			return out
-		})
+		parallel.Transform(transformPolicy, srcFN, dstFN, transformNormal)
 	}
 	srcVN := i.VertNormals()
 	dstVN := result.VertNormals()
 	if len(srcVN) > 0 && len(dstVN) == len(srcVN) {
-		parallel.Transform(policy, srcVN, dstVN, func(n geom.Vec3) geom.Vec3 {
-			out := normalTransform.MulVec3(n).Normalize()
-			if !out.IsFinite() {
-				return geom.Vec3{}
-			}
-			return out
-		})
+		parallel.Transform(transformPolicy, srcVN, dstVN, transformNormal)
 	}
 
 	// EagerTransformPropNormals: when any meshID has normals, walk
@@ -139,26 +147,30 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	eps := i.Scalars().Epsilon * geom.SpectralNorm(mat3FromMat3x4(t))
 	result.SetEpsilon(eps, false)
 
-	// Refresh the C++-side Collider so unported algorithms (RayCast,
-	// MinGap, Minkowski, Boolean3) see a consistent BVH. C++ avoids
-	// the full rebuild via Collider::Transform or UpdateBoxes; we
-	// currently rebuild because the Go-side Collider isn't persisted
-	// and the bridge doesn't expose the Transform / UpdateBoxes
-	// fast-paths. Functionally equivalent; less efficient.
+	// Refresh collider_ exactly as C++ Impl::Transform does
+	// (src/impl.cpp:672-685): result already carries a copy of the
+	// source's collider_ (Copy() ran the C++ Impl copy ctor), and we
+	// update it in place WITHOUT reordering the mesh — axis-aligned
+	// transforms reuse Collider::Transform, others recompute leaf boxes
+	// via Collider::UpdateBoxes. The radix tree topology (leaf == face)
+	// is preserved because Transform keeps the source's face order.
 	if result.HalfedgeCount() > 0 {
-		faceBox, faceMorton := result.GetFaceBoxMorton()
-		box, morton := result.SortFaces(faceBox, faceMorton)
-		flat := make([]float64, 6*len(box))
-		parallel.ForEachN(policy, len(box), func(idx int) {
-			b := box[idx]
-			flat[6*idx+0] = b.Min.X
-			flat[6*idx+1] = b.Min.Y
-			flat[6*idx+2] = b.Min.Z
-			flat[6*idx+3] = b.Max.X
-			flat[6*idx+4] = b.Max.Y
-			flat[6*idx+5] = b.Max.Z
-		})
-		result.h.BuildCollider(flat, morton)
+		if collider.IsAxisAligned(t) {
+			result.h.ColliderTransform([4][3]float64(t))
+		} else {
+			faceBox, _ := result.GetFaceBoxMorton()
+			flat := make([]float64, 6*len(faceBox))
+			parallel.ForEachN(policy, len(faceBox), func(idx int) {
+				b := faceBox[idx]
+				flat[6*idx+0] = b.Min.X
+				flat[6*idx+1] = b.Min.Y
+				flat[6*idx+2] = b.Min.Z
+				flat[6*idx+3] = b.Max.X
+				flat[6*idx+4] = b.Max.Y
+				flat[6*idx+5] = b.Max.Z
+			})
+			result.h.ColliderUpdateBoxes(flat)
+		}
 	}
 	return result
 }

@@ -768,6 +768,29 @@ void mb_mutable_impl_build_collider(mb_mutable_impl_handle* h,
   // CompactProps is now done Go-side; see impl_compact.go.
 }
 
+void mb_mutable_impl_collider_transform(
+    mb_mutable_impl_handle* h,
+    double t00, double t01, double t02, double t10, double t11, double t12,
+    double t20, double t21, double t22, double t30, double t31, double t32) {
+  manifold::mat3x4 t{
+      manifold::vec3{t00, t01, t02},
+      manifold::vec3{t10, t11, t12},
+      manifold::vec3{t20, t21, t22},
+      manifold::vec3{t30, t31, t32},
+  };
+  h->impl->collider_.Transform(t);
+}
+
+void mb_mutable_impl_collider_update_boxes(mb_mutable_impl_handle* h,
+                                           const double* boxes, size_t n) {
+  manifold::Vec<manifold::Box> faceBox(n);
+  for (size_t i = 0; i < n; ++i) {
+    faceBox[i].min = manifold::vec3(boxes[6 * i + 0], boxes[6 * i + 1], boxes[6 * i + 2]);
+    faceBox[i].max = manifold::vec3(boxes[6 * i + 3], boxes[6 * i + 4], boxes[6 * i + 5]);
+  }
+  h->impl->collider_.UpdateBoxes(faceBox);
+}
+
 void mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol) {
   h->impl->tolerance_ = tol;
 }

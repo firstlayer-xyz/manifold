@@ -502,6 +502,25 @@ void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handl
 void                     mb_mutable_impl_build_collider(
     mb_mutable_impl_handle* h,
     const double* boxes, const uint32_t* morton, size_t n);
+
+// mb_mutable_impl_collider_transform applies Collider::Transform to the
+// impl's existing collider_, reusing the radix tree (axis-aligned
+// transforms only). Mirrors the axis-aligned branch of Impl::Transform's
+// collider refresh. The 12 doubles are the mat3x4 in column-major order
+// (4 columns of 3, same layout as mb_mutable_impl_add_meshid_transform).
+void                     mb_mutable_impl_collider_transform(
+    mb_mutable_impl_handle* h,
+    double t00, double t01, double t02, double t10, double t11, double t12,
+    double t20, double t21, double t22, double t30, double t31, double t32);
+
+// mb_mutable_impl_collider_update_boxes recomputes the impl's collider_
+// leaf boxes from the supplied per-face boxes, reusing the radix tree
+// topology (Collider::UpdateBoxes). Mirrors the non-axis-aligned branch
+// of Impl::Transform's collider refresh. boxes is n * 6 doubles
+// (min.x, min.y, min.z, max.x, max.y, max.z per box).
+void                     mb_mutable_impl_collider_update_boxes(
+    mb_mutable_impl_handle* h, const double* boxes, size_t n);
+
 void                     mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol);
 
 // mb_mutable_impl_refine_n calls Impl::Refine with the C++ lambda that
