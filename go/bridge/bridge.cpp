@@ -116,21 +116,6 @@ mb_mutable_impl_handle* mb_new_mutable_impl(void) {
   return new mb_mutable_impl_handle{std::make_shared<Manifold::Impl>()};
 }
 
-mb_mutable_impl_handle* mb_new_impl_shape(int shape,
-                                          double x1, double y1, double z1,
-                                          double x2, double y2, double z2,
-                                          double x3, double y3, double z3,
-                                          double x4, double y4, double z4) {
-  manifold::mat3x4 m{
-      manifold::vec3{x1, y1, z1},
-      manifold::vec3{x2, y2, z2},
-      manifold::vec3{x3, y3, z3},
-      manifold::vec3{x4, y4, z4},
-  };
-  return new mb_mutable_impl_handle{std::make_shared<Manifold::Impl>(
-      static_cast<Manifold::Impl::Shape>(shape), m)};
-}
-
 ManifoldManifold* mb_invalid(void) {
   return to_c(new Manifold(ManifoldBridge::Invalid()));
 }

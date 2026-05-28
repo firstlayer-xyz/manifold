@@ -87,22 +87,6 @@ func NewMutableImpl() *MutableImpl {
 	return &MutableImpl{p: C.mb_new_mutable_impl()}
 }
 
-// NewImplShape wraps the C++ Impl(Shape, mat3x4) constructor. shape
-// values match the C++ enum class Shape: 0=Tetrahedron, 1=Cube,
-// 2=Octahedron. The 12 doubles are the 3x4 column-major affine
-// transform applied at construction.
-func NewImplShape(shape int,
-	x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4 float64,
-) *MutableImpl {
-	return &MutableImpl{p: C.mb_new_impl_shape(
-		C.int(shape),
-		C.double(x1), C.double(y1), C.double(z1),
-		C.double(x2), C.double(y2), C.double(z2),
-		C.double(x3), C.double(y3), C.double(z3),
-		C.double(x4), C.double(y4), C.double(z4),
-	)}
-}
-
 // Invalid wraps Manifold::Invalid() — an empty Manifold whose Impl
 // carries the InvalidConstruction error code.
 func Invalid() *handle.Manifold {

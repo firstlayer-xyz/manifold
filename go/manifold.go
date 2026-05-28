@@ -550,11 +550,8 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 	} else {
 		n = bridge.QualityGetCircularSegments(radius) / 4
 	}
-	impl := bridge.NewImplShape(2, // Shape::Octahedron
-		1, 0, 0,
-		0, 1, 0,
-		0, 0, 1,
-		0, 0, 0)
+	identity := Mat3x4{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
+	impl := newImplFromShape(shapeOctahedron, identity)
 	defer impl.Delete()
 	impl.SubdivideN(n)
 
@@ -1587,13 +1584,10 @@ func (m *Manifold) Transform(t Mat3x4) *Manifold {
 //   }
 // The Shape constructor uses the default mat3x4 (identity).
 func Tetrahedron() *Manifold {
-	newImpl := bridge.NewImplShape(0, // Shape::Tetrahedron
-		1, 0, 0,
-		0, 1, 0,
-		0, 0, 1,
-		0, 0, 0)
-	defer newImpl.Delete()
-	return wrap(newImpl.ToManifold())
+	identity := Mat3x4{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
+	mi := newImplFromShape(shapeTetrahedron, identity)
+	defer mi.Delete()
+	return wrap(mi.ToManifold())
 }
 
 // Cube returns an axis-aligned box of the given dimensions. If center is
@@ -1619,13 +1613,14 @@ func Cube(size Vec3, center bool) *Manifold {
 	if center {
 		t = Vec3{X: -size.X / 2, Y: -size.Y / 2, Z: -size.Z / 2}
 	}
-	newImpl := bridge.NewImplShape(1, // Shape::Cube
-		size.X, 0, 0,
-		0, size.Y, 0,
-		0, 0, size.Z,
-		t.X, t.Y, t.Z)
-	defer newImpl.Delete()
-	return wrap(newImpl.ToManifold())
+	mi := newImplFromShape(shapeCube, Mat3x4{
+		{size.X, 0, 0},
+		{0, size.Y, 0},
+		{0, 0, size.Z},
+		{t.X, t.Y, t.Z},
+	})
+	defer mi.Delete()
+	return wrap(mi.ToManifold())
 }
 
 // Translate returns a new Manifold translated by v. Ported from C++

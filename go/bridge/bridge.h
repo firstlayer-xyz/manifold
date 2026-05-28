@@ -79,16 +79,6 @@ typedef struct mb_mutable_impl_handle mb_mutable_impl_handle;
 mb_mutable_impl_handle*  mb_impl_copy(const mb_impl_handle* src);
 mb_mutable_impl_handle*  mb_new_mutable_impl(void);
 
-// mb_new_impl_shape wraps the C++ Impl(Shape, mat3x4) constructor.
-// shape: 0=Tetrahedron, 1=Cube, 2=Octahedron (mirroring enum class Shape).
-// The matrix is the standard 3x4 affine transform (column-major).
-mb_mutable_impl_handle*  mb_new_impl_shape(
-    int shape,
-    double x1, double y1, double z1,
-    double x2, double y2, double z2,
-    double x3, double y3, double z3,
-    double x4, double y4, double z4);
-
 // mb_invalid wraps Manifold::Invalid() (private static) — returns a
 // Manifold with Error::InvalidConstruction status.
 struct ManifoldManifold*  mb_invalid(void);

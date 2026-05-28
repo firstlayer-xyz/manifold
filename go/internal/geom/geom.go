@@ -238,6 +238,22 @@ func Sind(x float64) float64 {
 // Cosd returns cos(x) for x in degrees, exact at every multiple of 90.
 func Cosd(x float64) float64 { return Sind(x + 90.0) }
 
+// ApplyAffine applies the 3x4 affine transform to a Vec3 with implicit
+// w=1, returning the transformed Vec3. Mirrors C++ `m * vec4(v, 1.0)`
+// for a la::mat<double,3,4>.
+//
+// In column-major storage, columns 0..2 are the linear part and column 3
+// is the translation. So:
+//
+//	result = col0*v.x + col1*v.y + col2*v.z + col3
+func (a Mat3x4) ApplyAffine(v Vec3) Vec3 {
+	return Vec3{
+		X: a[0][0]*v.X + a[1][0]*v.Y + a[2][0]*v.Z + a[3][0],
+		Y: a[0][1]*v.X + a[1][1]*v.Y + a[2][1]*v.Z + a[3][1],
+		Z: a[0][2]*v.X + a[1][2]*v.Y + a[2][2]*v.Z + a[3][2],
+	}
+}
+
 // Mat2x3 mirrors C++ la::mat<double, 2, 3>: a 2x3 matrix stored as
 // two rows of three doubles, applied to a Vec3 to produce a Vec2.
 // Used by GetAxisAlignedProjection to project a 3D point onto a
