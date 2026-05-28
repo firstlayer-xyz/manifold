@@ -16,12 +16,15 @@ import (
 //	GetMeshGLImpl<float, uint32_t>   → getMeshGLImpl[float32, uint32]
 //	GetMeshGLImpl<double, uint64_t>  → getMeshGLImpl[float64, uint64]
 //
-// useSingleTolerance enables the FLT_EPSILON * bBox.Scale() floor
-// that the float-precision instantiation adds; the two are otherwise
-// algorithmically identical.
+// The C++ derives whether to apply the FLT_EPSILON tolerance floor
+// via `std::is_same<Precision, float>::value`; Go does the same via
+// a runtime type assertion on a zero value of P.
 func getMeshGLImpl[P float32 | float64, I uint32 | uint64](
-	impl *bridge.Impl, normalIdx int, useSingleTolerance bool,
+	impl *Impl, normalIdx int,
 ) meshGLP[P, I] {
+	// Mirror std::is_same<Precision, float>::value.
+	var zeroP P
+	_, useSingleTolerance := any(zeroP).(float32)
 	s := impl.Scalars()
 	numProp := s.NumProp
 	numTri := impl.HalfedgeCount() / 3

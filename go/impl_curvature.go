@@ -2,11 +2,9 @@ package manifold
 
 import (
 	"math"
-
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 )
 
-// calculateCurvature is the Go port of C++
+// CalculateCurvature is the Go port of C++
 // Manifold::Impl::CalculateCurvature (src/properties.cpp). Writes
 // Gaussian and mean curvature into the requested property slots.
 // Either index < 0 means "skip that slot."
@@ -30,12 +28,8 @@ import (
 //  3. Resize properties_ if needed, then write the curvature values
 //     at the requested slots, preserving any previously-set extra
 //     properties on the same propVert.
-//
-// vertPos / halfedge / faceNormal data is read from the impl through
-// the existing bridge accessors; the only mutator paths are
-// SetNumProp + SetProperties (already drilled).
-func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
-	if mi.HalfedgeStartsRO() == nil {
+func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
+	if mi.HalfedgeStarts() == nil {
 		return // empty
 	}
 	if gaussianIdx < 0 && meanIdx < 0 {
@@ -43,23 +37,22 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 	}
 
 	verts := mi.Verts()
-	starts := mi.HalfedgeStartsRO()
-	pairs := mi.HalfedgePairsRO()
-	props := mi.HalfedgePropsRO()
-	faceNormals := mi.FaceNormalsMut()
+	starts := mi.HalfedgeStarts()
+	pairs := mi.HalfedgePairs()
+	props := mi.HalfedgeProps()
+	faceNormals := mi.FaceNormals()
 	numTri := len(starts) / 3
 	numVert := len(verts)
 
 	const twoPi = 2.0 * math.Pi
 	vertMean := make([]float64, numVert)
 	vertGauss := make([]float64, numVert)
-	for i := range vertGauss {
-		vertGauss[i] = twoPi
+	for k := range vertGauss {
+		vertGauss[k] = twoPi
 	}
 	vertArea := make([]float64, numVert)
 	degree := make([]float64, numVert)
 
-	// Step 1: per-triangle accumulators (the CurvatureAngles loop).
 	for tri := 0; tri < numTri; tri++ {
 		var edge [3]struct{ X, Y, Z float64 }
 		var edgeLen [3]float64
@@ -78,14 +71,12 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 				edge[i].Z = dz / length
 			}
 			neighborTri := int(pairs[edgeIdx]) / 3
-			// dihedral = 0.25 * len * asin(dot(cross(n1, n2), e))
 			n1 := faceNormals[tri]
 			n2 := faceNormals[neighborTri]
 			cx := n1.Y*n2.Z - n1.Z*n2.Y
 			cy := n1.Z*n2.X - n1.X*n2.Z
 			cz := n1.X*n2.Y - n1.Y*n2.X
 			d := cx*edge[i].X + cy*edge[i].Y + cz*edge[i].Z
-			// asin clamps for floating-point drift outside [-1,1].
 			if d > 1 {
 				d = 1
 			}
@@ -98,8 +89,6 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 			degree[startVert] += 1.0
 		}
 
-		// Interior angles (Gaussian) — guard against degenerate dot
-		// values outside [-1, 1].
 		var phi [3]float64
 		dot20 := -(edge[2].X*edge[0].X + edge[2].Y*edge[0].Y + edge[2].Z*edge[0].Z)
 		dot01 := -(edge[0].X*edge[1].X + edge[0].Y*edge[1].Y + edge[0].Z*edge[1].Z)
@@ -117,8 +106,6 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 		phi[1] = math.Acos(dot01)
 		phi[2] = math.Pi - phi[0] - phi[1]
 
-		// Triangle area / 3 (distributed to each corner): the cross-
-		// product of two edges has magnitude 2*Area, so divide by 6.
 		cx := edge[0].Y*edge[1].Z - edge[0].Z*edge[1].Y
 		cy := edge[0].Z*edge[1].X - edge[0].X*edge[1].Z
 		cz := edge[0].X*edge[1].Y - edge[0].Y*edge[1].X
@@ -132,7 +119,6 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 		}
 	}
 
-	// Step 2: normalize per-vertex.
 	for v := 0; v < numVert; v++ {
 		if vertArea[v] > 0 {
 			factor := degree[v] / (6 * vertArea[v])
@@ -144,8 +130,6 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 		}
 	}
 
-	// Step 3: write into properties_, preserving any existing extras
-	// on each propVert.
 	oldNumProp := mi.NumProp()
 	maxIdx := gaussianIdx
 	if meanIdx > maxIdx {
@@ -156,14 +140,13 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 		numProp = maxIdx + 1
 	}
 	oldProperties := append([]float64(nil), mi.Properties()...)
-	// NumPropVert when oldNumProp == 0 is numVert; else len/oldNumProp.
 	numPropVert := numVert
 	if oldNumProp > 0 {
 		numPropVert = len(oldProperties) / oldNumProp
 	}
 	newProperties := make([]float64, numProp*numPropVert)
 
-	mi.SetNumProp(numProp)
+	mi.h.SetNumProp(numProp)
 
 	counters := make([]uint8, numPropVert)
 	for tri := 0; tri < numTri; tri++ {
@@ -186,6 +169,5 @@ func implCalculateCurvature(mi *bridge.MutableImpl, gaussianIdx, meanIdx int) {
 			}
 		}
 	}
-	mi.SetProperties(newProperties)
+	mi.h.SetProperties(newProperties)
 }
-

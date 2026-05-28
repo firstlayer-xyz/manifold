@@ -3,7 +3,6 @@ package manifold
 import (
 	"math"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -25,22 +24,23 @@ func maxEpsilon(minEpsilon float64, bBox geom.Box) float64 {
 	return eps
 }
 
-// setEpsilon is the Go port of C++ Manifold::Impl::SetEpsilon
-// (src/impl.cpp). Two-arg form is `SetEpsilon(minEpsilon, useSingle)`;
-// this Go function takes both parameters explicitly. Pass minEpsilon=-1
-// for the no-floor default; useSingle=true enables the float-precision
-// tolerance floor (used by GetMeshGL<float>).
-func setEpsilon(mi *bridge.MutableImpl, minEpsilon float64, useSingle bool) {
-	minV, maxV := mi.GetBBox()
+// SetEpsilon is the Go port of C++ Manifold::Impl::SetEpsilon
+// (src/impl.cpp). The C++ signature is
+// `SetEpsilon(double minEpsilon = -1, bool useSingle = false)`;
+// the Go method takes both parameters explicitly. Pass minEpsilon=-1
+// for the no-floor default; useSingle=true enables the
+// float-precision tolerance floor (used by GetMeshGL<float>).
+func (mi *MutableImpl) SetEpsilon(minEpsilon float64, useSingle bool) {
+	minV, maxV := mi.BBox()
 	bBox := geom.Box{Min: minV, Max: maxV}
 	eps := maxEpsilon(minEpsilon, bBox)
-	mi.SetEpsilonValue(eps)
+	mi.h.SetEpsilonValue(eps)
 	minTol := eps
 	if useSingle {
 		minTol = math.Max(minTol, fltEpsilon*bBox.Scale())
 	}
-	if cur := mi.GetTolerance(); cur > minTol {
+	if cur := mi.Tolerance(); cur > minTol {
 		minTol = cur
 	}
-	mi.SetToleranceValue(minTol)
+	mi.h.SetToleranceValue(minTol)
 }

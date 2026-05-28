@@ -1,13 +1,12 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// slice is the Go port of C++ Manifold::Impl::Slice
-// (src/face_op.cpp): cut the manifold with the horizontal plane z =
-// height and return the resulting closed polygons.
+// Slice is the Go port of C++ Manifold::Impl::Slice (src/face_op.cpp):
+// cut the manifold with the horizontal plane z = height and return
+// the resulting closed polygons.
 //
 // The C++ version uses the Collider's bounding-box query to narrow
 // down candidate triangles; this Go port iterates triangles directly
@@ -20,14 +19,12 @@ import (
 // the plane and whose end is on/below, then walk Pair-Next3 around
 // the boundary, recording the interpolated intersection point on
 // each crossing edge. Each closed loop becomes one SimplePolygon.
-func implSlice(impl *bridge.Impl, height float64) Polygons {
-	verts := impl.Verts()
-	starts := impl.HalfedgeStarts()
-	pairs := impl.HalfedgePairs()
+func (i *Impl) Slice(height float64) Polygons {
+	verts := i.Verts()
+	starts := i.HalfedgeStarts()
+	pairs := i.HalfedgePairs()
 	numTri := len(starts) / 3
 
-	// Step 1 (Collider replacement): pick triangles whose z-range
-	// straddles the plane. Matches the C++ recordCollision filter.
 	tris := make(map[int]struct{})
 	for tri := 0; tri < numTri; tri++ {
 		minZ, maxZ := verts[starts[3*tri]].Z, verts[starts[3*tri]].Z
@@ -45,7 +42,6 @@ func implSlice(impl *bridge.Impl, height float64) Polygons {
 		}
 	}
 
-	// Step 2: walk boundary loops.
 	var polys Polygons
 	for len(tris) > 0 {
 		var startTri int
@@ -53,8 +49,6 @@ func implSlice(impl *bridge.Impl, height float64) Polygons {
 			startTri = tri
 			break
 		}
-		// Find the first edge whose start is above the plane and whose
-		// next vertex is on/below — that's the "up" edge to start from.
 		k := 0
 		for j := 0; j < 3; j++ {
 			nextJ := j + 1
@@ -73,7 +67,6 @@ func implSlice(impl *bridge.Impl, height float64) Polygons {
 		tri := startTri
 		for {
 			delete(tris, tri)
-			// halfedge_.End(edge) = halfedge_.Start(NextHalfedge(edge)).
 			edge := 3*tri + k
 			endStart := starts[nextHalfedge(edge)]
 			if verts[endStart].Z <= height {

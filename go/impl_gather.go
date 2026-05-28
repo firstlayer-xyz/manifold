@@ -1,12 +1,8 @@
 package manifold
 
-import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
-)
-
-// gatherFaces is the Go port of the two-arg form of C++
-// Manifold::Impl::GatherFaces (src/sort.cpp): copy a subset of `old`
-// into the empty MutableImpl `dst`, picking the faces indexed by
+// GatherFaces is the Go port of the two-arg form of C++
+// Manifold::Impl::GatherFaces (src/sort.cpp): copy a subset of old
+// into this (empty) MutableImpl, picking the faces indexed by
 // faceNew2Old.
 //
 // Mirrors the C++ body step by step:
@@ -17,10 +13,9 @@ import (
 //  5. Build faceOld2New via scatter.
 //  6. Resize halfedge_ (and halfedgeTangent_ if old has tangents).
 //  7. For each new face, run the ReindexFace remap.
-func gatherFaces(dst *bridge.MutableImpl, old *bridge.Impl, faceNew2Old []int32) {
+func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 	numTri := len(faceNew2Old)
 
-	// 1. Gather triRef.
 	oldTriRefs := old.TriRefs()
 	if len(oldTriRefs) > 0 {
 		meshIDs := make([]int32, numTri)
@@ -34,47 +29,40 @@ func gatherFaces(dst *bridge.MutableImpl, old *bridge.Impl, faceNew2Old []int32)
 			faceIDs[i] = r.FaceID
 			coplanarIDs[i] = r.CoplanarID
 		}
-		dst.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+		mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
 
-	// 2. Copy meshIDtransform map (preserves all entries from old).
-	dst.ClearMeshIDTransforms()
+	mi.h.ClearMeshIDTransforms()
 	for _, rel := range old.MeshIDTransforms() {
-		dst.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
+		mi.h.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
 			rel.Transform, rel.BackSide, rel.HasNormals)
 	}
 
-	// 3. Copy properties_ + numProp_ if old has any.
 	oldScalars := old.Scalars()
 	if oldScalars.NumProp > 0 {
-		dst.SetNumProp(oldScalars.NumProp)
-		dst.SetProperties(append([]float64(nil), old.Properties()...))
+		mi.h.SetNumProp(oldScalars.NumProp)
+		mi.h.SetProperties(append([]float64(nil), old.Properties()...))
 	}
 
-	// 4. Gather faceNormal_ if old has cached normals.
 	oldFaceNormals := old.FaceNormals()
 	oldNumTri := old.HalfedgeCount() / 3
 	if len(oldFaceNormals) == oldNumTri && oldNumTri > 0 {
-		dst.ResizeFaceNormals(numTri)
-		dstFN := dst.FaceNormalsMut()
+		mi.h.ResizeFaceNormals(numTri)
+		dstFN := mi.h.FaceNormalsMut()
 		for i, oldF := range faceNew2Old {
 			dstFN[i] = oldFaceNormals[oldF]
 		}
 	}
 
-	// 5. Build faceOld2New permutation.
 	faceOld2New := make([]int32, oldNumTri)
 	for newF, oldF := range faceNew2Old {
 		faceOld2New[oldF] = int32(newF)
 	}
 
-	// 6 & 7. Rebuild halfedge_ + halfedgeTangent_ via the ReindexFace
-	// remap: for each new halfedge, copy from old and rewrite the
-	// pairedHalfedge to point at the new face index.
 	oldStarts := old.HalfedgeStarts()
 	oldPairs := old.HalfedgePairs()
 	oldProps := old.HalfedgeProps()
-	oldTangents := old.HalfedgeTangents() // 4*N doubles
+	oldTangents := old.HalfedgeTangents()
 
 	numHalfedge := 3 * numTri
 	starts := make([]int32, numHalfedge)
@@ -101,8 +89,8 @@ func gatherFaces(dst *bridge.MutableImpl, old *bridge.Impl, faceNew2Old []int32)
 			}
 		}
 	}
-	dst.SetHalfedgesRaw(starts, props, pairs)
+	mi.h.SetHalfedgesRaw(starts, props, pairs)
 	if tangents != nil {
-		dst.SetHalfedgeTangents(tangents)
+		mi.h.SetHalfedgeTangents(tangents)
 	}
 }

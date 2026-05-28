@@ -1,7 +1,6 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -90,36 +89,23 @@ var shapeTables = map[shape]struct {
 // it to a Manifold (via ToManifold) and for Delete'ing it. Returning
 // the mutable form lets callers (notably Sphere) continue mutating
 // before sealing the result.
-func newImplFromShape(sh shape, m geom.Mat3x4) *bridge.MutableImpl {
+func newImplFromShape(sh shape, m geom.Mat3x4) *MutableImpl {
 	table := shapeTables[sh]
-	mi := bridge.NewMutableImpl()
+	mi := newImpl()
 
 	// vertPos_ = Vec(vertPos); then transform each in place.
-	mi.ResizeVerts(len(table.verts))
+	mi.h.ResizeVerts(len(table.verts))
 	verts := mi.Verts()
 	for i, v := range table.verts {
 		verts[i] = m.ApplyAffine(v)
 	}
 
-	// CreateHalfedges(triVerts) — drilled to Go (impl_halfedges.go).
-	createHalfedges(mi, table.triVerts)
-	// InitializeOriginal() — drilled to Go (impl_meshrelation.go). A
-	// fresh impl has an empty meshIDtransform map, so AllHaveNormals()
-	// returns false; pass hadNormals=false to mirror C++.
-	numTri := len(table.triVerts) / 3
-	initializeOriginal(mi, numTri, false)
-	// CalculateBBox() — drilled to Go (impl_bbox.go).
-	calculateBBox(mi)
-	// SetEpsilon() — drilled to Go (impl_epsilon.go). Default args are
-	// (minEpsilon=-1, useSingle=false), matching the C++ no-arg call.
-	setEpsilon(mi, -1, false)
-	// SortGeometry() — SortVerts is drilled to Go (impl_sort.go); the
-	// remaining steps (GetFaceBoxMorton, SortFaces, Collider, bBox
-	// refresh, CompactProps) still run in C++ via SortGeometryPostVert.
-	sortGeometry(mi)
-	// SetNormalsAndCoplanar() — drilled to Go (impl_normals.go),
-	// includes the inline call to CalculateVertNormals.
-	setNormalsAndCoplanar(mi)
+	mi.CreateHalfedges(table.triVerts)
+	mi.InitializeOriginal()
+	mi.CalculateBBox()
+	mi.SetEpsilon(-1, false)
+	mi.SortGeometry()
+	mi.SetNormalsAndCoplanar()
 
 	return mi
 }

@@ -3,11 +3,10 @@ package manifold
 import (
 	"math"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
-// calculateBBox is the Go port of C++ Manifold::Impl::CalculateBBox
+// CalculateBBox is the Go port of C++ Manifold::Impl::CalculateBBox
 // (src/properties.cpp): compute min/max of vertPos_ component-wise,
 // skipping any vert whose .x is NaN (the C++ short-circuit). If the
 // resulting box is non-finite (empty mesh, or all verts NaN), call
@@ -16,7 +15,7 @@ import (
 // Faithful to C++: when one operand has NaN x, the other operand wins
 // the reduce. This matches the la::min / la::max behavior in the C++
 // lambda.
-func calculateBBox(mi *bridge.MutableImpl) {
+func (mi *MutableImpl) CalculateBBox() {
 	verts := mi.Verts()
 	inf := math.Inf(1)
 	minV := geom.Vec3{X: inf, Y: inf, Z: inf}
@@ -57,8 +56,8 @@ func calculateBBox(mi *bridge.MutableImpl) {
 	// satisfies this; mirror the C++ early-out via MakeEmpty(NoError=0).
 	finite := minV.X < maxV.X && minV.Y < maxV.Y && minV.Z < maxV.Z
 	if !finite {
-		mi.MakeEmpty(0) // Error::NoError
+		mi.h.MakeEmpty(0) // Error::NoError
 		return
 	}
-	mi.SetBBox(minV, maxV)
+	mi.h.SetBBox(minV, maxV)
 }

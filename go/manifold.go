@@ -38,7 +38,7 @@ type Polygons = []SimplePolygon
 func Extrude(crossSection Polygons, height float64, nDivisions int,
 	twistDegrees float64, scaleTop Vec2,
 ) *Manifold {
-	return implExtrude(crossSection, height, nDivisions, twistDegrees, scaleTop)
+	return extrude(crossSection, height, nDivisions, twistDegrees, scaleTop)
 }
 
 // Box is an axis-aligned bounding box defined by its Min and Max corners.
@@ -58,7 +58,7 @@ func (m *Manifold) NumVert() int { return bridge.NumVert(m.h) }
 // NumTri returns the number of triangles in the mesh. Ported from C++
 // Impl::NumTri (halfedge_.size() / 3); the division happens in Go.
 func (m *Manifold) NumTri() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.HalfedgeCount() / 3
 }
@@ -66,7 +66,7 @@ func (m *Manifold) NumTri() int {
 // NumEdge returns the number of unique edges in the mesh. Ported from
 // C++ Impl::NumEdge (halfedge_.size() / 2).
 func (m *Manifold) NumEdge() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.HalfedgeCount() / 2
 }
@@ -74,7 +74,7 @@ func (m *Manifold) NumEdge() int {
 // IsEmpty reports whether the Manifold has no geometry. Ported from C++
 // Impl::IsEmpty (NumTri() == 0, i.e. halfedge_.size() == 0).
 func (m *Manifold) IsEmpty() bool {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.HalfedgeCount() == 0
 }
@@ -87,7 +87,7 @@ func (m *Manifold) IsEmpty() bool {
 // halfedge start array) crosses cgo as read-only buffers; the loop runs
 // in Go.
 func (m *Manifold) Volume() float64 {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	verts := impl.Verts()
 	starts := impl.HalfedgeStarts()
@@ -115,7 +115,7 @@ func (m *Manifold) Volume() float64 {
 // Same shape as Volume: iterate triangles, accumulate areas with Kahan
 // compensation.
 func (m *Manifold) SurfaceArea() float64 {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	verts := impl.Verts()
 	starts := impl.HalfedgeStarts()
@@ -141,7 +141,7 @@ func (m *Manifold) SurfaceArea() float64 {
 // NumProp returns the number of properties per vertex (3 = position only).
 // Ported via Impl::numProp_.
 func (m *Manifold) NumProp() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.Scalars().NumProp
 }
@@ -149,7 +149,7 @@ func (m *Manifold) NumProp() int {
 // NumPropVert returns the number of property vertices. Ported from
 // Impl::NumPropVert: NumProp == 0 ? NumVert : properties_.size() / NumProp.
 func (m *Manifold) NumPropVert() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	s := impl.Scalars()
 	if s.NumProp == 0 {
@@ -161,7 +161,7 @@ func (m *Manifold) NumPropVert() int {
 // Genus returns the topological genus. Ported from Impl::Genus:
 // 1 - (V - E + F) / 2. All three counts are already Go-native.
 func (m *Manifold) Genus() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	v := len(impl.Verts())
 	he := impl.HalfedgeCount()
@@ -173,7 +173,7 @@ func (m *Manifold) Genus() int {
 // GetTolerance returns the geometric tolerance of the mesh.
 // Ported via Impl::tolerance_.
 func (m *Manifold) GetTolerance() float64 {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.Scalars().Tolerance
 }
@@ -181,7 +181,7 @@ func (m *Manifold) GetTolerance() float64 {
 // OriginalID returns -1 for derived Manifolds, otherwise the ID of the
 // originating Manifold. Ported via Impl::meshRelation_.originalID.
 func (m *Manifold) OriginalID() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.Scalars().OriginalID
 }
@@ -199,21 +199,20 @@ func (m *Manifold) OriginalID() int {
 // the corresponding inner C++ function unchanged. Future drilling will
 // replace InitializeOriginal / SetNormalsAndCoplanar with Go ports.
 func (m *Manifold) AsOriginal() *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if status := impl.Scalars().Status; Error(status) != NoError {
 		return propagateStatus(Error(status))
 	}
-	// hadNormals mirrors C++ AsOriginal: snapshot AllHaveNormals from
-	// the SOURCE impl before Copy, so InitializeOriginal can preserve
-	// that bit on the new meshIDtransform entry.
-	hadNormals := impl.AllHaveNormals()
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
-	numTri := len(newImpl.HalfedgeStartsRO()) / 3
-	initializeOriginal(newImpl, numTri, hadNormals)
-	setNormalsAndCoplanar(newImpl)
-	return wrap(newImpl.ToManifold())
+	// InitializeOriginal reads AllHaveNormals from the copy itself —
+	// since Copy preserves meshRelation_, this matches the C++
+	// semantics where AllHaveNormals is read at the start of
+	// InitializeOriginal, before meshIDtransform is cleared.
+	newImpl.InitializeOriginal()
+	newImpl.SetNormalsAndCoplanar()
+	return newImpl.ToManifold()
 }
 
 // Simplify returns a copy whose mesh is simplified to the given tolerance
@@ -223,7 +222,7 @@ func (m *Manifold) AsOriginal() *Manifold {
 //
 // Ported top-down from C++ Manifold::Simplify.
 func (m *Manifold) Simplify(tolerance float64) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
@@ -237,12 +236,12 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 	}
 	if tolerance > oldTolerance {
 		newImpl.SetToleranceValue(tolerance)
-		setNormalsAndCoplanar(newImpl)
+		newImpl.SetNormalsAndCoplanar()
 	}
 	newImpl.SimplifyTopology()
-	sortGeometry(newImpl)
+	newImpl.SortGeometry()
 	newImpl.SetToleranceValue(oldTolerance)
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // CalculateCurvature returns a copy with Gaussian / mean curvature
@@ -250,15 +249,15 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 //
 // Ported top-down from C++ Manifold::CalculateCurvature.
 func (m *Manifold) CalculateCurvature(gaussianIdx, meanIdx int) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
-	implCalculateCurvature(newImpl, gaussianIdx, meanIdx)
-	return wrap(newImpl.ToManifold())
+	newImpl.CalculateCurvature(gaussianIdx, meanIdx)
+	return newImpl.ToManifold()
 }
 
 // CalculateNormals returns a copy with per-vertex normals stored
@@ -267,7 +266,7 @@ func (m *Manifold) CalculateCurvature(gaussianIdx, meanIdx int) *Manifold {
 //
 // Ported top-down from C++ Manifold::CalculateNormals.
 func (m *Manifold) CalculateNormals(normalIdx int, minSharpAngle float64) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -276,9 +275,9 @@ func (m *Manifold) CalculateNormals(normalIdx int, minSharpAngle float64) *Manif
 	defer newImpl.Delete()
 	newImpl.SetNormals(normalIdx, minSharpAngle)
 	if normalIdx == 0 {
-		markAllMeshIDHasNormals(newImpl)
+		newImpl.MarkAllMeshIDHasNormals()
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // SmoothByNormals fills in halfedge tangents using vertex normals stored
@@ -287,7 +286,7 @@ func (m *Manifold) CalculateNormals(normalIdx int, minSharpAngle float64) *Manif
 //
 // Ported top-down from C++ Manifold::SmoothByNormals.
 func (m *Manifold) SmoothByNormals(normalIdx int) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -295,9 +294,9 @@ func (m *Manifold) SmoothByNormals(normalIdx int) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	if !m.IsEmpty() {
-		newImpl.CreateTangentsIdx(normalIdx)
+		newImpl.CreateTangents(normalIdx)
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // SmoothOut fills in halfedge tangents from triangle geometry, sharpening
@@ -305,7 +304,7 @@ func (m *Manifold) SmoothByNormals(normalIdx int) *Manifold {
 //
 // Ported top-down from C++ Manifold::SmoothOut.
 func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -316,10 +315,10 @@ func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
 		// SharpenEdges is drilled to Go (impl_smoothing.go). It reads
 		// from the const-Impl view of the same shared_ptr, so we
 		// briefly take a const handle for the read.
-		edges := implSharpenEdges(impl, minSharpAngle, minSmoothness)
+		edges := impl.SharpenEdges(minSharpAngle, minSmoothness)
 		newImpl.CreateTangentsFromSmoothness(edges)
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // ReserveIDs reserves a contiguous block of n mesh IDs from the global
@@ -341,7 +340,7 @@ func ReserveIDs(n uint32) uint32 {
 //   - else                            — set tol to max(epsilon, tol)
 //   - return Manifold(impl)           — newImpl.ToManifold()
 func (m *Manifold) SetTolerance(tol float64) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
@@ -351,14 +350,14 @@ func (m *Manifold) SetTolerance(tol float64) *Manifold {
 	defer newImpl.Delete()
 	if tol > s.Tolerance {
 		newImpl.SetToleranceValue(tol)
-		setNormalsAndCoplanar(newImpl)
+		newImpl.SetNormalsAndCoplanar()
 		newImpl.SimplifyTopology()
-		sortGeometry(newImpl)
+		newImpl.SortGeometry()
 	} else {
 		// For reducing tolerance, keep it at least equal to epsilon.
 		newImpl.SetToleranceValue(math.Max(s.Epsilon, tol))
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // halfspace builds a cuboidal "cutter" Manifold whose +X face lies on
@@ -399,9 +398,9 @@ func (m *Manifold) MinGap(other *Manifold, searchLength float64) float64 {
 	if !m.Intersection(other).IsEmpty() {
 		return 0
 	}
-	aImpl := bridge.GetImpl(m.h)
+	aImpl := getImpl(m)
 	defer aImpl.Delete()
-	bImpl := bridge.GetImpl(other.h)
+	bImpl := getImpl(other)
 	defer bImpl.Delete()
 	return aImpl.MinGap(bImpl, searchLength)
 }
@@ -463,11 +462,11 @@ func (m *Manifold) Intersection(other *Manifold) *Manifold {
 //   auto result2 = ...Impl(boolean.Result(OpType::Subtract));
 //   return std::make_pair(Manifold(result1), Manifold(result2));
 func (m *Manifold) Split(cutter *Manifold) (*Manifold, *Manifold) {
-	impl1 := bridge.GetImpl(m.h)
+	impl1 := getImpl(m)
 	defer impl1.Delete()
-	impl2 := bridge.GetImpl(cutter.h)
+	impl2 := getImpl(cutter)
 	defer impl2.Delete()
-	boolean := bridge.NewBoolean3(impl1, impl2, int(OpSubtract))
+	boolean := newBoolean3(impl1, impl2, int(OpSubtract))
 	defer boolean.Delete()
 	result1 := boolean.Result(int(OpIntersect))
 	result2 := boolean.Result(int(OpSubtract))
@@ -486,7 +485,7 @@ func (m *Manifold) Split(cutter *Manifold) (*Manifold, *Manifold) {
 //   if (IsEmpty()) return {Manifold(), Manifold()};
 //   return Split(Halfspace(BoundingBox(), normal, originOffset));
 func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *Manifold) {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if status := impl.Scalars().Status; Error(status) != NoError {
 		err := propagateStatus(Error(status))
@@ -510,9 +509,9 @@ func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *
 // The inner Impl::MatchesTriNormals is drilled to native Go — see
 // impl_props.go.
 func (m *Manifold) MatchesTriNormals() bool {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
-	return implMatchesTriNormals(impl)
+	return impl.MatchesTriNormals()
 }
 
 // NumDegenerateTris returns the count of triangles with zero or
@@ -526,9 +525,9 @@ func (m *Manifold) MatchesTriNormals() bool {
 // The inner Impl::NumDegenerateTris is drilled to native Go — see
 // impl_props.go.
 func (m *Manifold) NumDegenerateTris() int {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
-	return implNumDegenerateTris(impl)
+	return impl.NumDegenerateTris()
 }
 
 // GetEpsilon returns the precision used in this Manifold's boolean
@@ -539,7 +538,7 @@ func (m *Manifold) NumDegenerateTris() int {
 //     return GetCsgLeafNode().GetImpl()->epsilon_;
 //   }
 func (m *Manifold) GetEpsilon() float64 {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.Scalars().Epsilon
 }
@@ -591,14 +590,12 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 	}
 
 	// Finalize — drilled steps mirror C++ Sphere's tail. NumTri is
-	// derived from the halfedge count.
-	numTri := len(impl.HalfedgeStartsRO()) / 3
-	initializeOriginal(impl, numTri, false)
-	calculateBBox(impl)
-	setEpsilon(impl, -1, false)
-	sortGeometry(impl)
-	setNormalsAndCoplanar(impl)
-	return wrap(impl.ToManifold())
+	impl.InitializeOriginal()
+	impl.CalculateBBox()
+	impl.SetEpsilon(-1, false)
+	impl.SortGeometry()
+	impl.SetNormalsAndCoplanar()
+	return impl.ToManifold()
 }
 
 // Cylinder returns a cylinder of the given height. If radiusLow != radiusHigh
@@ -677,7 +674,7 @@ const (
 // ExecutionContext; the Go port does not yet support ctx_, so this reads
 // status_ directly.
 func (m *Manifold) Status() Error {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return Error(impl.Scalars().Status)
 }
@@ -691,10 +688,10 @@ func (m *Manifold) Status() Error {
 //     return Manifold(std::make_shared<CsgLeafNode>(impl));
 //   }
 func HullPts(pts []Vec3) *Manifold {
-	impl := bridge.NewMutableImpl()
+	impl := newImpl()
 	defer impl.Delete()
 	impl.Hull(pts)
-	return wrap(impl.ToManifold())
+	return impl.ToManifold()
 }
 
 // BatchBoolean performs the given boolean op across a list of manifolds.
@@ -747,14 +744,14 @@ func BatchHull(manifolds []*Manifold) *Manifold {
 	}
 	vertPos := make([]Vec3, 0, total)
 	for _, m := range manifolds {
-		impl := bridge.GetImpl(m.h)
+		impl := getImpl(m)
 		vertPos = append(vertPos, impl.Verts()...)
 		impl.Delete()
 	}
-	out := bridge.NewMutableImpl()
+	out := newImpl()
 	defer out.Delete()
 	out.Hull(vertPos)
-	return wrap(out.ToManifold())
+	return out.ToManifold()
 }
 
 // MeshGL is the float32 / uint32 variant of MeshGL64 — same fields, less
@@ -783,12 +780,12 @@ type MeshGL struct {
 //     return GetMeshGLImpl<float, uint32_t>(impl, normalIdx);
 //   }
 func (m *Manifold) GetMeshGL(normalIdx int) MeshGL {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	o := getMeshGLImpl[float32, uint32](impl, normalIdx, true)
+	o := getMeshGLImpl[float32, uint32](impl, normalIdx)
 	return MeshGL{
 		NumProp:         o.NumProp,
 		VertProperties:  o.VertProperties,
@@ -896,10 +893,10 @@ func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 //     return Manifold(pImpl_);
 //   }
 func invalidManifold() *Manifold {
-	mi := bridge.NewMutableImpl()
+	mi := newImpl()
 	defer mi.Delete()
 	mi.MakeEmpty(int(InvalidConstruction))
-	return wrap(mi.ToManifold())
+	return mi.ToManifold()
 }
 
 // propagateStatus mirrors C++ Manifold::PropagateStatus — an empty
@@ -913,10 +910,10 @@ func invalidManifold() *Manifold {
 //     return Manifold(pImpl);
 //   }
 func propagateStatus(status Error) *Manifold {
-	mi := bridge.NewMutableImpl()
+	mi := newImpl()
 	defer mi.Delete()
 	mi.MakeEmpty(int(status))
-	return wrap(mi.ToManifold())
+	return mi.ToManifold()
 }
 
 // ExecutionContext observes progress and requests cancellation of a
@@ -1059,12 +1056,12 @@ func SmoothFromMeshGL(m MeshGL, sharpenedEdges []Smoothness) *Manifold {
 //     return GetMeshGLImpl<double, uint64_t>(impl, normalIdx);
 //   }
 func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	o := getMeshGLImpl[float64, uint64](impl, normalIdx, false)
+	o := getMeshGLImpl[float64, uint64](impl, normalIdx)
 	return MeshGL64{
 		NumProp:         o.NumProp,
 		VertProperties:  o.VertProperties,
@@ -1092,7 +1089,7 @@ type RayHit = bridge.RayHit
 //     return GetCsgLeafNode().GetImpl()->RayCast(origin, endpoint);
 //   }
 func (m *Manifold) RayCast(origin, endpoint Vec3) []RayHit {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	return impl.RayCast(origin, endpoint)
 }
@@ -1106,7 +1103,7 @@ func (m *Manifold) RayCast(origin, endpoint Vec3) []RayHit {
 // extract per-component vert and face indices, gather a new Impl for
 // each component.
 func (m *Manifold) Decompose() []*Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	scalars := impl.Scalars()
 	if Error(scalars.Status) != NoError {
@@ -1137,7 +1134,7 @@ func (m *Manifold) Decompose() []*Manifold {
 	srcNormals := impl.VertNormals()
 	var meshes []*Manifold
 	for comp := 0; comp < numComponents; comp++ {
-		newImpl := bridge.NewMutableImpl()
+		newImpl := newImpl()
 		newImpl.SetEpsilonValue(scalars.Epsilon)
 		newImpl.SetToleranceValue(scalars.Tolerance)
 
@@ -1178,11 +1175,11 @@ func (m *Manifold) Decompose() []*Manifold {
 			continue
 		}
 
-		gatherFaces(newImpl, impl, faceNew2Old)
-		reindexVerts(newImpl, vertNew2Old, numVert)
-		calculateBBox(newImpl)
-		sortGeometry(newImpl)
-		meshes = append(meshes, wrap(newImpl.ToManifold()))
+		newImpl.GatherFaces(impl, faceNew2Old)
+		newImpl.ReindexVerts(vertNew2Old, numVert)
+		newImpl.CalculateBBox()
+		newImpl.SortGeometry()
+		meshes = append(meshes, newImpl.ToManifold())
 		newImpl.Delete()
 	}
 	return meshes
@@ -1194,7 +1191,7 @@ func (m *Manifold) Decompose() []*Manifold {
 //
 // Ported top-down from C++ Manifold::Warp.
 func (m *Manifold) Warp(fn func(*Vec3)) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -1202,7 +1199,7 @@ func (m *Manifold) Warp(fn func(*Vec3)) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	newImpl.Warp(fn)
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // WarpBatch returns a copy of m with all vertices passed through fn at
@@ -1211,7 +1208,7 @@ func (m *Manifold) Warp(fn func(*Vec3)) *Manifold {
 //
 // Ported top-down from C++ Manifold::WarpBatch.
 func (m *Manifold) WarpBatch(fn func([]Vec3)) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -1219,7 +1216,7 @@ func (m *Manifold) WarpBatch(fn func([]Vec3)) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	newImpl.WarpBatch(fn)
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // Revolve constructs a manifold by revolving a 2D crossSection
@@ -1397,18 +1394,17 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 
 	// Write into a fresh Impl and finalize — drilled steps mirror the
 	// C++ tail of the algorithm.
-	newImpl := bridge.NewMutableImpl()
+	newImpl := newImpl()
 	defer newImpl.Delete()
 	newImpl.ResizeVerts(len(verts))
 	copy(newImpl.Verts(), verts)
-	createHalfedges(newImpl, tris)
-	numTri := len(tris) / 3
-	initializeOriginal(newImpl, numTri, false)
-	calculateBBox(newImpl)
-	setEpsilon(newImpl, -1, false)
-	sortGeometry(newImpl)
-	setNormalsAndCoplanar(newImpl)
-	return wrap(newImpl.ToManifold())
+	newImpl.CreateHalfedges(tris)
+	newImpl.InitializeOriginal()
+	newImpl.CalculateBBox()
+	newImpl.SetEpsilon(-1, false)
+	newImpl.SortGeometry()
+	newImpl.SetNormalsAndCoplanar()
+	return newImpl.ToManifold()
 }
 
 // Slice returns the outline contours of the manifold at the given Z
@@ -1419,9 +1415,9 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 //     return GetCsgLeafNode().GetImpl()->Slice(height);
 //   }
 func (m *Manifold) Slice(height float64) Polygons {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
-	return implSlice(impl, height)
+	return impl.Slice(height)
 }
 
 // Project returns the XY-plane projection of the manifold as a set of
@@ -1433,9 +1429,9 @@ func (m *Manifold) Slice(height float64) Polygons {
 //     return GetCsgLeafNode().GetImpl()->Project();
 //   }
 func (m *Manifold) Project() Polygons {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
-	return implProject(impl)
+	return impl.Project()
 }
 
 // Hull returns the convex hull of the Manifold's vertices.
@@ -1454,22 +1450,22 @@ func (m *Manifold) Project() Polygons {
 // The ExecutionContext (ctx_) field is not yet ported to Go; the Go body
 // behaves as if ctx is null, which matches the default path in C++.
 func (m *Manifold) Hull() *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
-	newImpl := bridge.NewMutableImpl()
+	newImpl := newImpl()
 	defer newImpl.Delete()
 	newImpl.Hull(impl.Verts())
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // Refine subdivides each triangle into n×n smaller triangles.
 //
 // Ported top-down from C++ Manifold::Refine.
 func (m *Manifold) Refine(n int) *Manifold {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -1479,7 +1475,7 @@ func (m *Manifold) Refine(n int) *Manifold {
 	if n > 1 {
 		newImpl.RefineN(n)
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // RefineToLength subdivides until each edge is at most length.
@@ -1487,7 +1483,7 @@ func (m *Manifold) Refine(n int) *Manifold {
 // Ported top-down from C++ Manifold::RefineToLength.
 func (m *Manifold) RefineToLength(length float64) *Manifold {
 	length = math.Abs(length)
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
@@ -1495,7 +1491,7 @@ func (m *Manifold) RefineToLength(length float64) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	newImpl.RefineToLength(length)
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // RefineToTolerance subdivides until smooth surfaces fit within tolerance.
@@ -1504,7 +1500,7 @@ func (m *Manifold) RefineToLength(length float64) *Manifold {
 // Ported top-down from C++ Manifold::RefineToTolerance.
 func (m *Manifold) RefineToTolerance(tol float64) *Manifold {
 	tol = math.Abs(tol)
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
@@ -1515,24 +1511,24 @@ func (m *Manifold) RefineToTolerance(tol float64) *Manifold {
 	if s.HalfedgeTangentSize > 0 {
 		newImpl.RefineToTolerance(tol)
 	}
-	return wrap(newImpl.ToManifold())
+	return newImpl.ToManifold()
 }
 
 // MinkowskiSum returns the Minkowski sum of m and other.
 //
 // Ported top-down from C++ Manifold::MinkowskiSum.
 func (m *Manifold) MinkowskiSum(other *Manifold) *Manifold {
-	aImpl := bridge.GetImpl(m.h)
+	aImpl := getImpl(m)
 	defer aImpl.Delete()
 	if s := aImpl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
-	bImpl := bridge.GetImpl(other.h)
+	bImpl := getImpl(other)
 	defer bImpl.Delete()
 	if s := bImpl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
-	return wrap(aImpl.Minkowski(bImpl, false))
+	return aImpl.Minkowski(bImpl, false)
 }
 
 // MinkowskiDifference returns the Minkowski difference (erosion) of m by other.
@@ -1540,17 +1536,17 @@ func (m *Manifold) MinkowskiSum(other *Manifold) *Manifold {
 // Ported top-down from C++ Manifold::MinkowskiDifference — same body as
 // MinkowskiSum with the `inset` flag flipped to true.
 func (m *Manifold) MinkowskiDifference(other *Manifold) *Manifold {
-	aImpl := bridge.GetImpl(m.h)
+	aImpl := getImpl(m)
 	defer aImpl.Delete()
 	if s := aImpl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
-	bImpl := bridge.GetImpl(other.h)
+	bImpl := getImpl(other)
 	defer bImpl.Delete()
 	if s := bImpl.Scalars(); Error(s.Status) != NoError {
 		return propagateStatus(Error(s.Status))
 	}
-	return wrap(aImpl.Minkowski(bImpl, true))
+	return aImpl.Minkowski(bImpl, true)
 }
 
 // BoundingBox returns the axis-aligned bounding box of the mesh.
@@ -1560,7 +1556,7 @@ func (m *Manifold) MinkowskiDifference(other *Manifold) *Manifold {
 // same answer by iterating the vertex buffer directly. An empty Manifold
 // matches the C++ default (+inf min, -inf max).
 func (m *Manifold) BoundingBox() Box {
-	impl := bridge.GetImpl(m.h)
+	impl := getImpl(m)
 	defer impl.Delete()
 	verts := impl.Verts()
 	if len(verts) == 0 {
@@ -1622,7 +1618,7 @@ func Tetrahedron() *Manifold {
 	identity := Mat3x4{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
 	mi := newImplFromShape(shapeTetrahedron, identity)
 	defer mi.Delete()
-	return wrap(mi.ToManifold())
+	return mi.ToManifold()
 }
 
 // Cube returns an axis-aligned box of the given dimensions. If center is
@@ -1655,7 +1651,7 @@ func Cube(size Vec3, center bool) *Manifold {
 		{t.X, t.Y, t.Z},
 	})
 	defer mi.Delete()
-	return wrap(mi.ToManifold())
+	return mi.ToManifold()
 }
 
 // Translate returns a new Manifold translated by v. Ported from C++

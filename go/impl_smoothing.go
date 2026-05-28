@@ -12,7 +12,7 @@ import (
 // caller-supplied angle at this value.
 const kMinSharpAngle = 5.0
 
-// sharpenEdges is the Go port of C++ Manifold::Impl::SharpenEdges
+// SharpenEdges is the Go port of C++ Manifold::Impl::SharpenEdges
 // (src/smoothing.cpp). Returns a list of (halfedge, smoothness)
 // entries for every halfedge whose dihedral (the angle between its
 // face and its pair's face) exceeds minSharpAngle degrees. The
@@ -21,26 +21,23 @@ const kMinSharpAngle = 5.0
 // Both ends of each detected sharp edge are emitted, so the returned
 // list has even length: positions 2i and 2i+1 are the matching
 // forward/backward halfedges.
-func implSharpenEdges(impl *bridge.Impl, minSharpAngle, minSmoothness float64) []bridge.Smoothness {
+func (i *Impl) SharpenEdges(minSharpAngle, minSmoothness float64) []bridge.Smoothness {
 	if minSharpAngle < kMinSharpAngle {
 		minSharpAngle = kMinSharpAngle
 	}
 	minRadians := minSharpAngle * (math.Pi / 180.0)
 
-	starts := impl.HalfedgeStarts()
-	pairs := impl.HalfedgePairs()
-	faceNormals := impl.FaceNormals()
+	starts := i.HalfedgeStarts()
+	pairs := i.HalfedgePairs()
+	faceNormals := i.FaceNormals()
 	var out []bridge.Smoothness
 	for e := 0; e < len(starts); e++ {
-		// IsForward: Start(e) < End(e).
 		startV := starts[e]
 		endV := starts[nextHalfedge(e)]
 		if startV >= endV {
 			continue
 		}
 		pair := int(pairs[e])
-		// AngleBetween(n1, n2) = acos(clamp(dot, -1, 1)) — the C++ uses
-		// la::angleBetween which clamps internally.
 		n1 := faceNormals[e/3]
 		n2 := faceNormals[pair/3]
 		d := n1.X*n2.X + n1.Y*n2.Y + n1.Z*n2.Z

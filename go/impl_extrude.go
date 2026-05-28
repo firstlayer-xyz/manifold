@@ -25,7 +25,7 @@ import (
 //  6. Run the standard finalize tail (CreateHalfedges,
 //     InitializeOriginal, CalculateBBox, SetEpsilon, sortGeometry,
 //     setNormalsAndCoplanar).
-func implExtrude(crossSection Polygons, height float64,
+func extrude(crossSection Polygons, height float64,
 	nDivisions int, twistDegrees float64, scaleTop Vec2,
 ) *Manifold {
 	if len(crossSection) == 0 || height <= 0 {
@@ -144,16 +144,15 @@ func implExtrude(crossSection Polygons, height float64,
 	}
 
 	// Step 6: write to a fresh MutableImpl and finalize.
-	mi := bridge.NewMutableImpl()
+	mi := newImpl()
 	defer mi.Delete()
-	mi.ResizeVerts(len(verts))
+	mi.h.ResizeVerts(len(verts))
 	copy(mi.Verts(), verts)
-	createHalfedges(mi, tris)
-	numTri := len(tris) / 3
-	initializeOriginal(mi, numTri, false)
-	calculateBBox(mi)
-	setEpsilon(mi, -1, false)
-	sortGeometry(mi)
-	setNormalsAndCoplanar(mi)
-	return wrap(mi.ToManifold())
+	mi.CreateHalfedges(tris)
+	mi.InitializeOriginal()
+	mi.CalculateBBox()
+	mi.SetEpsilon(-1, false)
+	mi.SortGeometry()
+	mi.SetNormalsAndCoplanar()
+	return mi.ToManifold()
 }
