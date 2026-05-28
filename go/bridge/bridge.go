@@ -264,36 +264,8 @@ func (mi *MutableImpl) GatherFaces(src *Impl, faceNew2Old []int32) {
 	C.mb_mutable_impl_gather_faces(mi.p, src.p, (*C.int)(fp), C.size_t(len(faceNew2Old)))
 }
 
-// DisjointSets wraps src/disjoint_sets.h's class — union-find with
-// connectedComponents. Used by Decompose.
-type DisjointSets struct {
-	p    *C.mb_disjoint_sets_handle
-	size int
-}
-
-func NewDisjointSets(size int) *DisjointSets {
-	return &DisjointSets{
-		p:    C.mb_disjoint_sets_new(C.size_t(size)),
-		size: size,
-	}
-}
-
-func (d *DisjointSets) Unite(a, b int) {
-	C.mb_disjoint_sets_unite(d.p, C.size_t(a), C.size_t(b))
-}
-
-// ConnectedComponents returns (numComponents, perVertLabel).
-func (d *DisjointSets) ConnectedComponents() (int, []int32) {
-	labels := make([]int32, d.size)
-	var lp unsafe.Pointer
-	if d.size > 0 {
-		lp = unsafe.Pointer(&labels[0])
-	}
-	n := int(C.mb_disjoint_sets_connected_components(d.p, (*C.int)(lp)))
-	return n, labels
-}
-
-func (d *DisjointSets) Delete() { C.mb_delete_disjoint_sets(d.p) }
+// (bridge.DisjointSets removed — now implemented in pure Go; see
+// disjoint_sets.go in the manifold package.)
 
 // MeshGL64 and MeshGL handle types and per-field cgo accessors have
 // been removed; GetMeshGL/GetMeshGL64 are now implemented natively in

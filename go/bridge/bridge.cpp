@@ -707,35 +707,6 @@ ManifoldManifold* mb_manifold_smooth_meshgl(
 
 #undef MB_ASSIGN_OPT
 
-}  // extern "C"
-
-#include "disjoint_sets.h"
-
-extern "C" {
-
-struct mb_disjoint_sets_handle {
-  DisjointSets uf;
-  explicit mb_disjoint_sets_handle(size_t n) : uf(n) {}
-};
-
-mb_disjoint_sets_handle* mb_disjoint_sets_new(size_t size) {
-  return new mb_disjoint_sets_handle(size);
-}
-
-void mb_disjoint_sets_unite(mb_disjoint_sets_handle* h, size_t a, size_t b) {
-  h->uf.unite(a, b);
-}
-
-int mb_disjoint_sets_connected_components(mb_disjoint_sets_handle* h,
-                                          int* out_components) {
-  std::vector<int> cc;
-  int n = h->uf.connectedComponents(cc);
-  std::copy(cc.begin(), cc.end(), out_components);
-  return n;
-}
-
-void mb_delete_disjoint_sets(mb_disjoint_sets_handle* h) { delete h; }
-
 void mb_mutable_impl_set_epsilon_value(mb_mutable_impl_handle* h,
                                        double epsilon) {
   h->impl->epsilon_ = epsilon;

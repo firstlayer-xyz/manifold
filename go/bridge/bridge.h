@@ -465,18 +465,8 @@ struct ManifoldManifold* mb_manifold_from_meshgl(
     const float* halfedge_tangent, size_t halfedge_tangent_len,
     float tolerance);
 
-// DisjointSets wraps the private src/disjoint_sets.h class — used by
-// Decompose to union-find connected vert components.
-typedef struct mb_disjoint_sets_handle mb_disjoint_sets_handle;
-
-mb_disjoint_sets_handle*  mb_disjoint_sets_new(size_t size);
-void                      mb_disjoint_sets_unite(
-    mb_disjoint_sets_handle* h, size_t a, size_t b);
-// connected_components fills out_components (caller buffer of size set by
-// DisjointSets ctor) and returns the count.
-int                       mb_disjoint_sets_connected_components(
-    mb_disjoint_sets_handle* h, int* out_components);
-void                      mb_delete_disjoint_sets(mb_disjoint_sets_handle* h);
+// (mb_disjoint_sets_* removed — DisjointSets is now implemented in
+// pure Go; see go/disjoint_sets.go.)
 
 // mb_mutable_impl_set_epsilon_value sets impl->epsilon_ directly (the
 // epsilon-field assignment in Decompose's inherit-precision block).

@@ -1075,8 +1075,7 @@ func (m *Manifold) Decompose() []*Manifold {
 	}
 
 	numVert := len(impl.Verts())
-	uf := bridge.NewDisjointSets(numVert)
-	defer uf.Delete()
+	uf := NewDisjointSets(numVert)
 
 	starts := impl.HalfedgeStarts()
 	for edge := 0; edge < len(starts); edge++ {
@@ -1087,7 +1086,8 @@ func (m *Manifold) Decompose() []*Manifold {
 			uf.Unite(startV, endV)
 		}
 	}
-	numComponents, vertLabel := uf.ConnectedComponents()
+	vertLabel := make([]int32, numVert)
+	numComponents := uf.ConnectedComponents(vertLabel)
 
 	if numComponents == 1 {
 		return []*Manifold{m}
