@@ -358,6 +358,11 @@ class Manifold {
 
   std::shared_ptr<CsgNode> LoadPNode() const;
   CsgLeafNode& GetCsgLeafNode(ExecutionContext::Impl* ctx = nullptr) const;
+
+  // Transient during the in-progress Go port. ManifoldBridge gives the Go
+  // port's cgo shims access to internal accessors that manifoldc does not
+  // expose. To be removed when the Go port no longer relies on cgo.
+  friend struct ManifoldBridge;
 };
 /** @} */
 

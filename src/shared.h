@@ -275,6 +275,9 @@ class Halfedges {
   SharedVec<int> start_;
   SharedVec<int> paired_;
   SharedVec<int> propVert_;
+
+  // Transient during the in-progress Go port; see manifold.h for context.
+  friend struct ManifoldBridge;
 };
 
 struct Barycentric {
