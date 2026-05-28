@@ -740,26 +740,6 @@ const double* mb_impl_vert_normals_data(const mb_impl_handle* h,
 }
 
 
-ManifoldManifold* mb_manifold_extrude(const double* cs_data,
-                                      const size_t* cs_sizes,
-                                      size_t num_polygons, double height,
-                                      int n_divisions, double twist_degrees,
-                                      double scale_x, double scale_y) {
-  manifold::Polygons polys(num_polygons);
-  size_t offset = 0;
-  for (size_t i = 0; i < num_polygons; ++i) {
-    size_t n = cs_sizes[i];
-    polys[i].resize(n);
-    const auto* p =
-        reinterpret_cast<const manifold::vec2*>(cs_data + 2 * offset);
-    std::copy(p, p + n, polys[i].begin());
-    offset += n;
-  }
-  return to_c(new Manifold(Manifold::Extrude(
-      polys, height, n_divisions, twist_degrees,
-      manifold::vec2(scale_x, scale_y))));
-}
-
 void mb_mutable_impl_hull(mb_mutable_impl_handle* h, const double* vert_pos,
                           size_t count) {
   const auto* p = reinterpret_cast<const manifold::vec3*>(vert_pos);

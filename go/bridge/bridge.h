@@ -301,14 +301,8 @@ void                     mb_mutable_impl_set_epsilon_min(
 // and mb_mutable_impl_set_normals_and_coplanar were removed; these
 // methods are now implemented natively in Go.)
 
-// mb_manifold_extrude wraps Manifold::Extrude(Polygons, height,
-// nDivisions, twistDegrees, scaleTop). cs_data is a flat array of vec2
-// points (sum(cs_sizes) total). cs_sizes[i] is the point count of
-// polygon i.
-struct ManifoldManifold*  mb_manifold_extrude(
-    const double* cs_data, const size_t* cs_sizes, size_t num_polygons,
-    double height, int n_divisions, double twist_degrees,
-    double scale_x, double scale_y);
+// (mb_manifold_extrude removed — Manifold::Extrude is now native Go;
+// see impl_extrude.go.)
 
 // mb_impl_reserve_ids wraps Manifold::Impl::ReserveIDs(n) — reserves a
 // block of n mesh IDs from the global counter.

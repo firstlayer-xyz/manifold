@@ -30,13 +30,15 @@ type SimplePolygon = []Vec2
 type Polygons = []SimplePolygon
 
 // Extrude sweeps a Polygons cross-section along +Z by height, with
-// optional subdivisions, twist, and top scaling. Ported as a single
-// bridge to Manifold::Extrude for now; top-down drill comes later.
+// optional subdivisions, twist, and top scaling.
+//
+// Ported top-down from C++ Manifold::Extrude. Triangulation of the
+// cross-section caps still routes through the bridge (Triangulate);
+// the rest of the algorithm runs in Go (impl_extrude.go).
 func Extrude(crossSection Polygons, height float64, nDivisions int,
 	twistDegrees float64, scaleTop Vec2,
 ) *Manifold {
-	return wrap(bridge.Extrude(crossSection, height, nDivisions,
-		twistDegrees, scaleTop.X, scaleTop.Y))
+	return implExtrude(crossSection, height, nDivisions, twistDegrees, scaleTop)
 }
 
 // Box is an axis-aligned bounding box defined by its Min and Max corners.

@@ -1132,37 +1132,8 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []RayHit {
 // MeshGL64Handle deletion. GetMeshGL is now native Go in
 // impl_meshgl.go.)
 
-// Extrude wraps Manifold::Extrude. polys is the cross-section: each
-// inner []geom.Vec2 is a SimplePolygon, the outer slice is Polygons.
-// Other parameters match the C++ signature.
-func Extrude(polys [][]geom.Vec2, height float64, nDivisions int,
-	twistDegrees, scaleX, scaleY float64,
-) *handle.Manifold {
-	var totalPoints int
-	for _, p := range polys {
-		totalPoints += len(p)
-	}
-	flat := make([]geom.Vec2, 0, totalPoints)
-	sizes := make([]C.size_t, len(polys))
-	for i, p := range polys {
-		flat = append(flat, p...)
-		sizes[i] = C.size_t(len(p))
-	}
-	var fp unsafe.Pointer
-	if totalPoints > 0 {
-		fp = unsafe.Pointer(&flat[0])
-	}
-	var sp unsafe.Pointer
-	if len(sizes) > 0 {
-		sp = unsafe.Pointer(&sizes[0])
-	}
-	p := C.mb_manifold_extrude(
-		(*C.double)(fp), (*C.size_t)(sp), C.size_t(len(polys)),
-		C.double(height), C.int(nDivisions), C.double(twistDegrees),
-		C.double(scaleX), C.double(scaleY),
-	)
-	return handle.NewManifold(unsafe.Pointer(p))
-}
+// (bridge.Extrude removed — Manifold::Extrude is now native Go;
+// see impl_extrude.go.)
 
 // MutableImpl wraps a non-const shared_ptr<Manifold::Impl>. Returned by
 // Impl.Copy. Mutator methods on MutableImpl mirror the non-const
