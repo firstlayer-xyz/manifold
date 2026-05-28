@@ -71,6 +71,35 @@ func (a Vec3) Normalize() Vec3 {
 // Degrees converts radians to degrees. Mirrors C++ manifold::degrees.
 func Degrees(rad float64) float64 { return rad * (180.0 / math.Pi) }
 
+// Radians converts degrees to radians. Mirrors C++ manifold::radians.
+func Radians(deg float64) float64 { return deg * (math.Pi / 180.0) }
+
+// SafeNormalize is the Go port of C++ SafeNormalize from src/shared.h:
+// normalize, but if the result is non-finite (zero-vector or NaN
+// input), return the zero vector instead.
+func (a Vec3) SafeNormalize() Vec3 {
+	n := a.Normalize()
+	if !n.IsFinite() {
+		return Vec3{}
+	}
+	return n
+}
+
+// AngleBetween is the Go port of C++ AngleBetween from
+// src/smoothing.cpp: returns the angle (in radians) between two
+// unit-vectors a and b, clamping dot to [-1, 1] before acos so a
+// slightly-out-of-range dot doesn't yield NaN.
+func AngleBetween(a, b Vec3) float64 {
+	d := a.Dot(b)
+	if d >= 1 {
+		return 0
+	}
+	if d <= -1 {
+		return math.Pi
+	}
+	return math.Acos(d)
+}
+
 // IsFinite reports whether all components are finite.
 func (a Vec3) IsFinite() bool {
 	return !math.IsNaN(a.X) && !math.IsInf(a.X, 0) &&
@@ -118,6 +147,38 @@ func (b Box) ContainsBox(other Box) bool {
 func (b Box) DoesOverlap(other Box) bool {
 	return b.Min.X <= other.Max.X && b.Min.Y <= other.Max.Y && b.Min.Z <= other.Max.Z &&
 		b.Max.X >= other.Min.X && b.Max.Y >= other.Min.Y && b.Max.Z >= other.Min.Z
+}
+
+// Union is the Go port of C++ Box::Union(const Box&) from
+// include/manifold/common.h: smallest Box containing both b and other.
+func (b Box) Union(other Box) Box {
+	return Box{Min: minVec(b.Min, other.Min), Max: maxVec(b.Max, other.Max)}
+}
+
+// UnionPoint is the Go port of C++ Box::Union(const vec3) from
+// include/manifold/common.h: expand b in place to include point p.
+// Returns the updated Box (mirroring void return in C++ is awkward
+// in Go; callers do `b = b.UnionPoint(p)`).
+func (b Box) UnionPoint(p Vec3) Box {
+	return Box{Min: minVec(b.Min, p), Max: maxVec(b.Max, p)}
+}
+
+// DoesOverlapPoint reports whether p lies inside b (boundary included).
+// Mirrors C++ Box::DoesOverlap(const vec3&).
+func (b Box) DoesOverlapPoint(p Vec3) bool { return b.Contains(p) }
+
+// Transform is the Go port of C++ Box::Transform(const mat3x4&) from
+// include/manifold/common.h: applies the affine transform to b's min
+// and max corners, then takes the AABB of the two transformed points.
+//
+// This is a conservative bound — for non-axis-aligned rotations the
+// result is larger than the tight AABB of the rotated box, but it's
+// what the Collider uses since its callers guarantee axis-aligned
+// transforms (Collider::IsAxisAligned).
+func (b Box) Transform(m Mat3x4) Box {
+	minT := m.ApplyAffine(b.Min)
+	maxT := m.ApplyAffine(b.Max)
+	return Box{Min: minVec(minT, maxT), Max: maxVec(minT, maxT)}
 }
 
 // IsFinite reports whether all corner coordinates are finite.
@@ -207,6 +268,15 @@ func (a Mat3) Inverse() Mat3 {
 func NormalTransform(transform Mat3x4) Mat3 {
 	linear := Mat3{transform[0], transform[1], transform[2]}
 	return linear.Transpose().Inverse()
+}
+
+// InverseNormalTransform is the inverse of NormalTransform —
+// inv(transpose(inv(mat3(transform)))) — used by SetNormals to map
+// world-frame vertex normals back into the per-mesh frame. Mirrors
+// C++ InverseNormalTransform in src/shared.h.
+func InverseNormalTransform(transform Mat3x4) Mat3 {
+	linear := Mat3{transform[0], transform[1], transform[2]}
+	return linear.Inverse().Transpose().Inverse()
 }
 
 // Sind returns sin(x) for x in degrees, exact at every multiple of 90.
