@@ -88,6 +88,20 @@ void                     mb_mutable_impl_set_halfedges_raw(
     mb_mutable_impl_handle* h,
     const int* starts, const int* props, const int* paireds, size_t n);
 
+// mb_mutable_impl_set_bbox writes bBox_.min and bBox_.max directly.
+// Used by the Go port of Impl::CalculateBBox to install the
+// Go-computed min/max corners.
+void                     mb_mutable_impl_set_bbox(
+    mb_mutable_impl_handle* h,
+    double min_x, double min_y, double min_z,
+    double max_x, double max_y, double max_z);
+
+// mb_mutable_impl_make_empty wraps Impl::MakeEmpty(Error). status is
+// cast to the C++ Error enum: 0=NoError, etc. (See Manifold::Error in
+// manifold.h.)
+void                     mb_mutable_impl_make_empty(
+    mb_mutable_impl_handle* h, int status);
+
 // mb_invalid wraps Manifold::Invalid() (private static) — returns a
 // Manifold with Error::InvalidConstruction status.
 struct ManifoldManifold*  mb_invalid(void);

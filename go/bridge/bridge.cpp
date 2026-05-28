@@ -169,6 +169,17 @@ void mb_mutable_impl_set_halfedges_raw(mb_mutable_impl_handle* h,
   ManifoldBridge::SetHalfedges(h->impl->halfedge_, starts, props, paireds, n);
 }
 
+void mb_mutable_impl_set_bbox(mb_mutable_impl_handle* h,
+                              double min_x, double min_y, double min_z,
+                              double max_x, double max_y, double max_z) {
+  h->impl->bBox_.min = manifold::vec3(min_x, min_y, min_z);
+  h->impl->bBox_.max = manifold::vec3(max_x, max_y, max_z);
+}
+
+void mb_mutable_impl_make_empty(mb_mutable_impl_handle* h, int status) {
+  h->impl->MakeEmpty(static_cast<manifold::Manifold::Error>(status));
+}
+
 void mb_mutable_impl_create_tangents_idx(mb_mutable_impl_handle* h,
                                          int normalIdx) {
   h->impl->CreateTangents(normalIdx);

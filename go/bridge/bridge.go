@@ -488,6 +488,20 @@ func (mi *MutableImpl) SetHalfedgesRaw(starts, props, paireds []int32) {
 		C.size_t(n))
 }
 
+// SetBBox writes bBox_.min and bBox_.max directly. Used by the Go
+// port of Impl::CalculateBBox to install the Go-computed corners.
+func (mi *MutableImpl) SetBBox(min, max geom.Vec3) {
+	C.mb_mutable_impl_set_bbox(mi.p,
+		C.double(min.X), C.double(min.Y), C.double(min.Z),
+		C.double(max.X), C.double(max.Y), C.double(max.Z))
+}
+
+// MakeEmpty wraps Impl::MakeEmpty(Error). status is the integer value
+// of the C++ Manifold::Error enum (0 = NoError).
+func (mi *MutableImpl) MakeEmpty(status int) {
+	C.mb_mutable_impl_make_empty(mi.p, C.int(status))
+}
+
 // warpRegistry tracks Go callback functions across a cgo call into
 // Impl::Warp. Each call gets a fresh ID that the C++ side passes back
 // through mbWarpTrampoline (declared via //export below).
