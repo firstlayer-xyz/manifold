@@ -39,10 +39,6 @@ struct ManifoldBridge {
       he.SetPair(static_cast<int>(i), paireds[i]);
     }
   }
-  static Manifold PropagateStatus(Manifold::Error status) {
-    return Manifold::PropagateStatus(status);
-  }
-  static Manifold Invalid() { return Manifold::Invalid(); }
   static std::shared_ptr<CsgNode> LoadPNode(const Manifold& m) {
     return m.LoadPNode();
   }
@@ -197,9 +193,6 @@ mb_mutable_impl_handle* mb_new_mutable_impl(void) {
   return new mb_mutable_impl_handle{std::make_shared<Manifold::Impl>()};
 }
 
-ManifoldManifold* mb_invalid(void) {
-  return to_c(new Manifold(ManifoldBridge::Invalid()));
-}
 
 double* mb_mutable_impl_verts_data(mb_mutable_impl_handle* h,
                                    size_t* out_count) {
@@ -851,11 +844,6 @@ ManifoldManifold* mb_manifold_from_mutable_impl(mb_mutable_impl_handle* h) {
 }
 
 void mb_delete_mutable_impl(mb_mutable_impl_handle* h) { delete h; }
-
-ManifoldManifold* mb_propagate_status(int status) {
-  return to_c(new Manifold(
-      ManifoldBridge::PropagateStatus(static_cast<Manifold::Error>(status))));
-}
 
 struct mb_csg_node_handle {
   std::shared_ptr<manifold::CsgNode> node;

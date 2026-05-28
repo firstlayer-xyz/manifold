@@ -256,7 +256,7 @@ var (
 //   }
 func ReadOBJ(r io.Reader) *Manifold {
 	if r == nil {
-		return wrap(bridge.Invalid())
+		return invalidManifold()
 	}
 	mesh, epsilon := readOBJWithEpsilon(r)
 	// std::make_shared<Impl>(mesh) — build a mutable impl from the

@@ -87,11 +87,8 @@ func NewMutableImpl() *MutableImpl {
 	return &MutableImpl{p: C.mb_new_mutable_impl()}
 }
 
-// Invalid wraps Manifold::Invalid() — an empty Manifold whose Impl
-// carries the InvalidConstruction error code.
-func Invalid() *handle.Manifold {
-	return handle.NewManifold(unsafe.Pointer(C.mb_invalid()))
-}
+// (bridge.Invalid removed — Invalid is now native Go in
+// manifold.invalidManifold via MakeEmpty.)
 
 // Verts returns a Go slice aliasing the mutable Impl's vertPos_ array.
 // The slice is writable — modifying it modifies the C++ buffer
@@ -1239,11 +1236,8 @@ func (mi *MutableImpl) ToManifold() *handle.Manifold {
 // Delete releases the Go-side hold on the C++ shared_ptr<Impl>.
 func (mi *MutableImpl) Delete() { C.mb_delete_mutable_impl(mi.p) }
 
-// PropagateStatus builds an empty Manifold whose Impl carries the given
-// Error code. Mirrors C++ Manifold::PropagateStatus.
-func PropagateStatus(status int) *handle.Manifold {
-	return handle.NewManifold(unsafe.Pointer(C.mb_propagate_status(C.int(status))))
-}
+// (bridge.PropagateStatus removed — propagateStatus is now native
+// Go in the manifold package via MakeEmpty.)
 
 // CsgNode wraps a C++ shared_ptr<CsgNode>. Produced by LoadPNode (mirror
 // of Manifold::LoadPNode) and CsgNode.Transform (mirror of

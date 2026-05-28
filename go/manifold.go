@@ -200,7 +200,7 @@ func (m *Manifold) AsOriginal() *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if status := impl.Scalars().Status; Error(status) != NoError {
-		return wrap(bridge.PropagateStatus(status))
+		return propagateStatus(Error(status))
 	}
 	// hadNormals mirrors C++ AsOriginal: snapshot AllHaveNormals from
 	// the SOURCE impl before Copy, so InitializeOriginal can preserve
@@ -225,7 +225,7 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -251,7 +251,7 @@ func (m *Manifold) CalculateCurvature(gaussianIdx, meanIdx int) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -268,7 +268,7 @@ func (m *Manifold) CalculateNormals(normalIdx int, minSharpAngle float64) *Manif
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -288,7 +288,7 @@ func (m *Manifold) SmoothByNormals(normalIdx int) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -306,7 +306,7 @@ func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -343,7 +343,7 @@ func (m *Manifold) SetTolerance(tol float64) *Manifold {
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -487,11 +487,11 @@ func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if status := impl.Scalars().Status; Error(status) != NoError {
-		err := wrap(bridge.PropagateStatus(status))
+		err := propagateStatus(Error(status))
 		return err, err
 	}
 	if m.IsEmpty() {
-		return wrap(bridge.Invalid()), wrap(bridge.Invalid())
+		return invalidManifold(), invalidManifold()
 	}
 	return m.Split(halfspace(m.BoundingBox(), normal, originOffset))
 }
@@ -549,7 +549,7 @@ func (m *Manifold) GetEpsilon() float64 {
 // project verts onto the sphere via per-axis cosine + radius·normalize.
 func Sphere(radius float64, circularSegments int) *Manifold {
 	if radius <= 0 {
-		return wrap(bridge.Invalid())
+		return invalidManifold()
 	}
 	var n int
 	if circularSegments > 0 {
@@ -607,11 +607,11 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 // Ported top-down from C++ Manifold::Cylinder.
 func Cylinder(height, radiusLow, radiusHigh float64, circularSegments int, center bool) *Manifold {
 	if height <= 0 || radiusLow < 0 {
-		return wrap(bridge.Invalid())
+		return invalidManifold()
 	}
 	if radiusLow == 0 {
 		if radiusHigh <= 0 {
-			return wrap(bridge.Invalid())
+			return invalidManifold()
 		}
 		// Cone with apex at bottom: build the centered apex-at-top version
 		// and mirror it.
@@ -733,7 +733,7 @@ func Compose(manifolds []*Manifold) *Manifold {
 func BatchHull(manifolds []*Manifold) *Manifold {
 	for _, m := range manifolds {
 		if status := m.Status(); status != NoError {
-			return wrap(bridge.PropagateStatus(int(status)))
+			return propagateStatus(Error(int(status)))
 		}
 	}
 	var total int
@@ -880,6 +880,41 @@ func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 		m.Tolerance,
 		edges,
 	))
+}
+
+// invalidManifold mirrors C++ Manifold::Invalid — an empty Manifold
+// whose Impl carries the InvalidConstruction error code. Used by
+// constructors and ops to signal invalid input. Replaces the
+// bridge.Invalid wrapper around C++ Manifold::Invalid.
+//
+// Ported top-down from C++:
+//   Manifold Manifold::Invalid() {
+//     auto pImpl_ = std::make_shared<Impl>();
+//     pImpl_->status_ = Error::InvalidConstruction;
+//     return Manifold(pImpl_);
+//   }
+func invalidManifold() *Manifold {
+	mi := bridge.NewMutableImpl()
+	defer mi.Delete()
+	mi.MakeEmpty(int(InvalidConstruction))
+	return wrap(mi.ToManifold())
+}
+
+// propagateStatus mirrors C++ Manifold::PropagateStatus — an empty
+// Manifold whose Impl carries the given error status. Replaces the
+// bridge.PropagateStatus wrapper.
+//
+// Ported top-down from C++:
+//   Manifold Manifold::PropagateStatus(Error status) {
+//     auto pImpl = std::make_shared<Impl>();
+//     pImpl->status_ = status;
+//     return Manifold(pImpl);
+//   }
+func propagateStatus(status Error) *Manifold {
+	mi := bridge.NewMutableImpl()
+	defer mi.Delete()
+	mi.MakeEmpty(int(status))
+	return wrap(mi.ToManifold())
 }
 
 // ExecutionContext observes progress and requests cancellation of a
@@ -1073,7 +1108,7 @@ func (m *Manifold) Decompose() []*Manifold {
 	defer impl.Delete()
 	scalars := impl.Scalars()
 	if Error(scalars.Status) != NoError {
-		return []*Manifold{wrap(bridge.PropagateStatus(scalars.Status))}
+		return []*Manifold{propagateStatus(Error(scalars.Status))}
 	}
 
 	numVert := len(impl.Verts())
@@ -1160,7 +1195,7 @@ func (m *Manifold) Warp(fn func(*Vec3)) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -1177,7 +1212,7 @@ func (m *Manifold) WarpBatch(fn func([]Vec3)) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -1234,7 +1269,7 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 	}
 
 	if len(polygons) == 0 {
-		return wrap(bridge.Invalid())
+		return invalidManifold()
 	}
 
 	if revolveDegrees > 360 {
@@ -1420,7 +1455,7 @@ func (m *Manifold) Hull() *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := bridge.NewMutableImpl()
 	defer newImpl.Delete()
@@ -1435,7 +1470,7 @@ func (m *Manifold) Refine(n int) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -1453,7 +1488,7 @@ func (m *Manifold) RefineToLength(length float64) *Manifold {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
 	if s := impl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -1471,7 +1506,7 @@ func (m *Manifold) RefineToTolerance(tol float64) *Manifold {
 	defer impl.Delete()
 	s := impl.Scalars()
 	if Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
@@ -1488,12 +1523,12 @@ func (m *Manifold) MinkowskiSum(other *Manifold) *Manifold {
 	aImpl := bridge.GetImpl(m.h)
 	defer aImpl.Delete()
 	if s := aImpl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	bImpl := bridge.GetImpl(other.h)
 	defer bImpl.Delete()
 	if s := bImpl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	return wrap(aImpl.Minkowski(bImpl, false))
 }
@@ -1506,12 +1541,12 @@ func (m *Manifold) MinkowskiDifference(other *Manifold) *Manifold {
 	aImpl := bridge.GetImpl(m.h)
 	defer aImpl.Delete()
 	if s := aImpl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	bImpl := bridge.GetImpl(other.h)
 	defer bImpl.Delete()
 	if s := bImpl.Scalars(); Error(s.Status) != NoError {
-		return wrap(bridge.PropagateStatus(s.Status))
+		return propagateStatus(Error(s.Status))
 	}
 	return wrap(aImpl.Minkowski(bImpl, true))
 }
@@ -1605,7 +1640,7 @@ func Tetrahedron() *Manifold {
 //   }
 func Cube(size Vec3, center bool) *Manifold {
 	if size.X < 0 || size.Y < 0 || size.Z < 0 || size.Length() == 0 {
-		return wrap(bridge.Invalid())
+		return invalidManifold()
 	}
 	var t Vec3
 	if center {

@@ -277,9 +277,7 @@ void                     mb_mutable_impl_set_bbox(
 void                     mb_mutable_impl_make_empty(
     mb_mutable_impl_handle* h, int status);
 
-// mb_invalid wraps Manifold::Invalid() (private static) — returns a
-// Manifold with Error::InvalidConstruction status.
-struct ManifoldManifold*  mb_invalid(void);
+// (mb_invalid removed — Invalid is now native Go via MakeEmpty.)
 
 // mb_mutable_impl_verts_data: mutable view onto the Impl's vertPos_
 // array. Lets Go-side ports modify vertex positions in place. Same
@@ -570,10 +568,8 @@ double mb_impl_min_gap(
 struct ManifoldManifold*  mb_manifold_from_mutable_impl(mb_mutable_impl_handle* h);
 void                      mb_delete_mutable_impl(mb_mutable_impl_handle* h);
 
-// mb_propagate_status mirrors Manifold::PropagateStatus: builds an empty
-// Impl with the given Error code and wraps it. Used by top-down ports
-// that need to forward an error status from an input Manifold.
-struct ManifoldManifold* mb_propagate_status(int status);
+// (mb_propagate_status removed — PropagateStatus is now native Go via
+// MakeEmpty.)
 
 // Opaque handle around shared_ptr<CsgNode>. mb_manifold_load_pnode wraps
 // the inner Manifold::LoadPNode (private; via ManifoldBridge).
