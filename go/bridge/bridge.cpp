@@ -476,41 +476,6 @@ void mb_delete_tri_verts(mb_tri_verts_handle* h) { delete h; }
 
 extern "C" {
 
-ManifoldManifold* mb_manifold_set_properties(ManifoldManifold* m, int num_prop,
-                                              uintptr_t callback_id) {
-  Manifold* src = from_c(m);
-  if (callback_id == 0) {
-    // Mirror the C++ propFunc==nullptr path (parallel zero-fill).
-    return to_c(new Manifold(src->SetProperties(num_prop, nullptr)));
-  }
-  const int old_num_prop = src->NumProp();
-  auto fn = [callback_id, num_prop, old_num_prop](
-                double* newProp, manifold::vec3 pos, const double* oldProp) {
-    mbSetPropertiesTrampoline(static_cast<GoUintptr>(callback_id), newProp,
-                              static_cast<size_t>(num_prop), pos.x, pos.y,
-                              pos.z, const_cast<double*>(oldProp),
-                              static_cast<size_t>(old_num_prop));
-  };
-  return to_c(new Manifold(src->SetProperties(num_prop, fn)));
-}
-
-ManifoldManifold* mb_manifold_level_set(
-    uintptr_t callback_id,
-    double bbox_min_x, double bbox_min_y, double bbox_min_z,
-    double bbox_max_x, double bbox_max_y, double bbox_max_z,
-    double edge_length, double level, double tolerance,
-    int can_parallel) {
-  manifold::Box bounds(
-      manifold::vec3(bbox_min_x, bbox_min_y, bbox_min_z),
-      manifold::vec3(bbox_max_x, bbox_max_y, bbox_max_z));
-  auto sdf = [callback_id](manifold::vec3 p) -> double {
-    return mbLevelSetTrampoline(static_cast<GoUintptr>(callback_id),
-                                p.x, p.y, p.z);
-  };
-  return to_c(new Manifold(Manifold::LevelSet(
-      sdf, bounds, edge_length, level, tolerance, can_parallel != 0)));
-}
-
 void mb_mutable_impl_warp(mb_mutable_impl_handle* h, uintptr_t callback_id) {
   h->impl->Warp([callback_id](manifold::vec3& v) {
     double xyz[3] = {v.x, v.y, v.z};
@@ -739,13 +704,6 @@ const double* mb_impl_vert_normals_data(const mb_impl_handle* h,
   return reinterpret_cast<const double*>(v.data());
 }
 
-
-void mb_mutable_impl_hull(mb_mutable_impl_handle* h, const double* vert_pos,
-                          size_t count) {
-  const auto* p = reinterpret_cast<const manifold::vec3*>(vert_pos);
-  h->impl->Hull(manifold::VecView<const manifold::vec3>(
-      const_cast<manifold::vec3*>(p), count));
-}
 
 void mb_mutable_impl_refine_n(mb_mutable_impl_handle* h, int n) {
   // Mirror of the lambda in C++ Manifold::Refine: constant n-1 splits.

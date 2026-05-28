@@ -385,27 +385,6 @@ void                mb_delete_tri_verts(mb_tri_verts_handle* h);
 // (mb_mutable_impl_create_halfedges removed — CreateHalfedges is now
 // native Go; see impl_halfedges.go.)
 
-// mb_manifold_level_set wraps the static Manifold::LevelSet. The SDF
-// is supplied as a Go-side callback referenced by id; mb_manifold_level_set
-// builds a std::function<double(vec3)> that calls back into Go via
-// mbLevelSetTrampoline. Pass can_parallel=0 unless the Go callback is
-// proven safe to call from multiple TBB threads concurrently.
-struct ManifoldManifold* mb_manifold_level_set(
-    uintptr_t callback_id,
-    double bbox_min_x, double bbox_min_y, double bbox_min_z,
-    double bbox_max_x, double bbox_max_y, double bbox_max_z,
-    double edge_length, double level, double tolerance,
-    int can_parallel);
-
-// mb_manifold_set_properties wraps Manifold::SetProperties. The Go
-// callback is referenced by callback_id; pass 0 to invoke the C++
-// nullptr-callback path (zero-fills new properties in parallel). The
-// trampoline (mbSetPropertiesTrampoline) is called once per halfedge
-// per triangle, receiving new/old property pointers + the vertex
-// position.
-struct ManifoldManifold* mb_manifold_set_properties(
-    struct ManifoldManifold* m, int num_prop, uintptr_t callback_id);
-
 // mb_mutable_impl_warp wraps Impl::Warp with a Go-side callback. The
 // callback_id is opaque to C++; the lambda passes it back through the
 // generated cgo trampoline (mbWarpTrampoline) along with the vec3 the
@@ -524,12 +503,6 @@ void                     mb_mutable_impl_build_collider(
     mb_mutable_impl_handle* h,
     const double* boxes, const uint32_t* morton, size_t n);
 void                     mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol);
-
-// mb_mutable_impl_hull calls C++ Impl::Hull(vert_pos, ctx=nullptr) — fills
-// the (empty) mutable Impl with the convex hull of the given vert array.
-// vert_pos is count vec3s packed as count*3 doubles.
-void                     mb_mutable_impl_hull(
-    mb_mutable_impl_handle* h, const double* vert_pos, size_t count);
 
 // mb_mutable_impl_refine_n calls Impl::Refine with the C++ lambda that
 // subdivides each edge into n pieces (constant n-1 splits per edge).

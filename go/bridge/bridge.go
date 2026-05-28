@@ -156,21 +156,6 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 // (PolygonsHandle / Impl.Slice / Impl.Project removed — Slice and
 // Project are now native Go; see impl_slice.go and impl_project.go.)
 
-// AllHaveNormals is the Go port of Impl::AllHaveNormals (src/impl.h):
-// true iff every entry of meshRelation_.meshIDtransform has
-// hasNormals set. Returns false on an empty map (matching C++).
-func (i *Impl) AllHaveNormals() bool {
-	rels := i.MeshIDTransforms()
-	if len(rels) == 0 {
-		return false
-	}
-	for _, r := range rels {
-		if !r.HasNormals {
-			return false
-		}
-	}
-	return true
-}
 
 // VertNormals returns a Go slice aliasing the Impl's vertNormal_ buffer.
 // Read-only; valid only while i has not been Deleted. May be empty if
@@ -610,139 +595,6 @@ func unregisterWarpBatchFn(id uintptr) {
 	delete(warpBatchRegistry.fns, id)
 }
 
-// setPropertiesRegistry tracks Go callbacks across a cgo call into
-// Manifold::SetProperties. The C++ side invokes mbSetPropertiesTrampoline
-// once per halfedge per triangle, with both new and old property
-// pointers (and their per-vertex lengths).
-var setPropertiesRegistry = struct {
-	sync.Mutex
-	next uintptr
-	fns  map[uintptr]func(newProp []float64, pos geom.Vec3, oldProp []float64)
-}{fns: map[uintptr]func(newProp []float64, pos geom.Vec3, oldProp []float64){}}
-
-func registerSetPropertiesFn(fn func([]float64, geom.Vec3, []float64)) uintptr {
-	setPropertiesRegistry.Lock()
-	defer setPropertiesRegistry.Unlock()
-	setPropertiesRegistry.next++
-	id := setPropertiesRegistry.next
-	setPropertiesRegistry.fns[id] = fn
-	return id
-}
-
-func unregisterSetPropertiesFn(id uintptr) {
-	setPropertiesRegistry.Lock()
-	defer setPropertiesRegistry.Unlock()
-	delete(setPropertiesRegistry.fns, id)
-}
-
-//export mbSetPropertiesTrampoline
-func mbSetPropertiesTrampoline(
-	id C.uintptr_t,
-	newProp *C.double, newLen C.size_t,
-	px, py, pz C.double,
-	oldProp *C.double, oldLen C.size_t,
-) {
-	setPropertiesRegistry.Lock()
-	fn := setPropertiesRegistry.fns[uintptr(id)]
-	setPropertiesRegistry.Unlock()
-	if fn == nil {
-		return
-	}
-	var newSlice []float64
-	if newLen > 0 {
-		newSlice = unsafe.Slice((*float64)(unsafe.Pointer(newProp)), int(newLen))
-	}
-	var oldSlice []float64
-	if oldLen > 0 {
-		oldSlice = unsafe.Slice((*float64)(unsafe.Pointer(oldProp)), int(oldLen))
-	}
-	pos := geom.Vec3{X: float64(px), Y: float64(py), Z: float64(pz)}
-	fn(newSlice, pos, oldSlice)
-}
-
-// SetProperties wraps the public Manifold::SetProperties via a Go-side
-// callback. Passing fn=nil mirrors the C++ propFunc=nullptr path
-// (parallel zero-fill of every new property).
-func SetProperties(
-	m *handle.Manifold, numProp int,
-	fn func(newProp []float64, pos geom.Vec3, oldProp []float64),
-) *handle.Manifold {
-	var id uintptr
-	if fn != nil {
-		id = registerSetPropertiesFn(fn)
-		defer unregisterSetPropertiesFn(id)
-	}
-	p := C.mb_manifold_set_properties(
-		(*C.ManifoldManifold)(m.Ptr()),
-		C.int(numProp),
-		C.uintptr_t(id),
-	)
-	return handle.NewManifold(unsafe.Pointer(p))
-}
-
-// levelSetRegistry tracks Go SDF callbacks across a cgo call into
-// Manifold::LevelSet. The C++ side captures the ID in a lambda and
-// invokes mbLevelSetTrampoline once per voxel.
-var levelSetRegistry = struct {
-	sync.Mutex
-	next uintptr
-	fns  map[uintptr]func(geom.Vec3) float64
-}{fns: map[uintptr]func(geom.Vec3) float64{}}
-
-func registerLevelSetFn(fn func(geom.Vec3) float64) uintptr {
-	levelSetRegistry.Lock()
-	defer levelSetRegistry.Unlock()
-	levelSetRegistry.next++
-	id := levelSetRegistry.next
-	levelSetRegistry.fns[id] = fn
-	return id
-}
-
-func unregisterLevelSetFn(id uintptr) {
-	levelSetRegistry.Lock()
-	defer levelSetRegistry.Unlock()
-	delete(levelSetRegistry.fns, id)
-}
-
-//export mbLevelSetTrampoline
-func mbLevelSetTrampoline(id C.uintptr_t, x, y, z C.double) C.double {
-	levelSetRegistry.Lock()
-	fn := levelSetRegistry.fns[uintptr(id)]
-	levelSetRegistry.Unlock()
-	if fn == nil {
-		return 0
-	}
-	return C.double(fn(geom.Vec3{X: float64(x), Y: float64(y), Z: float64(z)}))
-}
-
-// LevelSet wraps the static Manifold::LevelSet with a Go-side SDF
-// callback. bbox is given as (min, max); edgeLength, level and
-// tolerance map to the C++ arguments. canParallel must only be true
-// when the Go callback is safe to call from multiple TBB threads
-// concurrently (the registry lookup is safe, but the user-provided
-// function may not be).
-func LevelSet(
-	sdf func(geom.Vec3) float64,
-	bboxMin, bboxMax geom.Vec3,
-	edgeLength, level, tolerance float64,
-	canParallel bool,
-) *handle.Manifold {
-	id := registerLevelSetFn(sdf)
-	defer unregisterLevelSetFn(id)
-	canP := C.int(0)
-	if canParallel {
-		canP = 1
-	}
-	p := C.mb_manifold_level_set(
-		C.uintptr_t(id),
-		C.double(bboxMin.X), C.double(bboxMin.Y), C.double(bboxMin.Z),
-		C.double(bboxMax.X), C.double(bboxMax.Y), C.double(bboxMax.Z),
-		C.double(edgeLength), C.double(level), C.double(tolerance),
-		canP,
-	)
-	return handle.NewManifold(unsafe.Pointer(p))
-}
-
 //export mbWarpBatchTrampoline
 func mbWarpBatchTrampoline(id C.uintptr_t, p *C.double, n C.size_t) {
 	warpBatchRegistry.Lock()
@@ -1168,16 +1020,6 @@ func (mi *MutableImpl) SetToleranceValue(tol float64) {
 	C.mb_mutable_impl_set_tolerance_value(mi.p, C.double(tol))
 }
 
-// Hull calls C++ Impl::Hull(vertPos, nullptr) — fills this (empty)
-// Impl with the convex hull of the supplied vertex array.
-func (mi *MutableImpl) Hull(verts []geom.Vec3) {
-	var vp unsafe.Pointer
-	if len(verts) > 0 {
-		vp = unsafe.Pointer(&verts[0])
-	}
-	C.mb_mutable_impl_hull(mi.p, (*C.double)(vp), C.size_t(len(verts)))
-}
-
 // RefineN calls Impl::Refine with the constant n-1 splits-per-edge
 // lambda from C++ Manifold::Refine.
 func (mi *MutableImpl) RefineN(n int) {
@@ -1449,14 +1291,6 @@ func (i *Impl) Scalars() ImplScalars {
 		OriginalID:          int(s.original_id),
 		Status:              int(s.status),
 	}
-}
-
-// NumVert returns the vertex count. Drilled fully: the Impl exposes its
-// vertPos_ buffer; Go computes len() of the resulting slice.
-func NumVert(h *handle.Manifold) int {
-	impl := GetImpl(h)
-	defer impl.Delete()
-	return len(impl.Verts())
 }
 
 // Empty returns a handle to a new empty Manifold. The C++ Manifold default

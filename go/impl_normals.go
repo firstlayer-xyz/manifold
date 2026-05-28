@@ -2,22 +2,11 @@ package manifold
 
 import (
 	"math"
-	"sort"
+	"sync/atomic"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
-
-// nextHalfedge mirrors the C++ inline in src/shared.h:
-//
-//	current += current % 3 == 2 ? -2 : 1
-//
-// Walks to the next halfedge of the same triangle.
-func nextHalfedge(current int) int {
-	if current%3 == 2 {
-		return current - 2
-	}
-	return current + 1
-}
 
 // SetNormalsAndCoplanar is the Go port of C++
 // Manifold::Impl::SetNormalsAndCoplanar (src/impl.cpp).
@@ -34,6 +23,10 @@ func nextHalfedge(current int) int {
 // seed plane.
 //
 // Step 4: call CalculateVertNormals.
+//
+// C++ runs step 1 under for_each_n(autoPolicy(numTri), countAt(0),
+// numTri) — no-threshold form, defaults to kSeqThreshold (1e4).
+// Steps 2 and 3 stay serial as in C++.
 func (mi *MutableImpl) SetNormalsAndCoplanar() {
 	verts := mi.h.Verts()
 	starts := mi.h.HalfedgeStartsRO()
@@ -50,11 +43,12 @@ func (mi *MutableImpl) SetNormalsAndCoplanar() {
 	}
 	prio := make([]triPriority, numTri)
 	coplanarID := make([]int32, numTri)
-	for tri := 0; tri < numTri; tri++ {
+	policy := parallel.AutoPolicy(numTri)
+	parallel.ForEachN(policy, numTri, func(tri int) {
 		coplanarID[tri] = -1
 		if starts[3*tri] < 0 {
 			prio[tri] = triPriority{0, tri}
-			continue
+			return
 		}
 		v := verts[starts[3*tri]]
 		e1Start := starts[nextHalfedge(3*tri)]
@@ -70,13 +64,16 @@ func (mi *MutableImpl) SetNormalsAndCoplanar() {
 			}
 		}
 		prio[tri] = triPriority{area2: n.Dot(n), tri: tri}
-	}
-
-	// stable_sort by area² descending.
-	sort.SliceStable(prio, func(a, b int) bool {
-		return prio[a].area2 > prio[b].area2
 	})
 
+	// stable_sort by area² descending. C++ uses stable_sort (no policy
+	// form, defaults to autoPolicy + parallel TBB merge sort).
+	parallel.StableSort(policy, prio, func(a, b triPriority) bool {
+		return a.area2 > b.area2
+	})
+
+	// Greedy flood-fill — inherently serial (each iteration depends on
+	// what previous iterations marked).
 	var interior []int
 	for _, tp := range prio {
 		if coplanarID[tp.tri] >= 0 {
@@ -120,12 +117,16 @@ func (mi *MutableImpl) SetNormalsAndCoplanar() {
 // CalculateVertNormals is the Go port of C++
 // Manifold::Impl::CalculateVertNormals (src/impl.cpp).
 //
-// For each vertex, finds an incident halfedge, then walks the
-// surrounding fan (ForVert), accumulating angle-weighted face
-// normals. The C++ uses an atomic int per vertex initialized to
-// INT_MAX, then each halfedge atomic-mins itself into
-// vertHalfedgeMap[start_vert]. Go runs sequentially so we just take
-// the smallest halfedge index per vertex deterministically.
+// Three parallel passes:
+//  1. Init vertHalfedgeMap[v] = MaxInt32 — parallel.Fill.
+//  2. For every halfedge i, atomic-min vertHalfedgeMap[start_i] = i.
+//     C++ uses a compare_exchange_strong loop; we use the same
+//     primitive on []int32 + atomic.CompareAndSwapInt32.
+//  3. For every vert, walk the ForVert fan from the cached first
+//     edge and accumulate angle-weighted face normals.
+//
+// C++ uses policy = autoPolicy(NumTri()) — no-threshold form,
+// defaults to 1e4.
 func (mi *MutableImpl) CalculateVertNormals() {
 	verts := mi.h.Verts()
 	starts := mi.h.HalfedgeStartsRO()
@@ -133,75 +134,59 @@ func (mi *MutableImpl) CalculateVertNormals() {
 	faceNormals := mi.h.FaceNormalsMut()
 	numVert := len(verts)
 	numHalfedge := len(starts)
+	policy := parallel.AutoPolicy(len(starts) / 3)
 
 	mi.h.ResizeVertNormals(numVert)
 	vertNormals := mi.h.VertNormals()
 
-	const sentinel = math.MaxInt32
-	firstEdge := make([]int, numVert)
-	for i := range firstEdge {
-		firstEdge[i] = sentinel
-	}
-	for i := 0; i < numHalfedge; i++ {
-		v := int(starts[i])
-		if v < 0 {
-			continue
-		}
-		if i < firstEdge[v] {
-			firstEdge[v] = i
-		}
-	}
+	const sentinel int32 = math.MaxInt32
+	vertHalfedgeMap := make([]int32, numVert)
+	// Pass 1: initialize to sentinel. parallel.Fill is parallel-safe.
+	parallel.Fill(policy, vertHalfedgeMap, sentinel)
 
-	for vert := 0; vert < numVert; vert++ {
-		fe := firstEdge[vert]
-		if fe == sentinel {
+	// Pass 2: atomic-min. Multiple halfedges with the same startVert
+	// race; the winner is the smaller halfedge index.
+	parallel.ForEachN(policy, numHalfedge, func(i int) {
+		v := starts[i]
+		if v < 0 {
+			return
+		}
+		newVal := int32(i)
+		for {
+			old := atomic.LoadInt32(&vertHalfedgeMap[v])
+			if old <= newVal {
+				return
+			}
+			if atomic.CompareAndSwapInt32(&vertHalfedgeMap[v], old, newVal) {
+				return
+			}
+		}
+	})
+
+	// Pass 3: per-vert normal via the vertex-fan walk. Mirrors the
+	// C++ `ForVert(firstEdge, [&](int edge) { ... })` lambda body —
+	// for every edge in the fan, accumulate the angle-weighted face
+	// normal contribution from the (prevEdge, currEdge) corner.
+	parallel.ForEachN(policy, numVert, func(vert int) {
+		fe := int(vertHalfedgeMap[vert])
+		if fe == int(sentinel) {
 			vertNormals[vert] = geom.Vec3{}
-			continue
+			return
 		}
 		var normal geom.Vec3
-		edge := fe
-		for {
-			triVerts := [3]int32{
-				starts[edge],
-				starts[nextHalfedge(edge)],
-				starts[nextHalfedge(nextHalfedge(edge))],
+		forVert(fe, pairs, func(edge int) {
+			v0 := starts[edge]
+			v1 := starts[nextHalfedge(edge)]
+			v2 := starts[nextHalfedge(nextHalfedge(edge))]
+			currEdge := verts[v1].Sub(verts[v0]).SafeNormalize()
+			prevEdge := verts[v0].Sub(verts[v2]).SafeNormalize()
+			if !currEdge.IsFinite() || !prevEdge.IsFinite() {
+				return
 			}
-			currEdge := verts[triVerts[1]].Sub(verts[triVerts[0]])
-			prevEdge := verts[triVerts[0]].Sub(verts[triVerts[2]])
-			currLen := math.Sqrt(currEdge.Dot(currEdge))
-			prevLen := math.Sqrt(prevEdge.Dot(prevEdge))
-			if currLen > 0 && prevLen > 0 &&
-				!math.IsNaN(currLen) && !math.IsNaN(prevLen) &&
-				!math.IsInf(currLen, 0) && !math.IsInf(prevLen, 0) {
-				cn := geom.Vec3{X: currEdge.X / currLen, Y: currEdge.Y / currLen, Z: currEdge.Z / currLen}
-				pn := geom.Vec3{X: prevEdge.X / prevLen, Y: prevEdge.Y / prevLen, Z: prevEdge.Z / prevLen}
-				d := -pn.Dot(cn)
-				var phi float64
-				switch {
-				case d >= 1:
-					phi = 0
-				case d <= -1:
-					phi = math.Pi
-				default:
-					phi = math.Acos(d)
-				}
-				fn := faceNormals[edge/3]
-				normal = normal.Add(geom.Vec3{X: phi * fn.X, Y: phi * fn.Y, Z: phi * fn.Z})
-			}
-			pair := int(pairs[edge])
-			if pair < 0 {
-				break
-			}
-			edge = nextHalfedge(pair)
-			if edge == fe {
-				break
-			}
-		}
-		length := math.Sqrt(normal.Dot(normal))
-		if length > 0 && !math.IsNaN(length) && !math.IsInf(length, 0) {
-			vertNormals[vert] = geom.Vec3{X: normal.X / length, Y: normal.Y / length, Z: normal.Z / length}
-		} else {
-			vertNormals[vert] = geom.Vec3{}
-		}
-	}
+			phi := geom.AngleBetween(prevEdge.Scale(-1), currEdge)
+			fn := faceNormals[edge/3]
+			normal = normal.Add(geom.Vec3{X: phi * fn.X, Y: phi * fn.Y, Z: phi * fn.Z})
+		})
+		vertNormals[vert] = normal.SafeNormalize()
+	})
 }

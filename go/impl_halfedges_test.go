@@ -205,3 +205,55 @@ func sameEdgeSet(a, b map[[2]int32]int) bool {
 	}
 	return true
 }
+
+// TestIs2Manifold_Primitives verifies that primitive shape
+// constructors yield 2-manifold meshes (every edge incident to
+// exactly two triangles). Stronger than IsManifold which only
+// checks halfedge reciprocity.
+func TestIs2Manifold_Primitives(t *testing.T) {
+	cases := []struct {
+		name string
+		m    *Manifold
+	}{
+		{"Tetrahedron", Tetrahedron()},
+		{"Cube", Cube(Vec3{X: 1, Y: 1, Z: 1}, false)},
+		{"Sphere", Sphere(1.0, 24)},
+		{"Cylinder", Cylinder(2.0, 0.5, 0.5, 16, false)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer runtime.KeepAlive(tc.m)
+			impl := getImpl(tc.m)
+			defer impl.Delete()
+			if !impl.Is2Manifold() {
+				t.Errorf("%s should be Is2Manifold but is not", tc.name)
+			}
+		})
+	}
+}
+
+// TestIsManifold_Primitives verifies that all primitive shape
+// constructors produce IsManifold-passing meshes. Mirrors the C++
+// invariant that newly-constructed primitives are valid manifolds.
+func TestIsManifold_Primitives(t *testing.T) {
+	cases := []struct {
+		name string
+		m    *Manifold
+	}{
+		{"Tetrahedron", Tetrahedron()},
+		{"Cube", Cube(Vec3{X: 1, Y: 1, Z: 1}, false)},
+		{"Cube centered", Cube(Vec3{X: 2, Y: 3, Z: 4}, true)},
+		{"Sphere", Sphere(1.0, 24)},
+		{"Cylinder", Cylinder(2.0, 0.5, 0.5, 16, false)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer runtime.KeepAlive(tc.m)
+			impl := getImpl(tc.m)
+			defer impl.Delete()
+			if !impl.IsManifold() {
+				t.Errorf("%s should be IsManifold but is not", tc.name)
+			}
+		})
+	}
+}

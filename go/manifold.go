@@ -13,6 +13,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
 // Vec2 is a 2D vector with double-precision components.
@@ -52,8 +53,13 @@ type Manifold struct {
 // Mat3x4 is a 3-row, 4-column affine transform in column-major order.
 type Mat3x4 = geom.Mat3x4
 
-// NumVert returns the number of vertices in the mesh.
-func (m *Manifold) NumVert() int { return bridge.NumVert(m.h) }
+// NumVert returns the number of vertices in the mesh. Ported from
+// C++ Impl::NumVert (vertPos_.size()); reads via the impl facade.
+func (m *Manifold) NumVert() int {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.NumVert()
+}
 
 // NumTri returns the number of triangles in the mesh. Ported from C++
 // Impl::NumTri (halfedge_.size() / 3); the division happens in Go.
@@ -497,6 +503,61 @@ func (m *Manifold) SplitByPlane(normal Vec3, originOffset float64) (*Manifold, *
 	return m.Split(halfspace(m.BoundingBox(), normal, originOffset))
 }
 
+// IsManifold reports whether the underlying halfedge structure is
+// consistent (every halfedge has a reciprocal pair, no self-loops,
+// every triangle well-formed). Mirrors C++ Impl::IsManifold.
+//
+// This is a structural check, not a geometric one — see
+// IsSelfIntersecting for the latter.
+func (m *Manifold) IsManifold() bool {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.IsManifold()
+}
+
+// Is2Manifold reports whether the mesh is a 2-manifold — every edge
+// is incident to exactly two triangles. Strictly stronger than
+// IsManifold. Mirrors C++ Impl::Is2Manifold.
+func (m *Manifold) Is2Manifold() bool {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.Is2Manifold()
+}
+
+// IsConvex reports whether the mesh is genus 0 AND every shared edge
+// is convex from the outside. Mirrors C++ Impl::IsConvex.
+func (m *Manifold) IsConvex() bool {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.IsConvex()
+}
+
+// IsFinite reports whether every vertex position has finite
+// (non-NaN, non-inf) components. Mirrors C++ Impl::IsFinite.
+//
+// This is a stronger check than the bounding box being finite — a
+// partial-NaN vert set can still yield a finite bBox since
+// CalculateBBox skips NaNs.
+func (m *Manifold) IsFinite() bool {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.IsFinite()
+}
+
+// IsSelfIntersecting reports whether any two non-adjacent triangles
+// overlap geometrically, with epsilon-tolerant proximity checks to
+// avoid flagging adjacent epsilon-coincident geometry. Mirrors C++
+// Impl::IsSelfIntersecting.
+//
+// Note that this is NOT a check for epsilon-validity. A successful
+// boolean operation's output should be self-intersection-free; this
+// is useful for diagnosing input meshes or detecting corruption.
+func (m *Manifold) IsSelfIntersecting() bool {
+	impl := getImpl(m)
+	defer impl.Delete()
+	return impl.IsSelfIntersecting()
+}
+
 // MatchesTriNormals reports whether every face normal agrees with the
 // cross product of its triangle's halfedges. Used as a sanity check in
 // tests.
@@ -563,12 +624,11 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 	defer impl.Delete()
 	impl.SubdivideN(n)
 
-	// Per-vertex projection: matches the lambda inside the C++
-	// for_each_n on vertPos_. Mutates the Impl's buffer in place via
-	// the Go slice returned by Verts.
+	// Per-vertex projection: matches the C++ for_each_n on vertPos_ at
+	// src/constructors.cpp:211, with policy = autoPolicy(NumVert(), 1e5).
 	verts := impl.Verts()
 	half := math.Pi / 2
-	for i := range verts {
+	parallel.ForEachN(parallel.AutoPolicy(len(verts), 100000), len(verts), func(i int) {
 		v := verts[i]
 		v = Vec3{
 			X: math.Cos(half * (1 - v.X)),
@@ -578,7 +638,7 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 		length := math.Sqrt(v.Dot(v))
 		if length == 0 {
 			verts[i] = Vec3{}
-			continue
+			return
 		}
 		inv := radius / length
 		v = Vec3{X: v.X * inv, Y: v.Y * inv, Z: v.Z * inv}
@@ -587,7 +647,7 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 		} else {
 			verts[i] = v
 		}
-	}
+	})
 
 	// Finalize — drilled steps mirror C++ Sphere's tail. NumTri is
 	impl.InitializeOriginal()
@@ -986,39 +1046,71 @@ func (m *Manifold) WithContext(ctx *ExecutionContext) *Manifold {
 // mirrors the C++ nullptr-callback path: every new property is
 // zero-filled (in parallel).
 //
-// Ported top-down from C++ Manifold::SetProperties — wraps the public
-// static call via a callback trampoline. The for_each_n that walks
-// triangles/halfedges still runs in C++.
+// Ported top-down from C++ Manifold::SetProperties (src/manifold.cpp).
+// The full algorithm runs in Go: status check, copy impl, walk
+// triangles in parallel (or sequentially when a user fn is supplied,
+// matching the C++ Par/Seq policy choice).
 func (m *Manifold) SetProperties(
 	numProp int,
 	fn func(newProp []float64, pos Vec3, oldProp []float64),
 ) *Manifold {
-	return wrap(bridge.SetProperties(m.h, numProp, fn))
-}
+	impl := getImpl(m)
+	defer impl.Delete()
+	if s := impl.Scalars(); Error(s.Status) != NoError {
+		return propagateStatus(Error(s.Status))
+	}
+	newImpl := impl.Copy()
+	defer newImpl.Delete()
+	oldNumProp := impl.Scalars().NumProp
 
-// LevelSet constructs a Manifold from a signed distance function. The
-// returned mesh is the iso-surface where sdf(p) == level, restricted
-// to bounds. edgeLength sets the voxel grid resolution; tolerance ≤ 0
-// uses the C++ default (infinity, i.e. no SDF-aware tightening). When
-// canParallel is true, sdf may be called from multiple worker threads
-// concurrently — only enable it if the function is safe under that
-// guarantee.
-//
-// Ported top-down: wraps Manifold::LevelSet via a Go-side callback
-// trampoline. Future drilling will move the marching-tetrahedra
-// algorithm itself to Go.
-func LevelSet(
-	sdf func(Vec3) float64,
-	bounds Box,
-	edgeLength, level, tolerance float64,
-	canParallel bool,
-) *Manifold {
-	return wrap(bridge.LevelSet(
-		sdf,
-		bounds.Min, bounds.Max,
-		edgeLength, level, tolerance,
-		canParallel,
-	))
+	if numProp == 0 {
+		// Clear properties_ entirely. Mirrors C++ Vec::clear.
+		newImpl.h.SetProperties(nil)
+		newImpl.h.SetNumProp(0)
+		return newImpl.ToManifold()
+	}
+
+	// Allocate fresh zero-filled properties_ buffer sized to
+	// numProp * NumPropVert. NumPropVert is NumVert when oldNumProp ==
+	// 0 (the C++ Impl::NumPropVert() default), else len(props)/oldNumProp.
+	numPropVert := newImpl.NumVert()
+	oldProperties := append([]float64(nil), newImpl.Properties()...)
+	if oldNumProp > 0 {
+		numPropVert = len(oldProperties) / oldNumProp
+	}
+	newProperties := make([]float64, numProp*numPropVert)
+
+	verts := newImpl.Verts()
+	starts := newImpl.HalfedgeStarts()
+	props := newImpl.HalfedgeProps()
+	numTri := newImpl.NumTri()
+	// C++ picks Par when no user callback (idempotent zero-fill) and
+	// Seq when there is one (user fn may have side effects). Mirror.
+	policy := parallel.Seq
+	if fn == nil {
+		policy = parallel.AutoPolicy(numTri)
+	}
+	parallel.ForEachN(policy, numTri, func(tri int) {
+		for i := 0; i < 3; i++ {
+			edge := 3*tri + i
+			propVert := int(props[edge])
+			if fn == nil {
+				for p := 0; p < numProp; p++ {
+					newProperties[numProp*propVert+p] = 0
+				}
+				continue
+			}
+			vert := int(starts[edge])
+			oldStart := propVert * oldNumProp
+			oldEnd := oldStart + oldNumProp
+			fn(newProperties[propVert*numProp:propVert*numProp+numProp],
+				verts[vert], oldProperties[oldStart:oldEnd])
+		}
+	})
+
+	newImpl.h.SetNumProp(numProp)
+	newImpl.h.SetProperties(newProperties)
+	return newImpl.ToManifold()
 }
 
 // SmoothFromMeshGL constructs a smooth Manifold from a Go-owned
@@ -1138,30 +1230,26 @@ func (m *Manifold) Decompose() []*Manifold {
 		newImpl.SetEpsilonValue(scalars.Epsilon)
 		newImpl.SetToleranceValue(scalars.Tolerance)
 
-		vertNew2Old := make([]int32, 0, numVert)
-		for v := 0; v < numVert; v++ {
-			if int(vertLabel[v]) == comp {
-				vertNew2Old = append(vertNew2Old, int32(v))
-			}
-		}
+		// C++ uses copy_if(countAt(0), countAt(numVert), vertNew2Old,
+		// pred) to collect vert indices belonging to this component.
+		policy := parallel.AutoPolicy(numVert, 100000)
+		thisComp := int32(comp)
+		idxSrc := make([]int32, numVert)
+		parallel.Sequence(policy, idxSrc)
+		vertNew2Old := parallel.CopyIf(policy, idxSrc, func(v int) bool {
+			return vertLabel[v] == thisComp
+		})
 		nVert := len(vertNew2Old)
 		newImpl.ResizeVerts(nVert)
-		newImpl.ResizeVertNormals(len(srcNormals))
+		newImpl.ResizeVertNormals(nVert)
 		newVerts := newImpl.Verts()
 		newNormals := newImpl.VertNormals()
-		// gather verts (and normals if present) from old indices.
 		hasNormals := len(srcNormals) > 0
-		// resize_vert_normals(srcNormals_size) above, then we'll resize to nVert below
-		// — match C++ which does .resize(nVert) on vertNormal_ too.
-		newImpl.ResizeVertNormals(nVert)
+		// gather verts (and normals if present) — C++ uses two parallel
+		// gather() calls; mirror.
+		parallel.Gather(policy, vertNew2Old, srcVerts, newVerts)
 		if hasNormals {
-			newNormals = newImpl.VertNormals()
-		}
-		for i, old := range vertNew2Old {
-			newVerts[i] = srcVerts[old]
-			if hasNormals {
-				newNormals[i] = srcNormals[old]
-			}
+			parallel.Gather(policy, vertNew2Old, srcNormals, newNormals)
 		}
 
 		faceNew2Old := make([]int32, 0, numTri)
@@ -1594,16 +1682,11 @@ func (m *Manifold) BoundingBox() Box {
 // reached via ManifoldBridge friend), CsgNode::Transform, and the
 // private Manifold(shared_ptr<CsgNode>) constructor.
 func (m *Manifold) Transform(t Mat3x4) *Manifold {
-	node := bridge.LoadPNode(m.h)
-	defer node.Delete()
-	newNode := node.Transform(
-		t[0][0], t[0][1], t[0][2],
-		t[1][0], t[1][1], t[1][2],
-		t[2][0], t[2][1], t[2][2],
-		t[3][0], t[3][1], t[3][2],
-	)
-	defer newNode.Delete()
-	return wrap(newNode.ToManifold())
+	impl := getImpl(m)
+	defer impl.Delete()
+	result := impl.Transform(t)
+	defer result.Delete()
+	return result.ToManifold()
 }
 
 // Tetrahedron returns a regular tetrahedron with edges of length 2·sqrt(2)

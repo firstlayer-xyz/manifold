@@ -2,6 +2,9 @@ package manifold
 
 import (
 	"math"
+	"sync/atomic"
+
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
 // CalculateCurvature is the Go port of C++
@@ -9,25 +12,21 @@ import (
 // Gaussian and mean curvature into the requested property slots.
 // Either index < 0 means "skip that slot."
 //
-// The C++ version uses atomic accumulators because for_each_n runs
-// triangle work in parallel; the Go port runs the same loop
-// sequentially with plain accumulators (the result is identical).
+// Three parallel passes, mirroring the C++:
 //
-// Algorithm:
+//  1. for_each over NumTri() with CurvatureAngles functor body.
+//     Per-vert accumulators (meanCurvature, gaussianCurvature,
+//     area, degree) are written via AtomicAdd because multiple
+//     triangles touch the same vert.
+//  2. for_each_n over NumVert(): normalize mean+Gaussian by
+//     (degree / (6 * area)). Each iteration writes a unique vert.
+//  3. for_each_n over NumTri(): write properties_. Each tri claims
+//     its propVerts via atomic_exchange on counters[propVert] — the
+//     first tri to touch a propVert wins and writes; later tris
+//     skip. C++ uses atomic_exchange<uint8_t>; we use uint32 (Go's
+//     smallest atomic) with the same swap-to-1 semantic.
 //
-//  1. Per triangle, in the CurvatureAngles functor:
-//     a. Compute the three edge vectors (normalized) and their
-//        lengths.
-//     b. Accumulate per-vertex mean curvature via the dihedral
-//        contribution of each edge against its neighbour triangle.
-//     c. Accumulate per-vertex Gaussian curvature via the interior
-//        triangle-vertex angle (subtracted from 2π later).
-//     d. Accumulate per-vertex Voronoi area (a third of the
-//        triangle's area, distributed to its three corners).
-//  2. Per vertex, normalize mean+Gaussian by (degree / (6 * area)).
-//  3. Resize properties_ if needed, then write the curvature values
-//     at the requested slots, preserving any previously-set extra
-//     properties on the same propVert.
+// C++ policy = autoPolicy(NumTri(), 1e4). We mirror.
 func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 	if mi.HalfedgeStarts() == nil {
 		return // empty
@@ -43,17 +42,18 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 	faceNormals := mi.FaceNormals()
 	numTri := len(starts) / 3
 	numVert := len(verts)
+	policy := parallel.AutoPolicy(numTri, 10000)
 
 	const twoPi = 2.0 * math.Pi
 	vertMean := make([]float64, numVert)
 	vertGauss := make([]float64, numVert)
-	for k := range vertGauss {
-		vertGauss[k] = twoPi
-	}
+	parallel.Fill(policy, vertGauss, twoPi)
 	vertArea := make([]float64, numVert)
 	degree := make([]float64, numVert)
 
-	for tri := 0; tri < numTri; tri++ {
+	// Pass 1: CurvatureAngles functor body, parallel over triangles.
+	// Per-vert accumulators use AtomicAddFloat64.
+	parallel.ForEachN(policy, numTri, func(tri int) {
 		var edge [3]struct{ X, Y, Z float64 }
 		var edgeLen [3]float64
 		for i := 0; i < 3; i++ {
@@ -84,9 +84,9 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 				d = -1
 			}
 			dihedral := 0.25 * length * math.Asin(d)
-			vertMean[startVert] += dihedral
-			vertMean[endVert] += dihedral
-			degree[startVert] += 1.0
+			parallel.AtomicAddFloat64(&vertMean[startVert], dihedral)
+			parallel.AtomicAddFloat64(&vertMean[endVert], dihedral)
+			parallel.AtomicAddFloat64(&degree[startVert], 1.0)
 		}
 
 		var phi [3]float64
@@ -114,21 +114,17 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 
 		for i := 0; i < 3; i++ {
 			vert := int(starts[3*tri+i])
-			vertGauss[vert] -= phi[i]
-			vertArea[vert] += area3
+			parallel.AtomicAddFloat64(&vertGauss[vert], -phi[i])
+			parallel.AtomicAddFloat64(&vertArea[vert], area3)
 		}
-	}
+	})
 
-	for v := 0; v < numVert; v++ {
-		if vertArea[v] > 0 {
-			factor := degree[v] / (6 * vertArea[v])
-			vertMean[v] *= factor
-			vertGauss[v] *= factor
-		} else {
-			vertMean[v] = 0
-			vertGauss[v] = 0
-		}
-	}
+	// Pass 2: normalize per-vert.
+	parallel.ForEachN(policy, numVert, func(v int) {
+		factor := degree[v] / (6 * vertArea[v])
+		vertMean[v] *= factor
+		vertGauss[v] *= factor
+	})
 
 	oldNumProp := mi.NumProp()
 	maxIdx := gaussianIdx
@@ -145,19 +141,19 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 		numPropVert = len(oldProperties) / oldNumProp
 	}
 	newProperties := make([]float64, numProp*numPropVert)
-
 	mi.h.SetNumProp(numProp)
 
-	counters := make([]uint8, numPropVert)
-	for tri := 0; tri < numTri; tri++ {
+	// Pass 3: claim each propVert via atomic-exchange counter.
+	counters := make([]uint32, numPropVert)
+	parallel.ForEachN(policy, numTri, func(tri int) {
 		for i := 0; i < 3; i++ {
 			edge := 3*tri + i
 			vert := int(starts[edge])
 			propVert := int(props[edge])
-			if counters[propVert] == 1 {
+			old := atomic.SwapUint32(&counters[propVert], 1)
+			if old == 1 {
 				continue
 			}
-			counters[propVert] = 1
 			for p := 0; p < oldNumProp; p++ {
 				newProperties[numProp*propVert+p] = oldProperties[oldNumProp*propVert+p]
 			}
@@ -168,6 +164,6 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 				newProperties[numProp*propVert+meanIdx] = vertMean[vert]
 			}
 		}
-	}
+	})
 	mi.h.SetProperties(newProperties)
 }

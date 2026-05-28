@@ -13,6 +13,8 @@ package manifold
 import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
+	"github.com/firstlayer-xyz/manifold/go/internal/quickhull"
 )
 
 // Impl is a const view of a Manifold::Impl. Mirrors C++
@@ -123,7 +125,35 @@ func (i *Impl) Scalars() bridge.ImplScalars { return i.h.Scalars() }
 // AllHaveNormals is the Go port of Impl::AllHaveNormals (src/impl.h):
 // true iff every entry of meshRelation_.meshIDtransform has hasNormals
 // set. Returns false on an empty map.
-func (i *Impl) AllHaveNormals() bool { return i.h.AllHaveNormals() }
+func (i *Impl) AllHaveNormals() bool {
+	rels := i.MeshIDTransforms()
+	if len(rels) == 0 {
+		return false
+	}
+	for _, r := range rels {
+		if !r.HasNormals {
+			return false
+		}
+	}
+	return true
+}
+
+// IsFinite is the Go port of C++ Manifold::Impl::IsFinite
+// (src/properties.cpp): true iff every vertex position has finite
+// (non-NaN, non-inf) components. Uses parallel.TransformReduce with
+// && reduction, matching the C++ transform_reduce.
+//
+// Note: this is a stronger check than `bBox_.IsFinite()` — bBox is
+// computed by CalculateBBox while skipping NaNs, so a partial-NaN
+// vert set can still yield a finite bBox.
+func (i *Impl) IsFinite() bool {
+	return parallel.TransformReduce(
+		parallel.AutoPolicy(i.NumVert(), 100000),
+		i.Verts(), true,
+		func(a, b bool) bool { return a && b },
+		func(v geom.Vec3) bool { return v.IsFinite() },
+	)
+}
 
 // GetMeshGL returns the float32/uint32 mesh export.
 func (i *Impl) GetMeshGL(normalIdx int) meshGLP[float32, uint32] {
@@ -227,6 +257,18 @@ func (mi *MutableImpl) AllHaveNormals() bool {
 	return true
 }
 
+// IsFinite mirrors Impl::IsFinite on a mutable Impl: true iff every
+// vertex position has finite components. See Impl.IsFinite for the
+// algorithm (parallel transform_reduce over vertPos_).
+func (mi *MutableImpl) IsFinite() bool {
+	return parallel.TransformReduce(
+		parallel.AutoPolicy(mi.NumVert(), 100000),
+		mi.Verts(), true,
+		func(a, b bool) bool { return a && b },
+		func(v geom.Vec3) bool { return v.IsFinite() },
+	)
+}
+
 // SetToleranceValue assigns tolerance_ directly.
 func (mi *MutableImpl) SetToleranceValue(tol float64) { mi.h.SetToleranceValue(tol) }
 
@@ -247,11 +289,6 @@ func (mi *MutableImpl) ResizeVertNormals(n int) { mi.h.ResizeVertNormals(n) }
 // SimplifyTopology calls C++ Impl::SimplifyTopology.
 func (mi *MutableImpl) SimplifyTopology() { mi.h.SimplifyTopology() }
 
-// SetNormals calls C++ Impl::SetNormals(normalIdx, minSharpAngle).
-func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
-	mi.h.SetNormals(normalIdx, minSharpAngle)
-}
-
 // Subdivide calls C++ Impl::Subdivide with the constant-n splits lambda.
 func (mi *MutableImpl) SubdivideN(n int) { mi.h.SubdivideN(n) }
 
@@ -264,9 +301,42 @@ func (mi *MutableImpl) RefineToLength(length float64) { mi.h.RefineToLength(leng
 // RefineToTolerance calls C++ Impl::Refine with tolerance-based splits.
 func (mi *MutableImpl) RefineToTolerance(tol float64) { mi.h.RefineToTolerance(tol) }
 
-// Hull calls C++ Impl::Hull(vertPos) — Quickhull3D, fills this Impl
-// with the convex hull mesh.
-func (mi *MutableImpl) Hull(vertPos []geom.Vec3) { mi.h.Hull(vertPos) }
+// Hull is the Go port of C++ Manifold::Impl::Hull (src/quickhull.cpp:834).
+// Runs QuickHull3D on the input vertex cloud, writes the resulting
+// convex-hull halfedges + vertices into this Impl, then runs the
+// standard finalize tail (CalculateBBox → SetEpsilon →
+// InitializeOriginal → SortGeometry → SetNormalsAndCoplanar).
+func (mi *MutableImpl) Hull(vertPos []geom.Vec3) {
+	if len(vertPos) == 0 {
+		return
+	}
+	qh := quickhull.NewQuickHull(vertPos)
+	hes, verts := qh.BuildMesh(quickhull.DefaultEpsilon)
+
+	// Materialize verts into the bridge Impl.
+	mi.h.ResizeVerts(len(verts))
+	copy(mi.Verts(), verts)
+
+	// Translate quickhull.Halfedge → impl halfedge_ arrays.
+	// QuickHull emits face-major triples; propVert = startVert for
+	// the single-arg form (no extra props).
+	n := len(hes)
+	starts := make([]int32, n)
+	props := make([]int32, n)
+	paireds := make([]int32, n)
+	for i := 0; i < n; i++ {
+		starts[i] = int32(hes[i].StartVert)
+		props[i] = int32(hes[i].StartVert)
+		paireds[i] = int32(hes[i].PairedHalfedge)
+	}
+	mi.h.SetHalfedgesRaw(starts, props, paireds)
+
+	mi.CalculateBBox()
+	mi.SetEpsilon(-1, false)
+	mi.InitializeOriginal()
+	mi.SortGeometry()
+	mi.SetNormalsAndCoplanar()
+}
 
 // CreateTangents calls C++ Impl::CreateTangents(int normalIdx).
 func (mi *MutableImpl) CreateTangents(normalIdx int) {
@@ -278,8 +348,3 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(edges []bridge.Smoothness) {
 	mi.h.CreateTangentsFromSmoothness(edges)
 }
 
-// Warp calls C++ Impl::Warp with the Go-side callback.
-func (mi *MutableImpl) Warp(fn func(*geom.Vec3)) { mi.h.Warp(fn) }
-
-// WarpBatch calls C++ Impl::WarpBatch with the Go-side callback.
-func (mi *MutableImpl) WarpBatch(fn func([]geom.Vec3)) { mi.h.WarpBatch(fn) }

@@ -1,37 +1,51 @@
 package manifold
 
+import (
+	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
+)
+
 // GatherFaces is the Go port of the two-arg form of C++
 // Manifold::Impl::GatherFaces (src/sort.cpp): copy a subset of old
 // into this (empty) MutableImpl, picking the faces indexed by
 // faceNew2Old.
 //
 // Mirrors the C++ body step by step:
-//  1. Resize and gather triRef from old.
-//  2. Copy meshIDtransform map.
+//  1. Resize and gather triRef from old (parallel.Gather equivalent).
+//  2. Copy meshIDtransform map (serial — small std::map).
 //  3. Copy properties_ + numProp_ if old has props.
-//  4. Resize and gather faceNormal_ if old has cached normals.
-//  5. Build faceOld2New via scatter.
+//  4. Resize and gather faceNormal_ if old has cached normals
+//     (parallel.Gather).
+//  5. Build faceOld2New via scatter (parallel.ForEachN equivalent).
 //  6. Resize halfedge_ (and halfedgeTangent_ if old has tangents).
-//  7. For each new face, run the ReindexFace remap.
+//  7. For each new face, run the ReindexFace remap (parallel
+//     for_each_n).
+//
+// C++ uses policy = autoPolicy(numTri, 1e5).
 func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 	numTri := len(faceNew2Old)
+	policy := parallel.AutoPolicy(numTri, 100000)
 
+	// triRef gather: gather + repack into the four parallel arrays the
+	// bridge expects.
 	oldTriRefs := old.TriRefs()
 	if len(oldTriRefs) > 0 {
+		permuted := parallel.Permute(policy, oldTriRefs, faceNew2Old)
 		meshIDs := make([]int32, numTri)
 		originalIDs := make([]int32, numTri)
 		faceIDs := make([]int32, numTri)
 		coplanarIDs := make([]int32, numTri)
-		for i, oldF := range faceNew2Old {
-			r := oldTriRefs[oldF]
+		parallel.ForEachN(policy, numTri, func(i int) {
+			r := permuted[i]
 			meshIDs[i] = r.MeshID
 			originalIDs[i] = r.OriginalID
 			faceIDs[i] = r.FaceID
 			coplanarIDs[i] = r.CoplanarID
-		}
+		})
 		mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
 
+	// meshIDtransform copy — serial in C++, std::map iteration.
 	mi.h.ClearMeshIDTransforms()
 	for _, rel := range old.MeshIDTransforms() {
 		mi.h.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
@@ -44,20 +58,22 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 		mi.h.SetProperties(append([]float64(nil), old.Properties()...))
 	}
 
+	// faceNormal_ gather.
 	oldFaceNormals := old.FaceNormals()
 	oldNumTri := old.HalfedgeCount() / 3
 	if len(oldFaceNormals) == oldNumTri && oldNumTri > 0 {
+		newFN := parallel.Permute(policy, []geom.Vec3(oldFaceNormals), faceNew2Old)
 		mi.h.ResizeFaceNormals(numTri)
 		dstFN := mi.h.FaceNormalsMut()
-		for i, oldF := range faceNew2Old {
-			dstFN[i] = oldFaceNormals[oldF]
-		}
+		copy(dstFN, newFN)
 	}
 
+	// scatter(countAt(0), countAt(numTri), faceNew2Old, faceOld2New)
+	// — faceOld2New[faceNew2Old[i]] = i.
 	faceOld2New := make([]int32, oldNumTri)
-	for newF, oldF := range faceNew2Old {
-		faceOld2New[oldF] = int32(newF)
-	}
+	parallel.ForEachN(policy, numTri, func(i int) {
+		faceOld2New[faceNew2Old[i]] = int32(i)
+	})
 
 	oldStarts := old.HalfedgeStarts()
 	oldPairs := old.HalfedgePairs()
@@ -72,7 +88,7 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 	if len(oldTangents) > 0 {
 		tangents = make([]float64, 4*numHalfedge)
 	}
-	for newFace := 0; newFace < numTri; newFace++ {
+	parallel.ForEachN(policy, numTri, func(newFace int) {
 		oldFace := int(faceNew2Old[newFace])
 		for i := 0; i < 3; i++ {
 			oldEdge := 3*oldFace + i
@@ -88,7 +104,7 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 					oldTangents[4*oldEdge:4*oldEdge+4])
 			}
 		}
-	}
+	})
 	mi.h.SetHalfedgesRaw(starts, props, pairs)
 	if tangents != nil {
 		mi.h.SetHalfedgeTangents(tangents)
