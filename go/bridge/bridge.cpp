@@ -191,6 +191,42 @@ double mb_mutable_impl_get_tolerance(const mb_mutable_impl_handle* h) {
   return h->impl->tolerance_;
 }
 
+void mb_mutable_impl_set_meshrelation_original_id(mb_mutable_impl_handle* h,
+                                                  int original_id) {
+  h->impl->meshRelation_.originalID = original_id;
+}
+
+void mb_mutable_impl_set_tri_refs(mb_mutable_impl_handle* h,
+                                  const int* meshIDs, const int* originalIDs,
+                                  const int* faceIDs, const int* coplanarIDs,
+                                  size_t num_tri) {
+  auto& triRef = h->impl->meshRelation_.triRef;
+  triRef.resize_nofill(num_tri);
+  for (size_t i = 0; i < num_tri; ++i) {
+    triRef[i] = manifold::TriRef{meshIDs[i], originalIDs[i], faceIDs[i],
+                                  coplanarIDs[i]};
+  }
+}
+
+void mb_mutable_impl_clear_meshid_transforms(mb_mutable_impl_handle* h) {
+  h->impl->meshRelation_.meshIDtransform.clear();
+}
+
+void mb_mutable_impl_add_meshid_transform(
+    mb_mutable_impl_handle* h, int mesh_id, int original_id,
+    double t00, double t01, double t02, double t10, double t11, double t12,
+    double t20, double t21, double t22, double t30, double t31, double t32,
+    int back_side, int has_normals) {
+  manifold::mat3x4 t{
+      manifold::vec3{t00, t01, t02},
+      manifold::vec3{t10, t11, t12},
+      manifold::vec3{t20, t21, t22},
+      manifold::vec3{t30, t31, t32},
+  };
+  h->impl->meshRelation_.meshIDtransform[mesh_id] = {
+      original_id, t, back_side != 0, has_normals != 0};
+}
+
 void mb_mutable_impl_make_empty(mb_mutable_impl_handle* h, int status) {
   h->impl->MakeEmpty(static_cast<manifold::Manifold::Error>(status));
 }

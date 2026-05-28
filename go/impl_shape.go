@@ -103,8 +103,11 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *bridge.MutableImpl {
 
 	// CreateHalfedges(triVerts) — drilled to Go (impl_halfedges.go).
 	createHalfedges(mi, table.triVerts)
-	// InitializeOriginal()
-	mi.InitializeOriginal()
+	// InitializeOriginal() — drilled to Go (impl_meshrelation.go). A
+	// fresh impl has an empty meshIDtransform map, so AllHaveNormals()
+	// returns false; pass hadNormals=false to mirror C++.
+	numTri := len(table.triVerts) / 3
+	initializeOriginal(mi, numTri, false)
 	// CalculateBBox() — drilled to Go (impl_bbox.go).
 	calculateBBox(mi)
 	// SetEpsilon() — drilled to Go (impl_epsilon.go). Default args are

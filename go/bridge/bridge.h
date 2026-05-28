@@ -100,6 +100,37 @@ void                     mb_mutable_impl_get_bbox(
 double                   mb_mutable_impl_get_tolerance(
     const mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_set_meshrelation_original_id assigns
+// meshRelation_.originalID.
+void                     mb_mutable_impl_set_meshrelation_original_id(
+    mb_mutable_impl_handle* h, int original_id);
+
+// mb_mutable_impl_set_tri_refs writes the meshRelation_.triRef array
+// from four parallel int arrays (one entry per triangle). All four
+// arrays must be exactly num_tri long.
+void                     mb_mutable_impl_set_tri_refs(
+    mb_mutable_impl_handle* h,
+    const int* meshIDs, const int* originalIDs,
+    const int* faceIDs, const int* coplanarIDs,
+    size_t num_tri);
+
+// mb_mutable_impl_clear_meshid_transforms removes all entries from
+// meshRelation_.meshIDtransform.
+void                     mb_mutable_impl_clear_meshid_transforms(
+    mb_mutable_impl_handle* h);
+
+// mb_mutable_impl_add_meshid_transform inserts one entry into
+// meshRelation_.meshIDtransform. transform is a 12-double 3x4 affine
+// matrix in column-major order (cols 0..2 linear, col 3 translation).
+void                     mb_mutable_impl_add_meshid_transform(
+    mb_mutable_impl_handle* h,
+    int mesh_id, int original_id,
+    double t00, double t01, double t02,
+    double t10, double t11, double t12,
+    double t20, double t21, double t22,
+    double t30, double t31, double t32,
+    int back_side, int has_normals);
+
 // mb_mutable_impl_set_bbox writes bBox_.min and bBox_.max directly.
 // Used by the Go port of Impl::CalculateBBox to install the
 // Go-computed min/max corners.

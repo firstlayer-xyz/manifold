@@ -518,6 +518,61 @@ func (mi *MutableImpl) MakeEmpty(status int) {
 	C.mb_mutable_impl_make_empty(mi.p, C.int(status))
 }
 
+// SetMeshRelationOriginalID assigns meshRelation_.originalID.
+func (mi *MutableImpl) SetMeshRelationOriginalID(id int) {
+	C.mb_mutable_impl_set_meshrelation_original_id(mi.p, C.int(id))
+}
+
+// SetTriRefs replaces the meshRelation_.triRef array with the four
+// supplied parallel int32 arrays. All four must have the same length
+// (== NumTri).
+func (mi *MutableImpl) SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs []int32) {
+	n := len(meshIDs)
+	if len(originalIDs) != n || len(faceIDs) != n || len(coplanarIDs) != n {
+		panic("bridge.SetTriRefs: arrays must have equal length")
+	}
+	if n == 0 {
+		C.mb_mutable_impl_set_tri_refs(mi.p, nil, nil, nil, nil, 0)
+		return
+	}
+	C.mb_mutable_impl_set_tri_refs(mi.p,
+		(*C.int)(unsafe.Pointer(&meshIDs[0])),
+		(*C.int)(unsafe.Pointer(&originalIDs[0])),
+		(*C.int)(unsafe.Pointer(&faceIDs[0])),
+		(*C.int)(unsafe.Pointer(&coplanarIDs[0])),
+		C.size_t(n))
+}
+
+// ClearMeshIDTransforms removes all entries from
+// meshRelation_.meshIDtransform.
+func (mi *MutableImpl) ClearMeshIDTransforms() {
+	C.mb_mutable_impl_clear_meshid_transforms(mi.p)
+}
+
+// AddMeshIDTransform inserts a single entry into
+// meshRelation_.meshIDtransform.
+//
+// transform is a 3x4 column-major affine matrix (4 columns of 3
+// doubles each; cols 0..2 linear, col 3 translation).
+func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int,
+	transform [4][3]float64, backSide, hasNormals bool) {
+	bs := C.int(0)
+	if backSide {
+		bs = 1
+	}
+	hn := C.int(0)
+	if hasNormals {
+		hn = 1
+	}
+	C.mb_mutable_impl_add_meshid_transform(mi.p,
+		C.int(meshID), C.int(originalID),
+		C.double(transform[0][0]), C.double(transform[0][1]), C.double(transform[0][2]),
+		C.double(transform[1][0]), C.double(transform[1][1]), C.double(transform[1][2]),
+		C.double(transform[2][0]), C.double(transform[2][1]), C.double(transform[2][2]),
+		C.double(transform[3][0]), C.double(transform[3][1]), C.double(transform[3][2]),
+		bs, hn)
+}
+
 // warpRegistry tracks Go callback functions across a cgo call into
 // Impl::Warp. Each call gets a fresh ID that the C++ side passes back
 // through mbWarpTrampoline (declared via //export below).
