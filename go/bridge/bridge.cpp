@@ -812,7 +812,7 @@ void mb_mutable_impl_build_collider(mb_mutable_impl_handle* h,
   }
   impl.collider_ = manifold::Collider(faceBox, faceMorton);
   impl.bBox_ = impl.collider_.GetBoundingBox();
-  impl.CompactProps();
+  // CompactProps is now done Go-side; see impl_compact.go.
 }
 
 void mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol) {

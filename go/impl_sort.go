@@ -265,9 +265,9 @@ func (mi *MutableImpl) SortFaces(faces []faceBoxMorton) ([]geom.Box, []uint32) {
 }
 
 // SortGeometry is the Go port of C++ Manifold::Impl::SortGeometry.
-// SortVerts, GetFaceBoxMorton, SortFaces (with in-place GatherFaces)
-// all run here. Only the Collider AABB-tree build + bBox refresh +
-// CompactProps remain in C++ via the underlying BuildCollider bridge.
+// SortVerts, GetFaceBoxMorton, SortFaces (with in-place GatherFaces),
+// and CompactProps all run in Go. Only the Collider AABB-tree build
+// + bBox refresh remain in C++ via the BuildCollider bridge.
 func (mi *MutableImpl) SortGeometry() {
 	if len(mi.HalfedgeStarts()) == 0 {
 		mi.h.BuildCollider(nil, nil)
@@ -290,4 +290,5 @@ func (mi *MutableImpl) SortGeometry() {
 		flat[6*i+5] = b.Max.Z
 	}
 	mi.h.BuildCollider(flat, morton)
+	mi.CompactProps()
 }

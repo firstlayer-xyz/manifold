@@ -31,8 +31,9 @@ Things to revisit. Each entry: what / why / where it bites / when to fix.
   — `src/smoothing.cpp`, depends on `ForVert`, `GetNormal`,
   `TangentFromNormal`, `CircularTangent`, `IsInsideQuad`.
 - `RayCast`, `MinGap`, `Minkowski` — all use the C++ `Collider`.
-- `BuildCollider` (the post-vert tail of `SortGeometry`) — AABB tree
-  construction, the only C++ piece remaining in `newImplFromShape`.
+- `BuildCollider` (the Collider AABB-tree build + bBox refresh) — the
+  only C++ piece remaining in `newImplFromShape`. `CompactProps` has
+  been peeled off to Go (impl_compact.go).
 - Boolean3 / CSG tree / `LoadPNode` / `NewCsgOpNode` — multi-KLOC.
 - `LevelSet` — marching-tetrahedra, currently invoked via a Go-side
   SDF callback trampoline.
