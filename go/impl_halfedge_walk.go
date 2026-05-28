@@ -16,6 +16,16 @@ func nextHalfedge(current int) int {
 	return current + 1
 }
 
+// triOf returns the three halfedge indices of the triangle containing
+// edge, in order {edge, next, next-next}. Mirrors C++ TriOf
+// (src/edge_op.cpp:25).
+func triOf(edge int) [3]int {
+	a := edge
+	b := nextHalfedge(a)
+	c := nextHalfedge(b)
+	return [3]int{a, b, c}
+}
+
 // forVert is the Go port of C++ Manifold::Impl::ForVert(int, F) from
 // src/impl.h. Starting at halfedge h, walks current = NextHalfedge(
 // Pair(current)) around the vertex fan, calling fn(current) at each

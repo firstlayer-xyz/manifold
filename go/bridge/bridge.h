@@ -144,6 +144,11 @@ void                     mb_mutable_impl_get_bbox(
 double                   mb_mutable_impl_get_tolerance(
     const mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_get_epsilon reads epsilon_, used by the edge-collapse
+// ports (CollapseShortEdges / CollapseEdge) which gate on epsilon_.
+double                   mb_mutable_impl_get_epsilon(
+    const mb_mutable_impl_handle* h);
+
 // mb_mutable_impl_set_meshrelation_original_id assigns
 // meshRelation_.originalID.
 void                     mb_mutable_impl_set_meshrelation_original_id(

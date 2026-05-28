@@ -269,6 +269,12 @@ func (mi *MutableImpl) GetTolerance() float64 {
 	return float64(C.mb_mutable_impl_get_tolerance(mi.p))
 }
 
+// GetEpsilon returns the current epsilon_ value. Used by the
+// edge-collapse ports, which gate collapses on epsilon_.
+func (mi *MutableImpl) GetEpsilon() float64 {
+	return float64(C.mb_mutable_impl_get_epsilon(mi.p))
+}
+
 // SetBBox writes bBox_.min and bBox_.max directly. Used by the Go
 // port of Impl::CalculateBBox to install the Go-computed corners.
 func (mi *MutableImpl) SetBBox(min, max geom.Vec3) {

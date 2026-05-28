@@ -243,6 +243,10 @@ double mb_mutable_impl_get_tolerance(const mb_mutable_impl_handle* h) {
   return h->impl->tolerance_;
 }
 
+double mb_mutable_impl_get_epsilon(const mb_mutable_impl_handle* h) {
+  return h->impl->epsilon_;
+}
+
 void mb_mutable_impl_set_meshrelation_original_id(mb_mutable_impl_handle* h,
                                                   int original_id) {
   h->impl->meshRelation_.originalID = original_id;

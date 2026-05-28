@@ -24,6 +24,8 @@ type dedupeState struct {
 	props       []int32
 	triRefs     []bridge.TriRef
 	faceNormals []geom.Vec3
+	numProp     int     // numProp_ — gates prop updates in collapseEdge
+	epsilon     float64 // epsilon_ — collapse tolerance floor
 }
 
 func newDedupeState(mi *MutableImpl) *dedupeState {
@@ -35,6 +37,8 @@ func newDedupeState(mi *MutableImpl) *dedupeState {
 		props:       append([]int32(nil), mi.HalfedgeProps()...),
 		triRefs:     append([]bridge.TriRef(nil), mi.TriRefs()...),
 		faceNormals: append([]geom.Vec3(nil), mi.FaceNormals()...),
+		numProp:     mi.NumProp(),
+		epsilon:     mi.h.GetEpsilon(),
 	}
 }
 
