@@ -274,7 +274,7 @@ func (m *Manifold) CalculateNormals(normalIdx int, minSharpAngle float64) *Manif
 	defer newImpl.Delete()
 	newImpl.SetNormals(normalIdx, minSharpAngle)
 	if normalIdx == 0 {
-		newImpl.MarkAllMeshIDHasNormals()
+		markAllMeshIDHasNormals(newImpl)
 	}
 	return wrap(newImpl.ToManifold())
 }

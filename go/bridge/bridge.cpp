@@ -315,6 +315,31 @@ int mb_mutable_impl_num_prop(const mb_mutable_impl_handle* h) {
   return h->impl->numProp_;
 }
 
+size_t mb_mutable_impl_meshid_transform_count(const mb_mutable_impl_handle* h) {
+  return h->impl->meshRelation_.meshIDtransform.size();
+}
+
+void mb_mutable_impl_meshid_transforms(const mb_mutable_impl_handle* h,
+                                       int* mesh_ids, int* original_ids,
+                                       double* transforms,
+                                       unsigned char* back_sides,
+                                       unsigned char* has_normals) {
+  size_t i = 0;
+  for (const auto& kv : h->impl->meshRelation_.meshIDtransform) {
+    mesh_ids[i] = kv.first;
+    original_ids[i] = kv.second.originalID;
+    const auto& t = kv.second.transform;
+    for (int col = 0; col < 4; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        transforms[i * 12 + col * 3 + row] = t[col][row];
+      }
+    }
+    back_sides[i] = kv.second.backSide ? 1 : 0;
+    has_normals[i] = kv.second.hasNormals ? 1 : 0;
+    ++i;
+  }
+}
+
 void mb_mutable_impl_add_meshid_transform(
     mb_mutable_impl_handle* h, int mesh_id, int original_id,
     double t00, double t01, double t02, double t10, double t11, double t12,
@@ -364,12 +389,6 @@ void mb_mutable_impl_calculate_curvature(mb_mutable_impl_handle* h,
 void mb_mutable_impl_set_normals(mb_mutable_impl_handle* h, int normalIdx,
                                  double minSharpAngle) {
   h->impl->SetNormals(normalIdx, minSharpAngle);
-}
-
-void mb_mutable_impl_mark_all_meshid_has_normals(mb_mutable_impl_handle* h) {
-  for (auto& m : h->impl->meshRelation_.meshIDtransform) {
-    m.second.hasNormals = true;
-  }
 }
 
 struct mb_polygons_handle {

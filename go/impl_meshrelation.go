@@ -4,6 +4,22 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 )
 
+// markAllMeshIDHasNormals is the Go port of the per-meshID
+// hasNormals=true loop used by Manifold::CalculateNormals
+// (src/manifold.cpp). Iterates meshRelation_.meshIDtransform and
+// sets every Relation.hasNormals to true.
+//
+// Implementation reads the map via the MutableImpl accessor, then
+// clears + re-adds with the bit flipped.
+func markAllMeshIDHasNormals(mi *bridge.MutableImpl) {
+	rels := mi.MeshIDTransforms()
+	mi.ClearMeshIDTransforms()
+	for _, r := range rels {
+		mi.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
+			r.Transform, r.BackSide, true)
+	}
+}
+
 // initializeOriginal is the Go port of C++
 // Manifold::Impl::InitializeOriginal (src/impl.cpp).
 //

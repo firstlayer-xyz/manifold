@@ -201,6 +201,21 @@ const void*              mb_mutable_impl_halfedge_props(
 int                      mb_mutable_impl_num_prop(
     const mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_meshid_transform_count returns the entry count of
+// meshRelation_.meshIDtransform on a mutable Impl (mirror of the
+// const-Impl variant).
+size_t                   mb_mutable_impl_meshid_transform_count(
+    const mb_mutable_impl_handle* h);
+
+// mb_mutable_impl_meshid_transforms iterates the meshIDtransform map
+// in std::map order (ascending meshID) and copies its entries into
+// the caller's parallel arrays.
+void                     mb_mutable_impl_meshid_transforms(
+    const mb_mutable_impl_handle* h,
+    int* mesh_ids, int* original_ids,
+    double* transforms,
+    unsigned char* back_sides, unsigned char* has_normals);
+
 // mb_mutable_impl_add_meshid_transform inserts one entry into
 // meshRelation_.meshIDtransform. transform is a 12-double 3x4 affine
 // matrix in column-major order (cols 0..2 linear, col 3 translation).
@@ -290,13 +305,8 @@ void                      mb_mutable_impl_calculate_curvature(
 void                      mb_mutable_impl_set_normals(
     mb_mutable_impl_handle* h, int normalIdx, double minSharpAngle);
 
-// mb_mutable_impl_mark_all_meshid_has_normals iterates
-// meshRelation_.meshIDtransform and sets hasNormals = true on every
-// entry. Encapsulates the C++ for-loop because the iteration uses a
-// std::unordered_map and isn't a single statement we can cleanly
-// translate without exposing the map.
-void                      mb_mutable_impl_mark_all_meshid_has_normals(
-    mb_mutable_impl_handle* h);
+// (mb_mutable_impl_mark_all_meshid_has_normals removed — the
+// iteration is now done in Go via the MeshIDTransforms accessor.)
 
 // Opaque handle around a manifold::Polygons (vector of SimplePolygon).
 // Returned by Impl::Slice / Impl::Project, then iterated by Go to copy

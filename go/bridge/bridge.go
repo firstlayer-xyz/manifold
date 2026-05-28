@@ -163,13 +163,6 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 		C.int(normalIdx), C.double(minSharpAngle))
 }
 
-// MarkAllMeshIDHasNormals wraps the per-meshID hasNormals=true loop in
-// Manifold::CalculateNormals (only runs when normalIdx == 0 on the C++
-// side).
-func (mi *MutableImpl) MarkAllMeshIDHasNormals() {
-	C.mb_mutable_impl_mark_all_meshid_has_normals(mi.p)
-}
-
 // PolygonsHandle wraps a C++ manifold::Polygons. Returned by Impl.Slice
 // and Impl.Project; Go reads its contents via NumPolys / Poly. Pair with
 // Delete (or rely on the caller's defer).
@@ -481,6 +474,40 @@ func (mi *MutableImpl) HalfedgePropsRO() []int32 {
 // Mirrors Impl.Scalars().NumProp on the const handle.
 func (mi *MutableImpl) NumProp() int {
 	return int(C.mb_mutable_impl_num_prop(mi.p))
+}
+
+// MeshIDTransforms reads meshRelation_.meshIDtransform from a mutable
+// Impl in std::map order (ascending meshID). Mirror of the const-side
+// Impl.MeshIDTransforms.
+func (mi *MutableImpl) MeshIDTransforms() []MeshIDRelation {
+	n := int(C.mb_mutable_impl_meshid_transform_count(mi.p))
+	if n == 0 {
+		return nil
+	}
+	meshIDs := make([]C.int, n)
+	originalIDs := make([]C.int, n)
+	transforms := make([]C.double, n*12)
+	backSides := make([]C.uchar, n)
+	hasNormals := make([]C.uchar, n)
+	C.mb_mutable_impl_meshid_transforms(mi.p,
+		(*C.int)(unsafe.Pointer(&meshIDs[0])),
+		(*C.int)(unsafe.Pointer(&originalIDs[0])),
+		(*C.double)(unsafe.Pointer(&transforms[0])),
+		(*C.uchar)(unsafe.Pointer(&backSides[0])),
+		(*C.uchar)(unsafe.Pointer(&hasNormals[0])))
+	out := make([]MeshIDRelation, n)
+	for k := 0; k < n; k++ {
+		out[k].MeshID = int32(meshIDs[k])
+		out[k].OriginalID = int32(originalIDs[k])
+		for col := 0; col < 4; col++ {
+			for row := 0; row < 3; row++ {
+				out[k].Transform[col][row] = float64(transforms[k*12+col*3+row])
+			}
+		}
+		out[k].BackSide = backSides[k] != 0
+		out[k].HasNormals = hasNormals[k] != 0
+	}
+	return out
 }
 
 // SetCoplanarIDs writes only the coplanarID field of every TriRef in
