@@ -316,8 +316,8 @@ typedef struct mb_polygons_handle mb_polygons_handle;
 mb_polygons_handle*       mb_impl_slice(const mb_impl_handle* h, double height);
 mb_polygons_handle*       mb_impl_project(const mb_impl_handle* h);
 
-// mb_impl_all_have_normals wraps Impl::AllHaveNormals().
-int                       mb_impl_all_have_normals(const mb_impl_handle* h);
+// (mb_impl_all_have_normals removed — now implemented in Go via the
+// MeshIDTransforms accessor.)
 
 // (mb_impl_get_meshgl64 / mb_impl_get_meshgl removed — see comment in
 // bridge.cpp; GetMeshGL is implemented natively in Go.)

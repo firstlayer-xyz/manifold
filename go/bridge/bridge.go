@@ -201,10 +201,20 @@ func (ph *PolygonsHandle) Poly(idx int) []geom.Vec2 {
 // Delete releases the C++ Polygons.
 func (ph *PolygonsHandle) Delete() { C.mb_delete_polygons(ph.p) }
 
-// AllHaveNormals wraps Impl::AllHaveNormals — true iff every entry of
-// meshRelation_.meshIDtransform has hasNormals set.
+// AllHaveNormals is the Go port of Impl::AllHaveNormals (src/impl.h):
+// true iff every entry of meshRelation_.meshIDtransform has
+// hasNormals set. Returns false on an empty map (matching C++).
 func (i *Impl) AllHaveNormals() bool {
-	return C.mb_impl_all_have_normals(i.p) != 0
+	rels := i.MeshIDTransforms()
+	if len(rels) == 0 {
+		return false
+	}
+	for _, r := range rels {
+		if !r.HasNormals {
+			return false
+		}
+	}
+	return true
 }
 
 // VertNormals returns a Go slice aliasing the Impl's vertNormal_ buffer.

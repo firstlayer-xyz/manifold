@@ -417,10 +417,6 @@ const double* mb_polygons_poly_data(const mb_polygons_handle* p, size_t idx) {
 
 void mb_delete_polygons(mb_polygons_handle* p) { delete p; }
 
-int mb_impl_all_have_normals(const mb_impl_handle* h) {
-  return h->impl->AllHaveNormals() ? 1 : 0;
-}
-
 // (mb_impl_get_meshgl / mb_impl_get_meshgl64 removed — GetMeshGL is
 // implemented natively in Go via the impl read accessors above.)
 
