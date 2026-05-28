@@ -101,8 +101,8 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *bridge.MutableImpl {
 		verts[i] = m.ApplyAffine(v)
 	}
 
-	// CreateHalfedges(triVerts)
-	mi.CreateHalfedges(table.triVerts)
+	// CreateHalfedges(triVerts) — drilled to Go (impl_halfedges.go).
+	createHalfedges(mi, table.triVerts)
 	// InitializeOriginal()
 	mi.InitializeOriginal()
 	// CalculateBBox()

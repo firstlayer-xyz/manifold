@@ -79,6 +79,15 @@ typedef struct mb_mutable_impl_handle mb_mutable_impl_handle;
 mb_mutable_impl_handle*  mb_impl_copy(const mb_impl_handle* src);
 mb_mutable_impl_handle*  mb_new_mutable_impl(void);
 
+// mb_mutable_impl_set_halfedges_raw writes the halfedge_ data wholesale
+// from three parallel int32 arrays. Length n is the total halfedge
+// count (== 3*NumTri); arrays must all be exactly n long. Replaces
+// the current contents of halfedge_ (cleared first). Used by the
+// Go port of CreateHalfedges.
+void                     mb_mutable_impl_set_halfedges_raw(
+    mb_mutable_impl_handle* h,
+    const int* starts, const int* props, const int* paireds, size_t n);
+
 // mb_invalid wraps Manifold::Invalid() (private static) — returns a
 // Manifold with Error::InvalidConstruction status.
 struct ManifoldManifold*  mb_invalid(void);

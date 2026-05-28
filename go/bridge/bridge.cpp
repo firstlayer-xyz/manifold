@@ -28,6 +28,16 @@ struct ManifoldBridge {
   }
   static const int* HalfedgeStarts(const Halfedges& he) { return he.start_.data(); }
   static const int* HalfedgePairs(const Halfedges& he) { return he.paired_.data(); }
+  static void SetHalfedges(Halfedges& he, const int* starts, const int* props,
+                           const int* paireds, size_t n) {
+    he.clear(true);
+    he.resize_nofill(n);
+    for (size_t i = 0; i < n; ++i) {
+      he.SetStart(static_cast<int>(i), starts[i]);
+      he.SetProp(static_cast<int>(i), props[i]);
+      he.SetPair(static_cast<int>(i), paireds[i]);
+    }
+  }
   static Manifold PropagateStatus(Manifold::Error status) {
     return Manifold::PropagateStatus(status);
   }
@@ -151,6 +161,12 @@ int mb_quality_get_circular_segments(double radius) {
 
 unsigned int mb_impl_reserve_ids(unsigned int n) {
   return Manifold::Impl::ReserveIDs(n);
+}
+
+void mb_mutable_impl_set_halfedges_raw(mb_mutable_impl_handle* h,
+                                       const int* starts, const int* props,
+                                       const int* paireds, size_t n) {
+  ManifoldBridge::SetHalfedges(h->impl->halfedge_, starts, props, paireds, n);
 }
 
 void mb_mutable_impl_create_tangents_idx(mb_mutable_impl_handle* h,

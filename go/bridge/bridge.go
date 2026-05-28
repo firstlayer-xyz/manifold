@@ -468,6 +468,26 @@ func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
 		C.size_t(len(triVerts)/3))
 }
 
+// SetHalfedgesRaw replaces the contents of halfedge_ with the three
+// supplied parallel int32 arrays. All arrays must have the same length
+// (== 3 * NumTri). Used by the Go port of CreateHalfedges to write
+// the result of its sort+pair computation back into the C++ Impl.
+func (mi *MutableImpl) SetHalfedgesRaw(starts, props, paireds []int32) {
+	n := len(starts)
+	if len(props) != n || len(paireds) != n {
+		panic("bridge.SetHalfedgesRaw: arrays must have equal length")
+	}
+	if n == 0 {
+		C.mb_mutable_impl_set_halfedges_raw(mi.p, nil, nil, nil, 0)
+		return
+	}
+	C.mb_mutable_impl_set_halfedges_raw(mi.p,
+		(*C.int)(unsafe.Pointer(&starts[0])),
+		(*C.int)(unsafe.Pointer(&props[0])),
+		(*C.int)(unsafe.Pointer(&paireds[0])),
+		C.size_t(n))
+}
+
 // warpRegistry tracks Go callback functions across a cgo call into
 // Impl::Warp. Each call gets a fresh ID that the C++ side passes back
 // through mbWarpTrampoline (declared via //export below).
