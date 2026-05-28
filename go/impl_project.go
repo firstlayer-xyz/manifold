@@ -2,6 +2,7 @@ package manifold
 
 import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/orderedmap"
 )
 
 // Project is the Go port of C++ Manifold::Impl::Project
@@ -44,48 +45,59 @@ func (i *Impl) Project() Polygons {
 		return nil
 	}
 
-	vertEdge := make(map[int32][]int, len(cusps))
+	// AssembleHalfedges (src/face_op.cpp:41-67): chain the cusps into
+	// closed polygons via an ordered multimap keyed on startVert. C++
+	// uses std::multimap, so begin() seeds each new polygon from the
+	// LOWEST remaining startVert; within equal keys the insertion order
+	// is preserved (the value slice is the equal-key bucket).
+	vertEdge := orderedmap.New[int32, []int]()
 	for idx, c := range cusps {
-		vertEdge[c.startVert] = append(vertEdge[c.startVert], idx)
+		bin, _ := vertEdge.Get(c.startVert)
+		vertEdge.Set(c.startVert, append(bin, idx))
 	}
-	take := func(startVert int32) (int, bool) {
-		bin, ok := vertEdge[startVert]
+	// find: the first cusp index whose startVert == key (multimap::find).
+	find := func(key int32) (int, bool) {
+		bin, ok := vertEdge.Get(key)
 		if !ok || len(bin) == 0 {
 			return -1, false
 		}
-		idx := bin[0]
-		if len(bin) == 1 {
-			delete(vertEdge, startVert)
-		} else {
-			vertEdge[startVert] = bin[1:]
+		return bin[0], true
+	}
+	// erase: drop that first equal-key entry (multimap::erase(it)).
+	erase := func(key int32) {
+		bin, ok := vertEdge.Get(key)
+		if !ok {
+			return
 		}
-		return idx, true
+		if len(bin) <= 1 {
+			vertEdge.Delete(key)
+		} else {
+			vertEdge.Set(key, bin[1:])
+		}
 	}
 
 	var polys Polygons
-	for len(vertEdge) > 0 {
-		var anyStart int32
-		for k := range vertEdge {
-			anyStart = k
-			break
-		}
-		startIdx, _ := take(anyStart)
-		thisIdx := startIdx
-		var poly SimplePolygon
-		for {
-			c := cusps[thisIdx]
-			v := verts[c.startVert]
-			poly = append(poly, geom.Vec2{X: v.X, Y: v.Y})
-			nextIdx, ok := take(c.endVert)
-			if !ok {
+	startIdx, thisIdx := -1, -1
+	for {
+		if thisIdx == startIdx {
+			if vertEdge.Len() == 0 {
 				break
 			}
-			thisIdx = nextIdx
-			if thisIdx == startIdx {
-				break
-			}
+			// begin()->second: the lowest remaining startVert's first edge.
+			startIdx, _ = find(vertEdge.Keys()[0])
+			thisIdx = startIdx
+			polys = append(polys, SimplePolygon{})
 		}
-		polys = append(polys, poly)
+		c := cusps[thisIdx]
+		v := verts[c.startVert]
+		polys[len(polys)-1] = append(polys[len(polys)-1], geom.Vec2{X: v.X, Y: v.Y})
+		// result = find(endVert); thisEdge = result->second; erase(result).
+		next, ok := find(c.endVert)
+		if !ok {
+			break // non-manifold silhouette (C++ DEBUG_ASSERT topologyErr)
+		}
+		erase(c.endVert)
+		thisIdx = next
 	}
 	return polys
 }

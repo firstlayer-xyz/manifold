@@ -49,13 +49,24 @@ that mirrors a C++ `std::map`. It provides
 `Clear`/`Contains`/`Len`/`Keys`/`All` — sorted-key iteration via
 the modern `iter.Seq2[K, V]` range-over-func.
 
-Audit of currently drilled code: clean. The only `std::map`
-exposed to drilled code is `meshIDtransform`, and the bridge
-`MeshIDTransforms()` accessor flattens it to a sorted slice
-before crossing into Go (so iterating the returned slice is
-already in sorted order). When the bridge goes away, the Go-side
-storage for `meshIDtransform` will become an
-`orderedmap.OrderedMap[int32, MeshIDRelation]`.
+Audit of currently drilled code: clean.
+
+- `meshIDtransform` is the only `std::map` exposed to drilled code;
+  the bridge `MeshIDTransforms()` accessor flattens it to a sorted
+  slice before crossing into Go (so iterating the returned slice is
+  already in sorted order). When the bridge goes away, the Go-side
+  storage becomes an `orderedmap.OrderedMap[int32, MeshIDRelation]`.
+- `Project`'s `AssembleHalfedges` (src/face_op.cpp:41-67) uses a
+  `std::multimap<int,int>` keyed on startVert. The Go port mirrors
+  it with `orderedmap.OrderedMap[int32, []int]` (the value slice is
+  the equal-key bucket), so `begin()` seeds each polygon from the
+  lowest remaining startVert — faithful to the ordered container.
+  (An earlier port used a plain Go `map` + random-key start, which
+  diverged; fixed.)
+- `Slice` (src/face_op.cpp:376) uses `std::unordered_set<int>`, so a
+  plain Go `map[int]struct{}` is the faithful equivalent — both are
+  unordered, and the output polygon order is unspecified in both.
+  No orderedmap needed here.
 
 C++ files using `std::map` to watch on future drills:
 - `impl.cpp::IncrementMeshIDs` — iterates `meshIDtransform` to
