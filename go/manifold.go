@@ -1139,7 +1139,7 @@ func (m *Manifold) Decompose() []*Manifold {
 			continue
 		}
 
-		newImpl.GatherFaces(impl, faceNew2Old)
+		gatherFaces(newImpl, impl, faceNew2Old)
 		reindexVerts(newImpl, vertNew2Old, numVert)
 		calculateBBox(newImpl)
 		sortGeometry(newImpl)

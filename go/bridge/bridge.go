@@ -255,15 +255,6 @@ func (mi *MutableImpl) SetEpsilonValue(epsilon float64) {
 	C.mb_mutable_impl_set_epsilon_value(mi.p, C.double(epsilon))
 }
 
-// GatherFaces wraps Impl::GatherFaces(src, faceNew2Old).
-func (mi *MutableImpl) GatherFaces(src *Impl, faceNew2Old []int32) {
-	var fp unsafe.Pointer
-	if len(faceNew2Old) > 0 {
-		fp = unsafe.Pointer(&faceNew2Old[0])
-	}
-	C.mb_mutable_impl_gather_faces(mi.p, src.p, (*C.int)(fp), C.size_t(len(faceNew2Old)))
-}
-
 // (bridge.DisjointSets removed — now implemented in pure Go; see
 // disjoint_sets.go in the manifold package.)
 
@@ -456,6 +447,37 @@ func (mi *MutableImpl) HalfedgePropsRO() []int32 {
 // Mirrors Impl.Scalars().NumProp on the const handle.
 func (mi *MutableImpl) NumProp() int {
 	return int(C.mb_mutable_impl_num_prop(mi.p))
+}
+
+// SetNumProp writes numProp_. Caller must keep properties_ length in
+// sync (numProp_ * NumPropVert) via SetProperties.
+func (mi *MutableImpl) SetNumProp(n int) {
+	C.mb_mutable_impl_set_num_prop(mi.p, C.int(n))
+}
+
+// SetProperties writes properties_ wholesale. Length must equal
+// numProp_ * NumPropVert; caller is responsible for the consistency.
+func (mi *MutableImpl) SetProperties(data []float64) {
+	if len(data) == 0 {
+		C.mb_mutable_impl_set_properties_raw(mi.p, nil, 0)
+		return
+	}
+	C.mb_mutable_impl_set_properties_raw(mi.p,
+		(*C.double)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)))
+}
+
+// SetHalfedgeTangents writes halfedgeTangent_ wholesale. data is
+// 4*n doubles laid out as packed vec4s. Pass empty to clear.
+func (mi *MutableImpl) SetHalfedgeTangents(data []float64) {
+	if len(data) == 0 {
+		C.mb_mutable_impl_set_halfedge_tangents_raw(mi.p, nil, 0)
+		return
+	}
+	n := len(data) / 4
+	C.mb_mutable_impl_set_halfedge_tangents_raw(mi.p,
+		(*C.double)(unsafe.Pointer(&data[0])),
+		C.size_t(n))
 }
 
 // MeshIDTransforms reads meshRelation_.meshIDtransform from a mutable

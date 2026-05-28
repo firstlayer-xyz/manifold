@@ -216,6 +216,22 @@ void                     mb_mutable_impl_meshid_transforms(
     double* transforms,
     unsigned char* back_sides, unsigned char* has_normals);
 
+// mb_mutable_impl_set_num_prop writes numProp_. Pair with
+// SetProperties below; the two must agree on count.
+void                     mb_mutable_impl_set_num_prop(
+    mb_mutable_impl_handle* h, int num_prop);
+
+// mb_mutable_impl_set_properties_raw writes properties_ wholesale.
+// data layout: n doubles total, interleaved numProp_ values per
+// propVert (caller controls numProp_ via SetNumProp).
+void                     mb_mutable_impl_set_properties_raw(
+    mb_mutable_impl_handle* h, const double* data, size_t n);
+
+// mb_mutable_impl_set_halfedge_tangents_raw writes halfedgeTangent_
+// wholesale. data is 4*n doubles (one vec4 per halfedge); n=0 clears.
+void                     mb_mutable_impl_set_halfedge_tangents_raw(
+    mb_mutable_impl_handle* h, const double* data, size_t n);
+
 // mb_mutable_impl_add_meshid_transform inserts one entry into
 // meshRelation_.meshIDtransform. transform is a 12-double 3x4 affine
 // matrix in column-major order (cols 0..2 linear, col 3 translation).
@@ -488,11 +504,8 @@ double*                   mb_mutable_impl_vert_normals_data(
 const double*             mb_impl_vert_normals_data(
     const mb_impl_handle* h, size_t* out_count);
 
-// mb_mutable_impl_gather_faces: Impl::GatherFaces(old, faceNew2Old).
-// Source is a const handle; dst is the mutable target.
-void                      mb_mutable_impl_gather_faces(
-    mb_mutable_impl_handle* dst, const mb_impl_handle* src,
-    const int* faceNew2Old, size_t count);
+// (mb_mutable_impl_gather_faces removed — GatherFaces is now native
+// Go; see impl_gather.go.)
 
 size_t                    mb_polygons_num_polys(const mb_polygons_handle* p);
 size_t                    mb_polygons_poly_size(const mb_polygons_handle* p,

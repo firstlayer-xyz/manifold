@@ -340,6 +340,27 @@ void mb_mutable_impl_meshid_transforms(const mb_mutable_impl_handle* h,
   }
 }
 
+void mb_mutable_impl_set_num_prop(mb_mutable_impl_handle* h, int num_prop) {
+  h->impl->numProp_ = num_prop;
+}
+
+void mb_mutable_impl_set_properties_raw(mb_mutable_impl_handle* h,
+                                        const double* data, size_t n) {
+  auto& p = h->impl->properties_;
+  p.resize_nofill(n);
+  if (n > 0) std::copy(data, data + n, p.begin());
+}
+
+void mb_mutable_impl_set_halfedge_tangents_raw(mb_mutable_impl_handle* h,
+                                                const double* data, size_t n) {
+  auto& ht = h->impl->halfedgeTangent_;
+  ht.resize_nofill(n);
+  if (n > 0) {
+    std::copy(reinterpret_cast<const manifold::vec4*>(data),
+              reinterpret_cast<const manifold::vec4*>(data) + n, ht.begin());
+  }
+}
+
 void mb_mutable_impl_add_meshid_transform(
     mb_mutable_impl_handle* h, int mesh_id, int original_id,
     double t00, double t01, double t02, double t10, double t11, double t12,
@@ -734,13 +755,6 @@ const double* mb_impl_vert_normals_data(const mb_impl_handle* h,
   return reinterpret_cast<const double*>(v.data());
 }
 
-void mb_mutable_impl_gather_faces(mb_mutable_impl_handle* dst,
-                                  const mb_impl_handle* src,
-                                  const int* faceNew2Old, size_t count) {
-  manifold::Vec<int> v(count);
-  std::copy(faceNew2Old, faceNew2Old + count, v.begin());
-  dst->impl->GatherFaces(*src->impl, v);
-}
 
 ManifoldManifold* mb_manifold_extrude(const double* cs_data,
                                       const size_t* cs_sizes,
