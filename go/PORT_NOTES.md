@@ -109,10 +109,31 @@ memory model. The C++ relies on word-sized non-atomic reads being
 - C++ keeps `collider_` as an `Impl` member field built once by
   `SortGeometry` and reused by Slice / RayCast / MinGap /
   Minkowski / IsSelfIntersecting / Boolean3.
-- Go builds a fresh Collider inside each `Slice` and
-  `IsSelfIntersecting` call. Algorithm at the call site is the
-  same; the persistence is missing.
-- **Why:** the facade types (`manifold.Impl`,
+- Go builds a fresh Collider inside each `Slice`,
+  `IsSelfIntersecting`, and `MinGap` call via
+  `collider.New(i.GetFaceBoxMorton())`. Algorithm at the call site
+  is the same; only the persistence is missing.
+- **Leaf index == face index, no remap.** This mirrors C++ exactly:
+  `GetFaceBoxMorton` returns the two parallel `faceBox`/`faceMorton`
+  arrays (length `NumTri`, uncompacted, `NoMortonCode` + empty box
+  for removed tris), and the recorder closures use the `tri`
+  indices directly — just like the C++ recorders index `vertPos_`
+  via `halfedge_.Start(3 * tri + j)`.
+- **Precondition (same as C++ `collider_` validity):** the Impl's
+  faces are Morton-sorted (`SortGeometry`/`SortFaces` physically
+  gathered them) and `bBox_` is stable, so recomputing the Morton
+  codes reproduces the ascending order the `Collider` ctor requires.
+  The normal construction path guarantees this — `CalculateBBox`
+  sets `bBox_` to the tight vert bbox before `SortGeometry`, and
+  `collider_.GetBoundingBox()` returns that same tight bbox after,
+  so there is no drift.
+- **History:** an earlier port computed a *compacted*
+  `perFaceBoxMorton` (skipping removed tris) and then externally
+  `StableSort`ed + carried a `sortedFaceID` remap — a workaround
+  for an incompatible container that diverged from the C++ form.
+  Removed; `GetFaceBoxMorton` now matches the C++ two-vector
+  signature and both Impl/MutableImpl expose it.
+- **Why no persistence yet:** the facade types (`manifold.Impl`,
   `manifold.MutableImpl`) are thin wrappers around bridge handle
   pointers; each `getImpl(m)` returns a fresh wrapper.
 - **Fix when:** persistent Collider home is built (either inside
@@ -151,9 +172,10 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `GetNormal`, `TangentFromNormal`, `CircularTangent`,
   `IsInsideQuad` plus the Bezier/quaternion machinery in
   `InterpTri`. (ForVert is drilled.)
-- `RayCast`, `MinGap`, `Minkowski` — still C++; use the bridge
-  Collider. When drilled, can use the Go `internal/collider`
-  package directly.
+- `RayCast`, `Minkowski` — still C++; use the bridge Collider.
+  When drilled, can use the Go `internal/collider` package directly.
+  (`MinGap` is now drilled — native Go via `internal/collider` +
+  `geom.DistanceTriangleTriangleSquared`.)
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
   algorithms above.

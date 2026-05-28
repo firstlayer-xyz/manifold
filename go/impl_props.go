@@ -80,12 +80,12 @@ func (i *Impl) MatchesTriNormals() bool {
 //  2. Query self-collisions over those boxes — for each (tri0,
 //     tri1) overlap pair, run the per-pair check:
 //     a. Skip if any pair of verts (one from each tri) is within
-//        epsilon — that means the tris share a vertex region.
+//     epsilon — that means the tris share a vertex region.
 //     b. If DistanceTriangleTriangleSquared == 0 (geometrically
-//        touching), try perturbing each tri by ±epsilon along the
-//        OTHER tri's face normal. If any perturbation pulls them
-//        apart (dist > 0), the original was a near-coincidence
-//        (not a true intersection); skip.
+//     touching), try perturbing each tri by ±epsilon along the
+//     OTHER tri's face normal. If any perturbation pulls them
+//     apart (dist > 0), the original was a near-coincidence
+//     (not a true intersection); skip.
 //     c. Otherwise: real self-intersection; record true.
 //  3. Return true iff any pair flagged.
 //
@@ -102,38 +102,21 @@ func (i *Impl) IsSelfIntersecting() bool {
 	ep := 2 * scalars.Epsilon
 	epsilonSq := ep * ep
 
-	// Build Collider over per-face boxes (matches the persistent
-	// C++ collider_ field). Mirrors what Slice does — see the
-	// PORT_NOTES note about ephemerally rebuilt Colliders.
-	faceBox, faceMorton, faceID := perFaceBoxMorton(i)
-	if len(faceBox) == 0 {
-		return false
-	}
-	policy := parallel.AutoPolicy(len(faceBox), 100000)
-	order := make([]int32, len(faceBox))
-	parallel.Sequence(policy, order)
-	parallel.StableSort(parallel.AutoPolicy(len(faceBox), 10000), order, func(a, b int32) bool {
-		return faceMorton[a] < faceMorton[b]
-	})
-	sortedBox := make([]geom.Box, len(faceBox))
-	sortedCode := make([]uint32, len(faceBox))
-	sortedFaceID := make([]int32, len(faceBox))
-	parallel.ForEachN(policy, len(faceBox), func(newIdx int) {
-		oldIdx := order[newIdx]
-		sortedBox[newIdx] = faceBox[oldIdx]
-		sortedCode[newIdx] = faceMorton[oldIdx]
-		sortedFaceID[newIdx] = faceID[oldIdx]
-	})
-	c := collider.New(sortedBox, sortedCode)
+	// Stand in for the persistent C++ collider_: rebuild it from the
+	// per-face boxes/Morton codes. The faces are already Morton-sorted
+	// (the SortGeometry invariant that makes collider_ valid), so the
+	// Collider's leaf index equals the face index and the recorder uses
+	// tri indices directly — exactly as C++ does. See the PORT_NOTES note
+	// on ephemerally rebuilt Colliders.
+	faceBox, faceMorton := i.GetFaceBoxMorton()
+	c := collider.New(faceBox, faceMorton)
 
-	// Recorder: invoked once per (queryLeaf, otherLeaf) overlap.
-	// selfCollision skips queryLeaf == otherLeaf. C++ does NOT
-	// short-circuit on first hit — every pair gets checked and the
-	// final atomic state is read at the end. We mirror that.
+	// Recorder: invoked once per (tri0, tri1) box overlap. selfCollision
+	// skips tri0 == tri1. C++ does NOT short-circuit on first hit — every
+	// pair gets checked and the final atomic state is read at the end. We
+	// mirror that.
 	var hit atomic.Bool
-	c.CollisionsBox(sortedBox, true, true, func(qLeaf, lLeaf int) {
-		tri0 := int(sortedFaceID[qLeaf])
-		tri1 := int(sortedFaceID[lLeaf])
+	c.CollisionsBox(faceBox, true, true, func(tri0, tri1 int) {
 		var v0, v1 [3]geom.Vec3
 		for k := 0; k < 3; k++ {
 			v0[k] = verts[starts[3*tri0+k]]
@@ -182,6 +165,57 @@ func (i *Impl) IsSelfIntersecting() bool {
 		hit.Store(true)
 	})
 	return hit.Load()
+}
+
+// MinGap is the Go port of C++ Manifold::Impl::MinGap (src/properties.cpp).
+// It returns the minimum surface distance between this Impl and other,
+// clamped above by searchLength.
+//
+// Mirrors the C++ body: take other's per-face boxes, expand each by
+// searchLength, and query them against this Impl's Collider. For every
+// (triOther, tri) box overlap accumulate the minimum triangle-triangle
+// distance, clamp to searchLength², and return its square root.
+//
+// The Collider stands in for the persistent C++ collider_ (rebuilt from
+// this Impl's Morton-sorted faces, so leaf index == face index and the
+// recorder uses tri indices directly). The collision query runs
+// SEQUENTIALLY to match the C++ call
+// collider_.Collisions<false>(recorder, faceBoxOther, /*parallel=*/false),
+// so a plain accumulator reproduces the recorder's combined minimum.
+func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
+	// other.GetFaceBoxMorton(faceBoxOther, faceMortonOther), then expand
+	// each query box by searchLength.
+	faceBoxOther, _ := other.GetFaceBoxMorton()
+	expand := geom.Vec3{X: searchLength, Y: searchLength, Z: searchLength}
+	parallel.Transform(parallel.AutoPolicy(len(faceBoxOther), 100000), faceBoxOther, faceBoxOther,
+		func(box geom.Box) geom.Box {
+			return geom.Box{Min: box.Min.Sub(expand), Max: box.Max.Add(expand)}
+		})
+
+	faceBox, faceMorton := i.GetFaceBoxMorton()
+	c := collider.New(faceBox, faceMorton)
+
+	verts := i.Verts()
+	starts := i.HalfedgeStarts()
+	vertsOther := other.Verts()
+	startsOther := other.HalfedgeStarts()
+
+	// MinDistanceRecorder: minimum triangle-triangle distance over every
+	// (triOther, tri) box overlap.
+	minDistance := math.Inf(1)
+	c.CollisionsBox(faceBoxOther, false, false, func(triOther, tri int) {
+		var p, q [3]geom.Vec3
+		for j := 0; j < 3; j++ {
+			p[j] = verts[starts[3*tri+j]]
+			q[j] = vertsOther[startsOther[3*triOther+j]]
+		}
+		if d := geom.DistanceTriangleTriangleSquared(p, q); d < minDistance {
+			minDistance = d
+		}
+	})
+
+	minDistanceSquared := math.Min(minDistance, searchLength*searchLength)
+	return math.Sqrt(minDistanceSquared)
 }
 
 // IsConvex is the Go port of C++ Manifold::Impl::IsConvex

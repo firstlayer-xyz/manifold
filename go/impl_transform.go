@@ -146,8 +146,8 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	// and the bridge doesn't expose the Transform / UpdateBoxes
 	// fast-paths. Functionally equivalent; less efficient.
 	if result.HalfedgeCount() > 0 {
-		faces := result.GetFaceBoxMorton()
-		box, morton := result.SortFaces(faces)
+		faceBox, faceMorton := result.GetFaceBoxMorton()
+		box, morton := result.SortFaces(faceBox, faceMorton)
 		flat := make([]float64, 6*len(box))
 		parallel.ForEachN(policy, len(box), func(idx int) {
 			b := box[idx]

@@ -726,11 +726,6 @@ ManifoldManifold* mb_impl_minkowski(const mb_impl_handle* a,
   return to_c(new Manifold(std::move(result)));
 }
 
-double mb_impl_min_gap(const mb_impl_handle* a, const mb_impl_handle* b,
-                       double searchLength) {
-  return a->impl->MinGap(*b->impl, searchLength);
-}
-
 void mb_mutable_impl_refine_to_tolerance(mb_mutable_impl_handle* h,
                                          double tolerance) {
   h->impl->Refine(

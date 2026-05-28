@@ -110,33 +110,32 @@ func (mi *MutableImpl) ReindexVerts(vertNew2Old []int32, oldNumVert int) {
 	mi.h.SetHalfedgesRaw(starts, props, pairs)
 }
 
-// faceBoxMorton holds the per-face bounding box + Morton code that
-// Impl::GetFaceBoxMorton produces.
-type faceBoxMorton struct {
-	box    geom.Box
-	morton uint32
-}
-
-// GetFaceBoxMorton is the Go port of Impl::GetFaceBoxMorton
-// (src/sort.cpp). For each triangle: compute its 3-vert bounding
-// box, take the centroid's Morton code against the mesh bBox.
-// Removed-tri sentinel (any halfedge pair < 0) maps to NoMortonCode.
+// faceBoxMortonOf is the body of Impl::GetFaceBoxMorton (src/sort.cpp),
+// shared by the const Impl and mutable MutableImpl facade methods (C++
+// has a single const method; the Go facade splits the type, so the body
+// lives in one free function operating on the raw arrays, mirroring the
+// checkHalfedge convention).
+//
+// For each triangle it fills the parallel faceBox / faceMorton arrays
+// (both length NumTri): the triangle's 3-vert bounding box and the
+// centroid's Morton code against bBox. Removed tris (any halfedge pair
+// < 0) get an empty box + NoMortonCode, sorting them to the tail.
 //
 // C++ uses for_each_n(autoPolicy(NumTri(), 1e5), ...). We mirror.
-func (mi *MutableImpl) GetFaceBoxMorton() []faceBoxMorton {
-	verts := mi.Verts()
-	starts := mi.HalfedgeStarts()
-	pairs := mi.HalfedgePairs()
-	minB, maxB := mi.BBox()
-	bBox := geom.Box{Min: minB, Max: maxB}
+func faceBoxMortonOf(verts []geom.Vec3, starts, pairs []int32, bBox geom.Box) ([]geom.Box, []uint32) {
 	numTri := len(starts) / 3
-	out := make([]faceBoxMorton, numTri)
+	faceBox := make([]geom.Box, numTri)
+	faceMorton := make([]uint32, numTri)
 	infPos := math.Inf(1)
 	infNeg := math.Inf(-1)
 	policy := parallel.AutoPolicy(numTri, 100000)
 	parallel.ForEachN(policy, numTri, func(face int) {
 		if pairs[3*face] < 0 {
-			out[face].morton = geom.NoMortonCode
+			faceBox[face] = geom.Box{
+				Min: geom.Vec3{X: infPos, Y: infPos, Z: infPos},
+				Max: geom.Vec3{X: infNeg, Y: infNeg, Z: infNeg},
+			}
+			faceMorton[face] = geom.NoMortonCode
 			return
 		}
 		box := geom.Box{
@@ -147,30 +146,28 @@ func (mi *MutableImpl) GetFaceBoxMorton() []faceBoxMorton {
 		for i := 0; i < 3; i++ {
 			p := verts[starts[3*face+i]]
 			center = center.Add(p)
-			if p.X < box.Min.X {
-				box.Min.X = p.X
-			}
-			if p.Y < box.Min.Y {
-				box.Min.Y = p.Y
-			}
-			if p.Z < box.Min.Z {
-				box.Min.Z = p.Z
-			}
-			if p.X > box.Max.X {
-				box.Max.X = p.X
-			}
-			if p.Y > box.Max.Y {
-				box.Max.Y = p.Y
-			}
-			if p.Z > box.Max.Z {
-				box.Max.Z = p.Z
-			}
+			box = box.UnionPoint(p)
 		}
 		center = center.Scale(1.0 / 3.0)
-		out[face].box = box
-		out[face].morton = geom.MortonCode(center, bBox)
+		faceBox[face] = box
+		faceMorton[face] = geom.MortonCode(center, bBox)
 	})
-	return out
+	return faceBox, faceMorton
+}
+
+// GetFaceBoxMorton is the Go port of Impl::GetFaceBoxMorton
+// (src/sort.cpp) — the const-view form. Returns the parallel faceBox /
+// faceMorton arrays (length NumTri), the same two vectors C++ passes to
+// the Collider constructor.
+func (i *Impl) GetFaceBoxMorton() ([]geom.Box, []uint32) {
+	minB, maxB := i.BBox()
+	return faceBoxMortonOf(i.Verts(), i.HalfedgeStarts(), i.HalfedgePairs(), geom.Box{Min: minB, Max: maxB})
+}
+
+// GetFaceBoxMorton is the mutable-view form, used by SortGeometry.
+func (mi *MutableImpl) GetFaceBoxMorton() ([]geom.Box, []uint32) {
+	minB, maxB := mi.BBox()
+	return faceBoxMortonOf(mi.Verts(), mi.HalfedgeStarts(), mi.HalfedgePairs(), geom.Box{Min: minB, Max: maxB})
 }
 
 // GatherFacesInPlace permutes meshRelation_.triRef, faceNormal_, and
@@ -262,40 +259,42 @@ func (mi *MutableImpl) GatherFacesInPlace(faceNew2Old []int32) {
 // from the end, then in-place permutes triRef / faceNormal_ /
 // halfedge_ / halfedgeTangent_.
 //
-// Returns the permuted (faceBox, faceMorton) parallel arrays so the
-// Collider can consume them downstream.
+// Takes and returns the (faceBox, faceMorton) parallel arrays; the
+// trimmed/permuted versions feed the Collider downstream. (C++ mutates
+// the two Vecs in place via Permute; Go gathers into fresh buffers.)
 //
 // C++ uses parallel sequence + stable_sort + lower_bound (serial) +
 // Permute. We mirror.
-func (mi *MutableImpl) SortFaces(faces []faceBoxMorton) ([]geom.Box, []uint32) {
-	n := len(faces)
+func (mi *MutableImpl) SortFaces(faceBox []geom.Box, faceMorton []uint32) ([]geom.Box, []uint32) {
+	n := len(faceMorton)
 	policy := parallel.AutoPolicy(n, 100000)
-	idx := make([]int32, n)
-	parallel.Sequence(policy, idx)
+	faceNew2Old := make([]int32, n)
+	parallel.Sequence(policy, faceNew2Old)
 	// stable_sort default threshold 1e4 (parallel.h:1140), not the
 	// outer SortFaces policy's 1e5.
-	parallel.StableSort(parallel.AutoPolicy(n, 10000), idx, func(a, b int32) bool {
-		return faces[a].morton < faces[b].morton
+	parallel.StableSort(parallel.AutoPolicy(n, 10000), faceNew2Old, func(a, b int32) bool {
+		return faceMorton[a] < faceMorton[b]
 	})
+	// Tris flagged for removal sorted to the end (NoMortonCode); trim.
 	newNumTri := n
-	for i, f := range idx {
-		if faces[f].morton >= geom.NoMortonCode {
+	for i, f := range faceNew2Old {
+		if faceMorton[f] >= geom.NoMortonCode {
 			newNumTri = i
 			break
 		}
 	}
-	idx = idx[:newNumTri]
+	faceNew2Old = faceNew2Old[:newNumTri]
 
-	mi.GatherFacesInPlace(idx)
+	mi.GatherFacesInPlace(faceNew2Old)
 
-	// Permute(faceMorton, idx), Permute(faceBox, idx) — parallel
-	// gather into fresh buffers.
+	// Permute(faceMorton, faceNew2Old), Permute(faceBox, faceNew2Old) —
+	// parallel gather into fresh buffers.
 	box := make([]geom.Box, newNumTri)
 	morton := make([]uint32, newNumTri)
 	parallel.ForEachN(policy, newNumTri, func(newF int) {
-		oldF := idx[newF]
-		box[newF] = faces[oldF].box
-		morton[newF] = faces[oldF].morton
+		oldF := faceNew2Old[newF]
+		box[newF] = faceBox[oldF]
+		morton[newF] = faceMorton[oldF]
 	})
 	return box, morton
 }
@@ -310,8 +309,8 @@ func (mi *MutableImpl) SortGeometry() {
 		return
 	}
 	mi.SortVerts()
-	faces := mi.GetFaceBoxMorton()
-	box, morton := mi.SortFaces(faces)
+	faceBox, faceMorton := mi.GetFaceBoxMorton()
+	box, morton := mi.SortFaces(faceBox, faceMorton)
 	if len(mi.HalfedgeStarts()) == 0 {
 		mi.h.BuildCollider(nil, nil)
 		return

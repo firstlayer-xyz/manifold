@@ -524,11 +524,6 @@ void                     mb_mutable_impl_refine_to_tolerance(
 struct ManifoldManifold* mb_impl_minkowski(
     const mb_impl_handle* a, const mb_impl_handle* b, int inset);
 
-// mb_impl_min_gap calls Impl::MinGap(other, searchLength) — minimum
-// surface distance, clamped to searchLength.
-double mb_impl_min_gap(
-    const mb_impl_handle* a, const mb_impl_handle* b, double searchLength);
-
 // Wraps the mutable Impl in a Manifold via Manifold::FromImpl. The Impl
 // continues to be owned by both handles via shared_ptr; deleting the
 // mutable handle does not affect the returned Manifold.

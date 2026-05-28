@@ -68,11 +68,6 @@ func (i *Impl) Minkowski(other *Impl, inset bool) *handle.Manifold {
 	return handle.NewManifold(unsafe.Pointer(C.mb_impl_minkowski(i.p, other.p, d)))
 }
 
-// MinGap calls C++ Impl::MinGap(other, searchLength).
-func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
-	return float64(C.mb_impl_min_gap(i.p, other.p, C.double(searchLength)))
-}
-
 // Copy returns a mutable copy of this Impl, suitable for ports that
 // need to call non-const Impl methods (InitializeOriginal, etc.). The
 // source is unaffected. Pair with MutableImpl.Delete.

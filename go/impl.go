@@ -170,11 +170,6 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []bridge.RayHit {
 	return i.h.RayCast(origin, endpoint)
 }
 
-// MinGap wraps Impl::MinGap (still in C++).
-func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
-	return i.h.MinGap(other.h, searchLength)
-}
-
 // Minkowski wraps Impl::Minkowski (still in C++).
 func (i *Impl) Minkowski(other *Impl, inset bool) *Manifold {
 	return wrap(i.h.Minkowski(other.h, inset))
@@ -347,4 +342,3 @@ func (mi *MutableImpl) CreateTangents(normalIdx int) {
 func (mi *MutableImpl) CreateTangentsFromSmoothness(edges []bridge.Smoothness) {
 	mi.h.CreateTangentsFromSmoothness(edges)
 }
-
