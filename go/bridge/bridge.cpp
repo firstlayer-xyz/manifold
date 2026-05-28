@@ -142,14 +142,6 @@ void mb_mutable_impl_subdivide_n(mb_mutable_impl_handle* h, int n) {
       [n](manifold::vec3, manifold::vec4, manifold::vec4) { return n - 1; });
 }
 
-void mb_mutable_impl_calculate_bbox(mb_mutable_impl_handle* h) {
-  h->impl->CalculateBBox();
-}
-
-void mb_mutable_impl_set_epsilon(mb_mutable_impl_handle* h) {
-  h->impl->SetEpsilon();
-}
-
 void mb_mutable_impl_set_epsilon_min(mb_mutable_impl_handle* h,
                                      double minEpsilon) {
   h->impl->SetEpsilon(minEpsilon);
@@ -768,14 +760,6 @@ void mb_mutable_impl_refine_to_tolerance(mb_mutable_impl_handle* h,
         return static_cast<int>(std::sqrt(3 * d / (4 * tolerance)));
       },
       true);
-}
-
-void mb_mutable_impl_initialize_original(mb_mutable_impl_handle* h) {
-  h->impl->InitializeOriginal();
-}
-
-void mb_mutable_impl_set_normals_and_coplanar(mb_mutable_impl_handle* h) {
-  h->impl->SetNormalsAndCoplanar();
 }
 
 void mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h) {

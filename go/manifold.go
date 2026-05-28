@@ -204,8 +204,13 @@ func (m *Manifold) AsOriginal() *Manifold {
 	}
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
-	newImpl.InitializeOriginal()
-	newImpl.SetNormalsAndCoplanar()
+	// hadNormals reflects whether the source impl's meshIDtransform
+	// already records normals — for AsOriginal we currently lose that
+	// distinction and pass false. (A future drill that reads
+	// AllHaveNormals on the mutable side will lift this.)
+	numTri := len(newImpl.HalfedgeStartsRO()) / 3
+	initializeOriginal(newImpl, numTri, false)
+	setNormalsAndCoplanar(newImpl)
 	return wrap(newImpl.ToManifold())
 }
 
@@ -230,7 +235,7 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 	}
 	if tolerance > oldTolerance {
 		newImpl.SetToleranceValue(tolerance)
-		newImpl.SetNormalsAndCoplanar()
+		setNormalsAndCoplanar(newImpl)
 	}
 	newImpl.SimplifyTopology()
 	newImpl.SortGeometry()
@@ -342,7 +347,7 @@ func (m *Manifold) SetTolerance(tol float64) *Manifold {
 	defer newImpl.Delete()
 	if tol > s.Tolerance {
 		newImpl.SetToleranceValue(tol)
-		newImpl.SetNormalsAndCoplanar()
+		setNormalsAndCoplanar(newImpl)
 		newImpl.SimplifyTopology()
 		newImpl.SortGeometry()
 	} else {
@@ -581,11 +586,14 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 		}
 	}
 
-	impl.InitializeOriginal()
-	impl.CalculateBBox()
-	impl.SetEpsilon()
+	// Finalize — drilled steps mirror C++ Sphere's tail. NumTri is
+	// derived from the halfedge count.
+	numTri := len(impl.HalfedgeStartsRO()) / 3
+	initializeOriginal(impl, numTri, false)
+	calculateBBox(impl)
+	setEpsilon(impl, -1, false)
 	impl.SortGeometry()
-	impl.SetNormalsAndCoplanar()
+	setNormalsAndCoplanar(impl)
 	return wrap(impl.ToManifold())
 }
 
@@ -1135,7 +1143,7 @@ func (m *Manifold) Decompose() []*Manifold {
 
 		newImpl.GatherFaces(impl, faceNew2Old)
 		newImpl.ReindexVerts(vertNew2Old, numVert)
-		newImpl.CalculateBBox()
+		calculateBBox(newImpl)
 		newImpl.SortGeometry()
 		meshes = append(meshes, wrap(newImpl.ToManifold()))
 		newImpl.Delete()
@@ -1350,17 +1358,19 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 		}
 	}
 
-	// Write into a fresh Impl and finalize.
+	// Write into a fresh Impl and finalize — drilled steps mirror the
+	// C++ tail of the algorithm.
 	newImpl := bridge.NewMutableImpl()
 	defer newImpl.Delete()
 	newImpl.ResizeVerts(len(verts))
 	copy(newImpl.Verts(), verts)
-	newImpl.CreateHalfedges(tris)
-	newImpl.InitializeOriginal()
-	newImpl.CalculateBBox()
-	newImpl.SetEpsilon()
+	createHalfedges(newImpl, tris)
+	numTri := len(tris) / 3
+	initializeOriginal(newImpl, numTri, false)
+	calculateBBox(newImpl)
+	setEpsilon(newImpl, -1, false)
 	newImpl.SortGeometry()
-	newImpl.SetNormalsAndCoplanar()
+	setNormalsAndCoplanar(newImpl)
 	return wrap(newImpl.ToManifold())
 }
 

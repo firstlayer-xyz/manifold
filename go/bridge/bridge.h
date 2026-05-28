@@ -189,24 +189,16 @@ double*                  mb_mutable_impl_verts_data(
 void                     mb_mutable_impl_subdivide_n(
     mb_mutable_impl_handle* h, int n);
 
-// mb_mutable_impl_calculate_bbox: Impl::CalculateBBox — recomputes
-// the Impl's cached bBox_ from vertPos_.
-void                     mb_mutable_impl_calculate_bbox(
-    mb_mutable_impl_handle* h);
-
 // mb_mutable_impl_set_epsilon_min: Impl::SetEpsilon(minEpsilon, false)
 // — the one-arg overload used by ReadOBJ to restore the epsilon read
 // from a `# epsilon = X` comment.
 void                     mb_mutable_impl_set_epsilon_min(
     mb_mutable_impl_handle* h, double minEpsilon);
 
-// mb_mutable_impl_set_epsilon: Impl::SetEpsilon(-1, false) — default
-// argument form used by Sphere/Cylinder/etc.
-void                     mb_mutable_impl_set_epsilon(
-    mb_mutable_impl_handle* h);
-
-// (mb_quality_get_circular_segments was removed; Quality is now
-// implemented natively in Go — see quality.go.)
+// (mb_quality_get_circular_segments, mb_mutable_impl_calculate_bbox,
+// mb_mutable_impl_set_epsilon, mb_mutable_impl_initialize_original,
+// and mb_mutable_impl_set_normals_and_coplanar were removed; these
+// methods are now implemented natively in Go.)
 
 // mb_manifold_extrude wraps Manifold::Extrude(Polygons, height,
 // nDivisions, twistDegrees, scaleTop). cs_data is a flat array of vec2
@@ -468,8 +460,6 @@ size_t                    mb_polygons_poly_size(const mb_polygons_handle* p,
 const double*             mb_polygons_poly_data(const mb_polygons_handle* p,
                                                 size_t idx);
 void                      mb_delete_polygons(mb_polygons_handle* p);
-void                     mb_mutable_impl_initialize_original(mb_mutable_impl_handle* h);
-void                     mb_mutable_impl_set_normals_and_coplanar(mb_mutable_impl_handle* h);
 void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h);
 void                     mb_mutable_impl_sort_geometry(mb_mutable_impl_handle* h);
 void                     mb_mutable_impl_set_tolerance_value(mb_mutable_impl_handle* h, double tol);

@@ -111,18 +111,6 @@ func (mi *MutableImpl) SubdivideN(n int) {
 	C.mb_mutable_impl_subdivide_n(mi.p, C.int(n))
 }
 
-// CalculateBBox wraps Impl::CalculateBBox — recomputes the impl's
-// cached bBox_ from vertPos_.
-func (mi *MutableImpl) CalculateBBox() {
-	C.mb_mutable_impl_calculate_bbox(mi.p)
-}
-
-// SetEpsilon wraps Impl::SetEpsilon() with default arguments
-// (-1, false) — the form used by the public factory functions.
-func (mi *MutableImpl) SetEpsilon() {
-	C.mb_mutable_impl_set_epsilon(mi.p)
-}
-
 // SetEpsilonMin wraps Impl::SetEpsilon(minEpsilon, false) — the
 // one-arg overload used by ReadOBJ to restore epsilon from the file
 // header.
@@ -1332,17 +1320,6 @@ func Extrude(polys [][]geom.Vec2, height float64, nDivisions int,
 // Impl.Copy. Mutator methods on MutableImpl mirror the non-const
 // methods on C++ Manifold::Impl.
 type MutableImpl struct{ p *C.mb_mutable_impl_handle }
-
-// InitializeOriginal calls C++ Impl::InitializeOriginal on the wrapped
-// impl.
-func (mi *MutableImpl) InitializeOriginal() {
-	C.mb_mutable_impl_initialize_original(mi.p)
-}
-
-// SetNormalsAndCoplanar calls C++ Impl::SetNormalsAndCoplanar.
-func (mi *MutableImpl) SetNormalsAndCoplanar() {
-	C.mb_mutable_impl_set_normals_and_coplanar(mi.p)
-}
 
 // SimplifyTopology calls C++ Impl::SimplifyTopology.
 func (mi *MutableImpl) SimplifyTopology() {
