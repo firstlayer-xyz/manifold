@@ -1382,13 +1382,7 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 func (m *Manifold) Slice(height float64) Polygons {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
-	ph := impl.Slice(height)
-	defer ph.Delete()
-	result := make(Polygons, ph.NumPolys())
-	for i := 0; i < ph.NumPolys(); i++ {
-		result[i] = ph.Poly(i)
-	}
-	return result
+	return implSlice(impl, height)
 }
 
 // Project returns the XY-plane projection of the manifold as a set of
