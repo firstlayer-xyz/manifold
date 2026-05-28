@@ -113,10 +113,11 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *bridge.MutableImpl {
 	// SetEpsilon() — drilled to Go (impl_epsilon.go). Default args are
 	// (minEpsilon=-1, useSingle=false), matching the C++ no-arg call.
 	setEpsilon(mi, -1, false)
-	// SortGeometry()
+	// SortGeometry() — still in C++ (substantial sort+collider).
 	mi.SortGeometry()
-	// SetNormalsAndCoplanar()
-	mi.SetNormalsAndCoplanar()
+	// SetNormalsAndCoplanar() — drilled to Go (impl_normals.go),
+	// includes the inline call to CalculateVertNormals.
+	setNormalsAndCoplanar(mi)
 
 	return mi
 }

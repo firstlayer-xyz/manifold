@@ -119,6 +119,35 @@ void                     mb_mutable_impl_set_tri_refs(
 void                     mb_mutable_impl_clear_meshid_transforms(
     mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_resize_face_normals resizes faceNormal_ to n
+// elements. Used by the Go port of SetNormalsAndCoplanar before
+// writing per-tri normals via the data accessor.
+void                     mb_mutable_impl_resize_face_normals(
+    mb_mutable_impl_handle* h, size_t n);
+
+// mb_mutable_impl_face_normals_data returns a pointer to faceNormal_
+// for direct Go-side write. Layout is 3 packed doubles per element
+// (matching manifold::vec3). out_count gets the element count.
+double*                  mb_mutable_impl_face_normals_data(
+    mb_mutable_impl_handle* h, size_t* out_count);
+
+// mb_mutable_impl_set_coplanar_ids writes only the coplanarID field of
+// each TriRef in meshRelation_.triRef. The triRef array must already
+// be the right size (== num_tri).
+void                     mb_mutable_impl_set_coplanar_ids(
+    mb_mutable_impl_handle* h, const int* coplanar_ids, size_t num_tri);
+
+// mb_mutable_impl_halfedge_starts returns a read-only pointer to
+// halfedge_.start_ on a mutable Impl (mirror of mb_impl_halfedge_starts
+// for the const handle).
+const void*              mb_mutable_impl_halfedge_starts(
+    const mb_mutable_impl_handle* h, size_t* out_count);
+
+// mb_mutable_impl_halfedge_pairs is the mutable-handle counterpart of
+// mb_impl_halfedge_pairs.
+const void*              mb_mutable_impl_halfedge_pairs(
+    const mb_mutable_impl_handle* h, size_t* out_count);
+
 // mb_mutable_impl_add_meshid_transform inserts one entry into
 // meshRelation_.meshIDtransform. transform is a 12-double 3x4 affine
 // matrix in column-major order (cols 0..2 linear, col 3 translation).

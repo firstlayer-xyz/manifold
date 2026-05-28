@@ -549,6 +549,61 @@ func (mi *MutableImpl) ClearMeshIDTransforms() {
 	C.mb_mutable_impl_clear_meshid_transforms(mi.p)
 }
 
+// ResizeFaceNormals resizes faceNormal_ to n elements. Pair with
+// FaceNormalsMut for Go-side writes.
+func (mi *MutableImpl) ResizeFaceNormals(n int) {
+	C.mb_mutable_impl_resize_face_normals(mi.p, C.size_t(n))
+}
+
+// FaceNormalsMut returns a writable Go slice aliasing faceNormal_.
+// Use ResizeFaceNormals first to size it correctly.
+func (mi *MutableImpl) FaceNormalsMut() []geom.Vec3 {
+	var n C.size_t
+	p := C.mb_mutable_impl_face_normals_data(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*geom.Vec3)(unsafe.Pointer(p)), int(n))
+}
+
+// HalfedgeStartsRO returns a read-only Go slice aliasing halfedge_.start_
+// on this MutableImpl. Read-only because the layout invariants are
+// algorithm-specific; use the SetHalfedgesRaw bulk setter for writes.
+// Valid only while this MutableImpl is alive.
+func (mi *MutableImpl) HalfedgeStartsRO() []int32 {
+	var n C.size_t
+	p := C.mb_mutable_impl_halfedge_starts(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// HalfedgePairsRO is the read-only paired-edge counterpart of
+// HalfedgeStartsRO.
+func (mi *MutableImpl) HalfedgePairsRO() []int32 {
+	var n C.size_t
+	p := C.mb_mutable_impl_halfedge_pairs(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// SetCoplanarIDs writes only the coplanarID field of every TriRef in
+// meshRelation_.triRef. Length of ids must equal NumTri (the triRef
+// array must already be sized — typically by a prior SetTriRefs call
+// or by Impl construction).
+func (mi *MutableImpl) SetCoplanarIDs(ids []int32) {
+	if len(ids) == 0 {
+		C.mb_mutable_impl_set_coplanar_ids(mi.p, nil, 0)
+		return
+	}
+	C.mb_mutable_impl_set_coplanar_ids(mi.p,
+		(*C.int)(unsafe.Pointer(&ids[0])),
+		C.size_t(len(ids)))
+}
+
 // AddMeshIDTransform inserts a single entry into
 // meshRelation_.meshIDtransform.
 //

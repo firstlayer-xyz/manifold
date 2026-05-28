@@ -212,6 +212,39 @@ void mb_mutable_impl_clear_meshid_transforms(mb_mutable_impl_handle* h) {
   h->impl->meshRelation_.meshIDtransform.clear();
 }
 
+void mb_mutable_impl_resize_face_normals(mb_mutable_impl_handle* h, size_t n) {
+  h->impl->faceNormal_.resize(n);
+}
+
+double* mb_mutable_impl_face_normals_data(mb_mutable_impl_handle* h,
+                                          size_t* out_count) {
+  auto& fn = h->impl->faceNormal_;
+  *out_count = fn.size();
+  return reinterpret_cast<double*>(fn.data());
+}
+
+void mb_mutable_impl_set_coplanar_ids(mb_mutable_impl_handle* h,
+                                      const int* coplanar_ids, size_t num_tri) {
+  auto& triRef = h->impl->meshRelation_.triRef;
+  for (size_t i = 0; i < num_tri; ++i) {
+    triRef[i].coplanarID = coplanar_ids[i];
+  }
+}
+
+const void* mb_mutable_impl_halfedge_starts(const mb_mutable_impl_handle* h,
+                                            size_t* out_count) {
+  const auto& he = h->impl->halfedge_;
+  *out_count = he.size();
+  return static_cast<const void*>(ManifoldBridge::HalfedgeStarts(he));
+}
+
+const void* mb_mutable_impl_halfedge_pairs(const mb_mutable_impl_handle* h,
+                                           size_t* out_count) {
+  const auto& he = h->impl->halfedge_;
+  *out_count = he.size();
+  return static_cast<const void*>(ManifoldBridge::HalfedgePairs(he));
+}
+
 void mb_mutable_impl_add_meshid_transform(
     mb_mutable_impl_handle* h, int mesh_id, int original_id,
     double t00, double t01, double t02, double t10, double t11, double t12,

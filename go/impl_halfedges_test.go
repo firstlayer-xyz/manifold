@@ -54,6 +54,76 @@ func TestCreateHalfedges_Tetrahedron_VsCpp(t *testing.T) {
 	}
 }
 
+// TestSetNormalsAndCoplanar_Tetrahedron_VsCpp builds a tetrahedron via
+// both the Go-drilled newImplFromShape (which calls Go ports for
+// CreateHalfedges, CalculateBBox, SetEpsilon, InitializeOriginal,
+// SetNormalsAndCoplanar, CalculateVertNormals) and the C++
+// reference, then compares face normals and vertex normals.
+//
+// Face normals are unique up to triangle ordering — neither path
+// guarantees the same tri index for the same triangle (the C++ side
+// may reorder via SortGeometry, which both paths still call). To
+// compare, we collect (sortKey, normal) pairs and verify the sets
+// match within epsilon.
+func TestSetNormalsAndCoplanar_Tetrahedron_VsCpp(t *testing.T) {
+	mGo := Tetrahedron()
+	defer runtime.KeepAlive(mGo)
+	goImpl := bridge.GetImpl(mGo.h)
+	defer goImpl.Delete()
+
+	hRef := reference.Tetrahedron()
+	defer reference.DeleteManifold(hRef)
+	refImpl := bridge.GetImpl(hRef)
+	defer refImpl.Delete()
+
+	// Face normals: number must match.
+	goFN := goImpl.FaceNormals()
+	refFN := refImpl.FaceNormals()
+	if len(goFN) != len(refFN) {
+		t.Fatalf("FaceNormals length: go=%d ref=%d", len(goFN), len(refFN))
+	}
+	// For a tetrahedron, the 4 face normals are unique unit vectors.
+	// Check the set of normals (any order) matches.
+	if !sameVec3Set(goFN, refFN, 1e-12) {
+		t.Errorf("face normal sets differ:\n  go:  %v\n  ref: %v", goFN, refFN)
+	}
+
+	// Vertex normals likewise — for a tetrahedron each vertex has a
+	// unique normal direction.
+	goVN := goImpl.VertNormals()
+	refVN := refImpl.VertNormals()
+	if len(goVN) != len(refVN) {
+		t.Fatalf("VertNormals length: go=%d ref=%d", len(goVN), len(refVN))
+	}
+	if !sameVec3Set(goVN, refVN, 1e-12) {
+		t.Errorf("vert normal sets differ:\n  go:  %v\n  ref: %v", goVN, refVN)
+	}
+}
+
+func sameVec3Set(a, b []Vec3, eps float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	used := make([]bool, len(b))
+	for _, va := range a {
+		matched := false
+		for j, vb := range b {
+			if used[j] {
+				continue
+			}
+			if vec3Close(va, vb, eps) {
+				used[j] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
 // TestCreateHalfedges_Cube_VsCpp is the cube analog.
 func TestCreateHalfedges_Cube_VsCpp(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, false)
