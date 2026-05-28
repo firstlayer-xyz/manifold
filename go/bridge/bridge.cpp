@@ -91,6 +91,76 @@ const void* mb_impl_halfedge_starts(const mb_impl_handle* h, size_t* out_count) 
   return static_cast<const void*>(ManifoldBridge::HalfedgeStarts(he));
 }
 
+const void* mb_impl_halfedge_props(const mb_impl_handle* h, size_t* out_count) {
+  const auto& he = h->impl->halfedge_;
+  *out_count = he.size();
+  return static_cast<const void*>(ManifoldBridge::HalfedgeProps(he));
+}
+
+const double* mb_impl_halfedge_tangents(const mb_impl_handle* h,
+                                         size_t* out_count) {
+  const auto& ht = h->impl->halfedgeTangent_;
+  *out_count = ht.size();
+  return reinterpret_cast<const double*>(ht.data());
+}
+
+const double* mb_impl_properties(const mb_impl_handle* h, size_t* out_count) {
+  const auto& p = h->impl->properties_;
+  *out_count = p.size();
+  return p.data();
+}
+
+void mb_impl_tri_refs(const mb_impl_handle* h, size_t* out_count,
+                      const int** mesh_ids, const int** original_ids,
+                      const int** face_ids, const int** coplanar_ids) {
+  const auto& tr = h->impl->meshRelation_.triRef;
+  *out_count = tr.size();
+  if (tr.empty()) {
+    *mesh_ids = nullptr;
+    *original_ids = nullptr;
+    *face_ids = nullptr;
+    *coplanar_ids = nullptr;
+    return;
+  }
+  *mesh_ids = &tr[0].meshID;
+  *original_ids = &tr[0].originalID;
+  *face_ids = &tr[0].faceID;
+  *coplanar_ids = &tr[0].coplanarID;
+}
+
+size_t mb_impl_meshid_transform_count(const mb_impl_handle* h) {
+  return h->impl->meshRelation_.meshIDtransform.size();
+}
+
+void mb_impl_meshid_transforms(const mb_impl_handle* h,
+                                int* mesh_ids, int* original_ids,
+                                double* transforms,
+                                unsigned char* back_sides,
+                                unsigned char* has_normals) {
+  size_t i = 0;
+  for (const auto& kv : h->impl->meshRelation_.meshIDtransform) {
+    mesh_ids[i] = kv.first;
+    original_ids[i] = kv.second.originalID;
+    const auto& t = kv.second.transform;
+    for (int col = 0; col < 4; ++col) {
+      for (int row = 0; row < 3; ++row) {
+        transforms[i * 12 + col * 3 + row] = t[col][row];
+      }
+    }
+    back_sides[i] = kv.second.backSide ? 1 : 0;
+    has_normals[i] = kv.second.hasNormals ? 1 : 0;
+    ++i;
+  }
+}
+
+void mb_impl_bbox(const mb_impl_handle* h,
+                  double* min_x, double* min_y, double* min_z,
+                  double* max_x, double* max_y, double* max_z) {
+  const auto& b = h->impl->bBox_;
+  *min_x = b.min.x; *min_y = b.min.y; *min_z = b.min.z;
+  *max_x = b.max.x; *max_y = b.max.y; *max_z = b.max.z;
+}
+
 const void* mb_impl_halfedge_pairs(const mb_impl_handle* h, size_t* out_count) {
   const auto& he = h->impl->halfedge_;
   *out_count = he.size();
@@ -332,17 +402,8 @@ int mb_impl_all_have_normals(const mb_impl_handle* h) {
   return h->impl->AllHaveNormals() ? 1 : 0;
 }
 
-ManifoldMeshGL64* mb_impl_get_meshgl64(const mb_impl_handle* h, int normalIdx) {
-  auto* mesh = new manifold::MeshGL64(
-      manifold::GetMeshGLImpl<double, uint64_t>(*h->impl, normalIdx));
-  return to_c(mesh);
-}
-
-ManifoldMeshGL* mb_impl_get_meshgl(const mb_impl_handle* h, int normalIdx) {
-  auto* mesh = new manifold::MeshGL(
-      manifold::GetMeshGLImpl<float, uint32_t>(*h->impl, normalIdx));
-  return to_c(mesh);
-}
+// (mb_impl_get_meshgl / mb_impl_get_meshgl64 removed — GetMeshGL is
+// implemented natively in Go via the impl read accessors above.)
 
 struct mb_tri_verts_handle {
   manifold::Vec<manifold::ivec3> tris;

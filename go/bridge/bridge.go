@@ -292,112 +292,10 @@ func (d *DisjointSets) ConnectedComponents() (int, []int32) {
 
 func (d *DisjointSets) Delete() { C.mb_delete_disjoint_sets(d.p) }
 
-// MeshGL64Handle wraps a C++ manifold::MeshGL64 produced by
-// GetMeshGLImpl. Field accessors copy contents into Go-owned slices;
-// pair with Delete.
-type MeshGL64Handle struct{ p *C.ManifoldMeshGL64 }
-
-// GetMeshGL64 calls GetMeshGLImpl<double, uint64_t>(impl, normalIdx).
-func (i *Impl) GetMeshGL64(normalIdx int) *MeshGL64Handle {
-	return &MeshGL64Handle{p: C.mb_impl_get_meshgl64(i.p, C.int(normalIdx))}
-}
-
-// Delete releases the C++ MeshGL64.
-func (mh *MeshGL64Handle) Delete() { C.manifold_delete_meshgl64(mh.p) }
-
-func (mh *MeshGL64Handle) NumProp() int {
-	return int(C.manifold_meshgl64_num_prop(mh.p))
-}
-
-func (mh *MeshGL64Handle) Tolerance() float64 {
-	return float64(C.manifold_meshgl64_tolerance(mh.p))
-}
-
-func meshGLF64Slice(n C.size_t, fill func(unsafe.Pointer)) []float64 {
-	if n == 0 {
-		return nil
-	}
-	out := make([]float64, n)
-	fill(unsafe.Pointer(&out[0]))
-	return out
-}
-
-func meshGLU64Slice(n C.size_t, fill func(unsafe.Pointer)) []uint64 {
-	if n == 0 {
-		return nil
-	}
-	out := make([]uint64, n)
-	fill(unsafe.Pointer(&out[0]))
-	return out
-}
-
-func meshGLU32Slice(n C.size_t, fill func(unsafe.Pointer)) []uint32 {
-	if n == 0 {
-		return nil
-	}
-	out := make([]uint32, n)
-	fill(unsafe.Pointer(&out[0]))
-	return out
-}
-
-func meshGLU8Slice(n C.size_t, fill func(unsafe.Pointer)) []uint8 {
-	if n == 0 {
-		return nil
-	}
-	out := make([]uint8, n)
-	fill(unsafe.Pointer(&out[0]))
-	return out
-}
-
-func (mh *MeshGL64Handle) VertProperties() []float64 {
-	return meshGLF64Slice(C.manifold_meshgl64_vert_properties_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_vert_properties(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) TriVerts() []uint64 {
-	return meshGLU64Slice(C.manifold_meshgl64_tri_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_tri_verts(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) MergeFromVert() []uint64 {
-	return meshGLU64Slice(C.manifold_meshgl64_merge_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_merge_from_vert(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) MergeToVert() []uint64 {
-	return meshGLU64Slice(C.manifold_meshgl64_merge_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_merge_to_vert(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) RunIndex() []uint64 {
-	return meshGLU64Slice(C.manifold_meshgl64_run_index_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_run_index(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) RunOriginalID() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl64_run_original_id_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_run_original_id(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) RunTransform() []float64 {
-	return meshGLF64Slice(C.manifold_meshgl64_run_transform_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_run_transform(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) RunFlags() []uint8 {
-	return meshGLU8Slice(C.manifold_meshgl64_run_flags_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_run_flags(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) FaceID() []uint64 {
-	return meshGLU64Slice(C.manifold_meshgl64_face_id_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_face_id(p, mh.p) })
-}
-
-func (mh *MeshGL64Handle) HalfedgeTangent() []float64 {
-	return meshGLF64Slice(C.manifold_meshgl64_tangent_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl64_halfedge_tangent(p, mh.p) })
-}
+// MeshGL64 and MeshGL handle types and per-field cgo accessors have
+// been removed; GetMeshGL/GetMeshGL64 are now implemented natively in
+// Go (see impl_meshgl.go) reading directly from the Impl's exposed
+// buffers.
 
 // Triangulate wraps the public free function manifold::Triangulate.
 // Returns a flat []int32 of triangle indices (3 per triangle).
@@ -1212,84 +1110,9 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []RayHit {
 	return out
 }
 
-// MeshGLHandle wraps a C++ manifold::MeshGL (float / uint32) produced
-// by GetMeshGLImpl. Pair with Delete.
-type MeshGLHandle struct{ p *C.ManifoldMeshGL }
-
-// GetMeshGL calls GetMeshGLImpl<float, uint32_t>(impl, normalIdx).
-func (i *Impl) GetMeshGL(normalIdx int) *MeshGLHandle {
-	return &MeshGLHandle{p: C.mb_impl_get_meshgl(i.p, C.int(normalIdx))}
-}
-
-func (mh *MeshGLHandle) Delete() { C.manifold_delete_meshgl(mh.p) }
-
-func (mh *MeshGLHandle) NumProp() int {
-	return int(C.manifold_meshgl_num_prop(mh.p))
-}
-
-func (mh *MeshGLHandle) Tolerance() float32 {
-	return float32(C.manifold_meshgl_tolerance(mh.p))
-}
-
-func meshGLF32Slice(n C.size_t, fill func(unsafe.Pointer)) []float32 {
-	if n == 0 {
-		return nil
-	}
-	out := make([]float32, n)
-	fill(unsafe.Pointer(&out[0]))
-	return out
-}
-
-func (mh *MeshGLHandle) VertProperties() []float32 {
-	return meshGLF32Slice(C.manifold_meshgl_vert_properties_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_vert_properties(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) TriVerts() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_tri_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_tri_verts(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) MergeFromVert() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_merge_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_merge_from_vert(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) MergeToVert() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_merge_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_merge_to_vert(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) RunIndex() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_run_index_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_run_index(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) RunOriginalID() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_run_original_id_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_run_original_id(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) RunTransform() []float32 {
-	return meshGLF32Slice(C.manifold_meshgl_run_transform_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_run_transform(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) RunFlags() []uint8 {
-	return meshGLU8Slice(C.manifold_meshgl_run_flags_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_run_flags(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) FaceID() []uint32 {
-	return meshGLU32Slice(C.manifold_meshgl_face_id_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_face_id(p, mh.p) })
-}
-
-func (mh *MeshGLHandle) HalfedgeTangent() []float32 {
-	return meshGLF32Slice(C.manifold_meshgl_tangent_length(mh.p),
-		func(p unsafe.Pointer) { C.manifold_meshgl_halfedge_tangent(p, mh.p) })
-}
-
+// (MeshGLHandle / MeshGL handle types removed — see comment above the
+// MeshGL64Handle deletion. GetMeshGL is now native Go in
+// impl_meshgl.go.)
 
 // Extrude wraps Manifold::Extrude. polys is the cross-section: each
 // inner []geom.Vec2 is a SimplePolygon, the outer slice is Polygons.
@@ -1463,6 +1286,120 @@ func (n *CsgNode) Delete() { C.mb_delete_csg_node(n.p) }
 // halfedge_. Element value -1 marks a boundary halfedge; otherwise it
 // is the index of the paired halfedge. Read-only; valid only while
 // this Impl is alive.
+// HalfedgeProps returns a read-only slice aliasing halfedge_.propVert_
+// on a const Impl. Layout: int32[3*NumTri].
+func (i *Impl) HalfedgeProps() []int32 {
+	var n C.size_t
+	p := C.mb_impl_halfedge_props(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// HalfedgeTangents returns a read-only slice aliasing halfedgeTangent_
+// on a const Impl. Layout: 4 packed doubles per element (x, y, z, w);
+// the returned slice contains 4*NumHalfedge doubles.
+func (i *Impl) HalfedgeTangents() []float64 {
+	var n C.size_t
+	p := C.mb_impl_halfedge_tangents(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*float64)(unsafe.Pointer(p)), int(n)*4)
+}
+
+// Properties returns a read-only slice aliasing properties_ on a const
+// Impl. Length = NumProp * NumPropVert; entries are interleaved
+// numProp doubles per propVert.
+func (i *Impl) Properties() []float64 {
+	var n C.size_t
+	p := C.mb_impl_properties(i.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*float64)(unsafe.Pointer(p)), int(n))
+}
+
+// TriRef is the Go mirror of C++ TriRef.
+type TriRef struct {
+	MeshID, OriginalID, FaceID, CoplanarID int32
+}
+
+// TriRefs reads the meshRelation_.triRef array from a const Impl,
+// copying it into a Go slice. The four interleaved int fields in
+// each C++ TriRef map to one Go TriRef struct per triangle.
+func (i *Impl) TriRefs() []TriRef {
+	var n C.size_t
+	var meshIDs, originalIDs, faceIDs, coplanarIDs *C.int
+	C.mb_impl_tri_refs(i.p, &n, &meshIDs, &originalIDs, &faceIDs, &coplanarIDs)
+	if n == 0 {
+		return nil
+	}
+	// Each pointer points to one field within the first TriRef element.
+	// Stride between elements is sizeof(TriRef) = 4 ints. Read via the
+	// strided pointer arithmetic that unsafe.Slice doesn't directly
+	// support; copy field-by-field instead.
+	out := make([]TriRef, int(n))
+	for k := 0; k < int(n); k++ {
+		base := uintptr(k) * unsafe.Sizeof(out[0])
+		out[k].MeshID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(meshIDs)) + base)))
+		out[k].OriginalID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(originalIDs)) + base)))
+		out[k].FaceID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(faceIDs)) + base)))
+		out[k].CoplanarID = int32(*(*C.int)(unsafe.Pointer(uintptr(unsafe.Pointer(coplanarIDs)) + base)))
+	}
+	return out
+}
+
+// MeshIDRelation is the Go mirror of one entry in
+// meshRelation_.meshIDtransform.
+type MeshIDRelation struct {
+	MeshID, OriginalID  int32
+	Transform           [4][3]float64
+	BackSide, HasNormals bool
+}
+
+// MeshIDTransforms reads meshRelation_.meshIDtransform on a const Impl,
+// returning all entries in std::map order (ascending meshID).
+func (i *Impl) MeshIDTransforms() []MeshIDRelation {
+	n := int(C.mb_impl_meshid_transform_count(i.p))
+	if n == 0 {
+		return nil
+	}
+	meshIDs := make([]C.int, n)
+	originalIDs := make([]C.int, n)
+	transforms := make([]C.double, n*12)
+	backSides := make([]C.uchar, n)
+	hasNormals := make([]C.uchar, n)
+	C.mb_impl_meshid_transforms(i.p,
+		(*C.int)(unsafe.Pointer(&meshIDs[0])),
+		(*C.int)(unsafe.Pointer(&originalIDs[0])),
+		(*C.double)(unsafe.Pointer(&transforms[0])),
+		(*C.uchar)(unsafe.Pointer(&backSides[0])),
+		(*C.uchar)(unsafe.Pointer(&hasNormals[0])))
+	out := make([]MeshIDRelation, n)
+	for k := 0; k < n; k++ {
+		out[k].MeshID = int32(meshIDs[k])
+		out[k].OriginalID = int32(originalIDs[k])
+		for col := 0; col < 4; col++ {
+			for row := 0; row < 3; row++ {
+				out[k].Transform[col][row] = float64(transforms[k*12+col*3+row])
+			}
+		}
+		out[k].BackSide = backSides[k] != 0
+		out[k].HasNormals = hasNormals[k] != 0
+	}
+	return out
+}
+
+// BBox reads the cached bBox_ corners from a const Impl.
+func (i *Impl) BBox() (minV, maxV geom.Vec3) {
+	var mnX, mnY, mnZ, mxX, mxY, mxZ C.double
+	C.mb_impl_bbox(i.p, &mnX, &mnY, &mnZ, &mxX, &mxY, &mxZ)
+	return geom.Vec3{X: float64(mnX), Y: float64(mnY), Z: float64(mnZ)},
+		geom.Vec3{X: float64(mxX), Y: float64(mxY), Z: float64(mxZ)}
+}
+
 func (i *Impl) HalfedgePairs() []int32 {
 	var n C.size_t
 	p := C.mb_impl_halfedge_pairs(i.p, &n)

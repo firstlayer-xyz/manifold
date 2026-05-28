@@ -784,21 +784,20 @@ func (m *Manifold) GetMeshGL(normalIdx int) MeshGL {
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	mh := impl.GetMeshGL(normalIdx)
-	defer mh.Delete()
+	o := getMeshGLFromImpl(impl, normalIdx)
 	return MeshGL{
-		NumProp:         mh.NumProp(),
-		VertProperties:  mh.VertProperties(),
-		TriVerts:        mh.TriVerts(),
-		MergeFromVert:   mh.MergeFromVert(),
-		MergeToVert:     mh.MergeToVert(),
-		RunIndex:        mh.RunIndex(),
-		RunOriginalID:   mh.RunOriginalID(),
-		RunTransform:    mh.RunTransform(),
-		RunFlags:        mh.RunFlags(),
-		FaceID:          mh.FaceID(),
-		HalfedgeTangent: mh.HalfedgeTangent(),
-		Tolerance:       mh.Tolerance(),
+		NumProp:         o.NumProp,
+		VertProperties:  o.VertProperties,
+		TriVerts:        o.TriVerts,
+		MergeFromVert:   o.MergeFromVert,
+		MergeToVert:     o.MergeToVert,
+		RunIndex:        o.RunIndex,
+		RunOriginalID:   o.RunOriginalID,
+		RunTransform:    o.RunTransform,
+		RunFlags:        o.RunFlags,
+		FaceID:          o.FaceID,
+		HalfedgeTangent: o.HalfedgeTangent,
+		Tolerance:       o.Tolerance,
 	}
 }
 
@@ -1026,21 +1025,20 @@ func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
 	if normalIdx < 0 && impl.AllHaveNormals() {
 		normalIdx = 0
 	}
-	mh := impl.GetMeshGL64(normalIdx)
-	defer mh.Delete()
+	o := getMeshGL64FromImpl(impl, normalIdx)
 	return MeshGL64{
-		NumProp:         mh.NumProp(),
-		VertProperties:  mh.VertProperties(),
-		TriVerts:        mh.TriVerts(),
-		MergeFromVert:   mh.MergeFromVert(),
-		MergeToVert:     mh.MergeToVert(),
-		RunIndex:        mh.RunIndex(),
-		RunOriginalID:   mh.RunOriginalID(),
-		RunTransform:    mh.RunTransform(),
-		RunFlags:        mh.RunFlags(),
-		FaceID:          mh.FaceID(),
-		HalfedgeTangent: mh.HalfedgeTangent(),
-		Tolerance:       mh.Tolerance(),
+		NumProp:         o.NumProp,
+		VertProperties:  o.VertProperties,
+		TriVerts:        o.TriVerts,
+		MergeFromVert:   o.MergeFromVert,
+		MergeToVert:     o.MergeToVert,
+		RunIndex:        o.RunIndex,
+		RunOriginalID:   o.RunOriginalID,
+		RunTransform:    o.RunTransform,
+		RunFlags:        o.RunFlags,
+		FaceID:          o.FaceID,
+		HalfedgeTangent: o.HalfedgeTangent,
+		Tolerance:       o.Tolerance,
 	}
 }
 

@@ -44,6 +44,50 @@ size_t          mb_impl_halfedge_size(const mb_impl_handle* h);
 // start[3t+2].
 const void*     mb_impl_halfedge_starts(const mb_impl_handle* h, size_t* out_count);
 
+// mb_impl_halfedge_props returns a read-only pointer to halfedge_.propVert_
+// on a const Impl. Layout: int32_t[3*NumTri].
+const void*     mb_impl_halfedge_props(const mb_impl_handle* h, size_t* out_count);
+
+// mb_impl_halfedge_tangents returns a read-only pointer to
+// halfedgeTangent_ on a const Impl. Layout: 4 packed doubles per
+// element (manifold::vec4). out_count is the element count.
+const double*   mb_impl_halfedge_tangents(const mb_impl_handle* h, size_t* out_count);
+
+// mb_impl_properties returns a read-only pointer to properties_ on a
+// const Impl. Layout: flat doubles, numProp_ entries per propVert.
+// out_count is the total double count (= numProp_ * NumPropVert).
+const double*   mb_impl_properties(const mb_impl_handle* h, size_t* out_count);
+
+// mb_impl_tri_refs returns the four parallel arrays inside
+// meshRelation_.triRef on a const Impl. All arrays have length NumTri.
+// Each pointer points at the corresponding field of the TriRef struct
+// at array index i (stride = sizeof(TriRef) = 4*sizeof(int)).
+void            mb_impl_tri_refs(const mb_impl_handle* h, size_t* out_count,
+    const int** mesh_ids, const int** original_ids,
+    const int** face_ids, const int** coplanar_ids);
+
+// mb_impl_meshid_transform_count returns the number of entries in
+// meshRelation_.meshIDtransform.
+size_t          mb_impl_meshid_transform_count(const mb_impl_handle* h);
+
+// mb_impl_meshid_transforms iterates meshRelation_.meshIDtransform and
+// writes the n entries into the caller's arrays. Order: increasing
+// meshID (std::map iteration). All arrays must be at least count long
+// (use mb_impl_meshid_transform_count first).
+//
+// transforms holds n * 12 doubles in column-major layout matching
+// mb_mutable_impl_add_meshid_transform.
+void            mb_impl_meshid_transforms(
+    const mb_impl_handle* h,
+    int* mesh_ids, int* original_ids,
+    double* transforms,
+    unsigned char* back_sides, unsigned char* has_normals);
+
+// mb_impl_bbox reads the cached bBox_ (min/max corners) from a const Impl.
+void            mb_impl_bbox(const mb_impl_handle* h,
+    double* min_x, double* min_y, double* min_z,
+    double* max_x, double* max_y, double* max_z);
+
 // mb_impl_halfedge_pairs returns a pointer to the paired-edge array
 // of the impl's Halfedges (halfedge_.paired_). Layout: int32_t[3*NumTri].
 // Value -1 marks a boundary halfedge; otherwise the value is the index
@@ -265,17 +309,8 @@ mb_polygons_handle*       mb_impl_project(const mb_impl_handle* h);
 // mb_impl_all_have_normals wraps Impl::AllHaveNormals().
 int                       mb_impl_all_have_normals(const mb_impl_handle* h);
 
-// mb_impl_get_meshgl64 wraps the templated free function
-// GetMeshGLImpl<double, uint64_t>(impl, normalIdx). Returns a
-// ManifoldMeshGL64* (compatible with all the manifoldc meshgl64 read
-// accessors). Release with manifold_delete_meshgl64 via the matching Go
-// wrapper.
-struct ManifoldMeshGL64*  mb_impl_get_meshgl64(
-    const mb_impl_handle* h, int normalIdx);
-
-// mb_impl_get_meshgl wraps GetMeshGLImpl<float, uint32_t>(impl, normalIdx).
-struct ManifoldMeshGL*    mb_impl_get_meshgl(
-    const mb_impl_handle* h, int normalIdx);
+// (mb_impl_get_meshgl64 / mb_impl_get_meshgl removed — see comment in
+// bridge.cpp; GetMeshGL is implemented natively in Go.)
 
 // mb_impl_ray_cast wraps Impl::RayCast(origin, endpoint), returning a
 // ManifoldRayHitVec* compatible with the manifoldc accessor functions.
