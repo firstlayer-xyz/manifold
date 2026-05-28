@@ -412,31 +412,9 @@ void mb_mutable_impl_set_normals(mb_mutable_impl_handle* h, int normalIdx,
   h->impl->SetNormals(normalIdx, minSharpAngle);
 }
 
-struct mb_polygons_handle {
-  manifold::Polygons data;
-};
-
-mb_polygons_handle* mb_impl_slice(const mb_impl_handle* h, double height) {
-  return new mb_polygons_handle{h->impl->Slice(height)};
-}
-
-mb_polygons_handle* mb_impl_project(const mb_impl_handle* h) {
-  return new mb_polygons_handle{h->impl->Project()};
-}
-
-size_t mb_polygons_num_polys(const mb_polygons_handle* p) {
-  return p->data.size();
-}
-
-size_t mb_polygons_poly_size(const mb_polygons_handle* p, size_t idx) {
-  return p->data[idx].size();
-}
-
-const double* mb_polygons_poly_data(const mb_polygons_handle* p, size_t idx) {
-  return reinterpret_cast<const double*>(p->data[idx].data());
-}
-
-void mb_delete_polygons(mb_polygons_handle* p) { delete p; }
+// (mb_polygons_handle + mb_impl_slice + mb_impl_project +
+// mb_polygons_* accessors removed — Slice and Project are now
+// native Go; see impl_slice.go and impl_project.go.)
 
 // (mb_impl_get_meshgl / mb_impl_get_meshgl64 removed — GetMeshGL is
 // implemented natively in Go via the impl read accessors above.)

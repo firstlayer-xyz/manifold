@@ -163,43 +163,8 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 		C.int(normalIdx), C.double(minSharpAngle))
 }
 
-// PolygonsHandle wraps a C++ manifold::Polygons. Returned by Impl.Slice
-// and Impl.Project; Go reads its contents via NumPolys / Poly. Pair with
-// Delete (or rely on the caller's defer).
-type PolygonsHandle struct{ p *C.mb_polygons_handle }
-
-// Slice calls Impl::Slice(height) — returns an outline of the manifold
-// at the given Z.
-func (i *Impl) Slice(height float64) *PolygonsHandle {
-	return &PolygonsHandle{p: C.mb_impl_slice(i.p, C.double(height))}
-}
-
-// Project calls Impl::Project() — returns the manifold's XY projection.
-func (i *Impl) Project() *PolygonsHandle {
-	return &PolygonsHandle{p: C.mb_impl_project(i.p)}
-}
-
-// NumPolys returns the number of contour polygons.
-func (ph *PolygonsHandle) NumPolys() int {
-	return int(C.mb_polygons_num_polys(ph.p))
-}
-
-// Poly returns a Go-owned copy of contour polygon idx. The data is
-// copied out of C memory so the result remains valid after Delete.
-func (ph *PolygonsHandle) Poly(idx int) []geom.Vec2 {
-	size := int(C.mb_polygons_poly_size(ph.p, C.size_t(idx)))
-	if size == 0 {
-		return nil
-	}
-	p := C.mb_polygons_poly_data(ph.p, C.size_t(idx))
-	src := unsafe.Slice((*geom.Vec2)(unsafe.Pointer(p)), size)
-	out := make([]geom.Vec2, size)
-	copy(out, src)
-	return out
-}
-
-// Delete releases the C++ Polygons.
-func (ph *PolygonsHandle) Delete() { C.mb_delete_polygons(ph.p) }
+// (PolygonsHandle / Impl.Slice / Impl.Project removed — Slice and
+// Project are now native Go; see impl_slice.go and impl_project.go.)
 
 // AllHaveNormals is the Go port of Impl::AllHaveNormals (src/impl.h):
 // true iff every entry of meshRelation_.meshIDtransform has

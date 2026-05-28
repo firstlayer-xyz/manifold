@@ -324,13 +324,8 @@ void                      mb_mutable_impl_set_normals(
 // (mb_mutable_impl_mark_all_meshid_has_normals removed — the
 // iteration is now done in Go via the MeshIDTransforms accessor.)
 
-// Opaque handle around a manifold::Polygons (vector of SimplePolygon).
-// Returned by Impl::Slice / Impl::Project, then iterated by Go to copy
-// the data into Go-owned slices.
-typedef struct mb_polygons_handle mb_polygons_handle;
-
-mb_polygons_handle*       mb_impl_slice(const mb_impl_handle* h, double height);
-mb_polygons_handle*       mb_impl_project(const mb_impl_handle* h);
+// (mb_polygons_handle + mb_impl_slice + mb_impl_project removed —
+// Slice and Project are now native Go.)
 
 // (mb_impl_all_have_normals removed — now implemented in Go via the
 // MeshIDTransforms accessor.)
@@ -507,12 +502,6 @@ const double*             mb_impl_vert_normals_data(
 // (mb_mutable_impl_gather_faces removed — GatherFaces is now native
 // Go; see impl_gather.go.)
 
-size_t                    mb_polygons_num_polys(const mb_polygons_handle* p);
-size_t                    mb_polygons_poly_size(const mb_polygons_handle* p,
-                                                size_t idx);
-const double*             mb_polygons_poly_data(const mb_polygons_handle* p,
-                                                size_t idx);
-void                      mb_delete_polygons(mb_polygons_handle* p);
 void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h);
 
 // mb_mutable_impl_sort_geometry_post_vert performs the C++ SortGeometry
