@@ -1396,13 +1396,7 @@ func (m *Manifold) Slice(height float64) Polygons {
 func (m *Manifold) Project() Polygons {
 	impl := bridge.GetImpl(m.h)
 	defer impl.Delete()
-	ph := impl.Project()
-	defer ph.Delete()
-	result := make(Polygons, ph.NumPolys())
-	for i := 0; i < ph.NumPolys(); i++ {
-		result[i] = ph.Poly(i)
-	}
-	return result
+	return implProject(impl)
 }
 
 // Hull returns the convex hull of the Manifold's vertices.
