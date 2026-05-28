@@ -311,9 +311,11 @@ func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	if !m.IsEmpty() {
-		sv := newImpl.SharpenEdges(minSharpAngle, minSmoothness)
-		defer sv.Delete()
-		newImpl.CreateTangentsFromSmoothness(sv)
+		// SharpenEdges is drilled to Go (impl_smoothing.go). It reads
+		// from the const-Impl view of the same shared_ptr, so we
+		// briefly take a const handle for the read.
+		edges := implSharpenEdges(impl, minSharpAngle, minSmoothness)
+		newImpl.CreateTangentsFromSmoothness(edges)
 	}
 	return wrap(newImpl.ToManifold())
 }

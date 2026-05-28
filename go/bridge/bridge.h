@@ -309,13 +309,17 @@ void                     mb_mutable_impl_create_tangents_idx(
 
 // Opaque handle around a std::vector<manifold::Smoothness>, returned by
 // SharpenEdges and consumed by CreateTangents.
-typedef struct mb_smoothness_vec_handle mb_smoothness_vec_handle;
+// mb_mutable_impl_create_tangents_from_raw takes parallel arrays
+// halfedges[n] + smoothness[n] (matching manifold::Smoothness fields)
+// and runs Impl::CreateTangents(vector<Smoothness>) with them. The
+// caller owns the arrays.
+void                      mb_mutable_impl_create_tangents_from_raw(
+    mb_mutable_impl_handle* h, const size_t* halfedges,
+    const double* smoothness, size_t n);
 
-mb_smoothness_vec_handle* mb_mutable_impl_sharpen_edges(
-    mb_mutable_impl_handle* h, double min_sharp_angle, double min_smoothness);
-void                      mb_mutable_impl_create_tangents_from(
-    mb_mutable_impl_handle* h, mb_smoothness_vec_handle* sv);
-void                      mb_delete_smoothness_vec(mb_smoothness_vec_handle* sv);
+// (mb_mutable_impl_sharpen_edges, mb_smoothness_vec_handle, and
+// mb_delete_smoothness_vec removed — SharpenEdges is now native Go;
+// see impl_smoothing.go.)
 
 // (mb_mutable_impl_calculate_curvature removed — CalculateCurvature
 // is now native Go; see impl_curvature.go.)

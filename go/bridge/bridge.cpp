@@ -392,22 +392,17 @@ void mb_mutable_impl_create_tangents_idx(mb_mutable_impl_handle* h,
   h->impl->CreateTangents(normalIdx);
 }
 
-struct mb_smoothness_vec_handle {
-  std::vector<manifold::Smoothness> data;
-};
-
-mb_smoothness_vec_handle* mb_mutable_impl_sharpen_edges(
-    mb_mutable_impl_handle* h, double min_sharp_angle, double min_smoothness) {
-  return new mb_smoothness_vec_handle{
-      h->impl->SharpenEdges(min_sharp_angle, min_smoothness)};
+void mb_mutable_impl_create_tangents_from_raw(mb_mutable_impl_handle* h,
+                                              const size_t* halfedges,
+                                              const double* smoothness,
+                                              size_t n) {
+  std::vector<manifold::Smoothness> sv;
+  sv.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    sv.push_back({halfedges[i], smoothness[i]});
+  }
+  h->impl->CreateTangents(sv);
 }
-
-void mb_mutable_impl_create_tangents_from(mb_mutable_impl_handle* h,
-                                          mb_smoothness_vec_handle* sv) {
-  h->impl->CreateTangents(sv->data);
-}
-
-void mb_delete_smoothness_vec(mb_smoothness_vec_handle* sv) { delete sv; }
 
 void mb_mutable_impl_set_normals(mb_mutable_impl_handle* h, int normalIdx,
                                  double minSharpAngle) {

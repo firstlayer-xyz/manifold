@@ -129,27 +129,26 @@ func (mi *MutableImpl) CreateTangentsIdx(normalIdx int) {
 	C.mb_mutable_impl_create_tangents_idx(mi.p, C.int(normalIdx))
 }
 
-// SmoothnessVec wraps a C++ std::vector<Smoothness> handle returned by
-// SharpenEdges and consumed by CreateTangentsFromSmoothness. Pair every
-// SharpenEdges call with Delete (unless the value is consumed and you
-// know it stays owned by the receiver — currently nothing consumes the
-// vector, so the Go side always Delete()s after CreateTangents).
-type SmoothnessVec struct{ p *C.mb_smoothness_vec_handle }
-
-// SharpenEdges calls Impl::SharpenEdges(minSharpAngle, minSmoothness),
-// returning the smoothness-per-halfedge vector as an opaque handle.
-func (mi *MutableImpl) SharpenEdges(minSharpAngle, minSmoothness float64) *SmoothnessVec {
-	return &SmoothnessVec{p: C.mb_mutable_impl_sharpen_edges(
-		mi.p, C.double(minSharpAngle), C.double(minSmoothness))}
+// CreateTangentsFromSmoothness calls Impl::CreateTangents with the
+// given (halfedge, smoothness) pairs supplied as a Go slice. The C++
+// side constructs a std::vector<Smoothness> internally.
+func (mi *MutableImpl) CreateTangentsFromSmoothness(edges []Smoothness) {
+	n := len(edges)
+	if n == 0 {
+		C.mb_mutable_impl_create_tangents_from_raw(mi.p, nil, nil, 0)
+		return
+	}
+	halfedges := make([]C.size_t, n)
+	smoothness := make([]C.double, n)
+	for i, e := range edges {
+		halfedges[i] = C.size_t(e.Halfedge)
+		smoothness[i] = C.double(e.Smoothness)
+	}
+	C.mb_mutable_impl_create_tangents_from_raw(mi.p,
+		(*C.size_t)(unsafe.Pointer(&halfedges[0])),
+		(*C.double)(unsafe.Pointer(&smoothness[0])),
+		C.size_t(n))
 }
-
-// CreateTangentsFromSmoothness calls Impl::CreateTangents(vector<Smoothness>).
-func (mi *MutableImpl) CreateTangentsFromSmoothness(sv *SmoothnessVec) {
-	C.mb_mutable_impl_create_tangents_from(mi.p, sv.p)
-}
-
-// Delete releases the smoothness vector.
-func (sv *SmoothnessVec) Delete() { C.mb_delete_smoothness_vec(sv.p) }
 
 // SetNormals wraps Impl::SetNormals(normalIdx, minSharpAngle).
 func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
