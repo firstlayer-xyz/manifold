@@ -1142,7 +1142,7 @@ func (m *Manifold) Decompose() []*Manifold {
 		}
 
 		newImpl.GatherFaces(impl, faceNew2Old)
-		newImpl.ReindexVerts(vertNew2Old, numVert)
+		reindexVerts(newImpl, vertNew2Old, numVert)
 		calculateBBox(newImpl)
 		sortGeometry(newImpl)
 		meshes = append(meshes, wrap(newImpl.ToManifold()))

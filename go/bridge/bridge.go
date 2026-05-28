@@ -261,16 +261,6 @@ func (mi *MutableImpl) GatherFaces(src *Impl, faceNew2Old []int32) {
 	C.mb_mutable_impl_gather_faces(mi.p, src.p, (*C.int)(fp), C.size_t(len(faceNew2Old)))
 }
 
-// ReindexVerts wraps Impl::ReindexVerts(vertNew2Old, numOldVert).
-func (mi *MutableImpl) ReindexVerts(vertNew2Old []int32, numOldVert int) {
-	var vp unsafe.Pointer
-	if len(vertNew2Old) > 0 {
-		vp = unsafe.Pointer(&vertNew2Old[0])
-	}
-	C.mb_mutable_impl_reindex_verts(mi.p, (*C.int)(vp),
-		C.size_t(len(vertNew2Old)), C.size_t(numOldVert))
-}
-
 // DisjointSets wraps src/disjoint_sets.h's class — union-find with
 // connectedComponents. Used by Decompose.
 type DisjointSets struct {
@@ -576,6 +566,23 @@ func (mi *MutableImpl) HalfedgePairsRO() []int32 {
 		return nil
 	}
 	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// HalfedgePropsRO is the read-only propVert_ counterpart of
+// HalfedgeStartsRO.
+func (mi *MutableImpl) HalfedgePropsRO() []int32 {
+	var n C.size_t
+	p := C.mb_mutable_impl_halfedge_props(mi.p, &n)
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*int32)(unsafe.Pointer(p)), int(n))
+}
+
+// NumProp returns the impl's numProp_ (per-vertex property count).
+// Mirrors Impl.Scalars().NumProp on the const handle.
+func (mi *MutableImpl) NumProp() int {
+	return int(C.mb_mutable_impl_num_prop(mi.p))
 }
 
 // SetCoplanarIDs writes only the coplanarID field of every TriRef in

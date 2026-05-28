@@ -28,6 +28,7 @@ struct ManifoldBridge {
   }
   static const int* HalfedgeStarts(const Halfedges& he) { return he.start_.data(); }
   static const int* HalfedgePairs(const Halfedges& he) { return he.paired_.data(); }
+  static const int* HalfedgeProps(const Halfedges& he) { return he.propVert_.data(); }
   static void SetHalfedges(Halfedges& he, const int* starts, const int* props,
                            const int* paireds, size_t n) {
     he.clear(true);
@@ -231,6 +232,17 @@ const void* mb_mutable_impl_halfedge_pairs(const mb_mutable_impl_handle* h,
   const auto& he = h->impl->halfedge_;
   *out_count = he.size();
   return static_cast<const void*>(ManifoldBridge::HalfedgePairs(he));
+}
+
+const void* mb_mutable_impl_halfedge_props(const mb_mutable_impl_handle* h,
+                                           size_t* out_count) {
+  const auto& he = h->impl->halfedge_;
+  *out_count = he.size();
+  return static_cast<const void*>(ManifoldBridge::HalfedgeProps(he));
+}
+
+int mb_mutable_impl_num_prop(const mb_mutable_impl_handle* h) {
+  return h->impl->numProp_;
 }
 
 void mb_mutable_impl_add_meshid_transform(
@@ -681,14 +693,6 @@ void mb_mutable_impl_gather_faces(mb_mutable_impl_handle* dst,
   manifold::Vec<int> v(count);
   std::copy(faceNew2Old, faceNew2Old + count, v.begin());
   dst->impl->GatherFaces(*src->impl, v);
-}
-
-void mb_mutable_impl_reindex_verts(mb_mutable_impl_handle* h,
-                                   const int* vertNew2Old, size_t count,
-                                   size_t numOldVert) {
-  manifold::Vec<int> v(count);
-  std::copy(vertNew2Old, vertNew2Old + count, v.begin());
-  h->impl->ReindexVerts(v, numOldVert);
 }
 
 ManifoldManifold* mb_manifold_extrude(const double* cs_data,

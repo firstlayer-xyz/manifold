@@ -7,6 +7,39 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
+// reindexVerts is the Go port of C++ Manifold::Impl::ReindexVerts
+// (src/sort.cpp): for every halfedge with startVert >= 0, rewrite
+// its start to vertOld2New[startVert] (and, when the impl has no
+// extra properties, the propVert too).
+//
+// vertNew2Old has length newNumVert (the post-sort vertex count) and
+// maps each new vert index back to its old position. oldNumVert is
+// the size of the source vertex array before the sort. Together they
+// let us build the inverse permutation vertOld2New that the halfedge
+// rewrite needs.
+func reindexVerts(mi *bridge.MutableImpl, vertNew2Old []int32, oldNumVert int) {
+	vertOld2New := make([]int32, oldNumVert)
+	for newV, oldV := range vertNew2Old {
+		vertOld2New[oldV] = int32(newV)
+	}
+	hasProp := mi.NumProp() > 0
+
+	starts := append([]int32(nil), mi.HalfedgeStartsRO()...)
+	props := append([]int32(nil), mi.HalfedgePropsRO()...)
+	pairs := append([]int32(nil), mi.HalfedgePairsRO()...)
+	for i, s := range starts {
+		if s < 0 {
+			continue
+		}
+		newStart := vertOld2New[s]
+		starts[i] = newStart
+		if !hasProp {
+			props[i] = newStart
+		}
+	}
+	mi.SetHalfedgesRaw(starts, props, pairs)
+}
+
 // sortVerts is the Go port of C++ Manifold::Impl::SortVerts
 // (src/sort.cpp): reorder vertPos_ + vertNormal_ by per-vert Morton
 // code, then update halfedge_ to point at the new vert indices.
@@ -40,7 +73,7 @@ func sortVerts(mi *bridge.MutableImpl) {
 	})
 
 	// Update halfedge_ to point at the new vert indices.
-	mi.ReindexVerts(vertNew2Old, numVert)
+	reindexVerts(mi, vertNew2Old, numVert)
 
 	// lower_bound: first index whose vert has Morton == NoMortonCode.
 	// All later verts get dropped.

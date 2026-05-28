@@ -148,6 +148,15 @@ const void*              mb_mutable_impl_halfedge_starts(
 const void*              mb_mutable_impl_halfedge_pairs(
     const mb_mutable_impl_handle* h, size_t* out_count);
 
+// mb_mutable_impl_halfedge_props returns a read-only pointer to
+// halfedge_.propVert_.
+const void*              mb_mutable_impl_halfedge_props(
+    const mb_mutable_impl_handle* h, size_t* out_count);
+
+// mb_mutable_impl_num_prop reads numProp_ (per-vertex property count).
+int                      mb_mutable_impl_num_prop(
+    const mb_mutable_impl_handle* h);
+
 // mb_mutable_impl_add_meshid_transform inserts one entry into
 // meshRelation_.meshIDtransform. transform is a 12-double 3x4 affine
 // matrix in column-major order (cols 0..2 linear, col 3 translation).
@@ -450,10 +459,6 @@ void                      mb_mutable_impl_gather_faces(
     mb_mutable_impl_handle* dst, const mb_impl_handle* src,
     const int* faceNew2Old, size_t count);
 
-// mb_mutable_impl_reindex_verts: Impl::ReindexVerts(vertNew2Old, numOldVert).
-void                      mb_mutable_impl_reindex_verts(
-    mb_mutable_impl_handle* h, const int* vertNew2Old, size_t count,
-    size_t numOldVert);
 size_t                    mb_polygons_num_polys(const mb_polygons_handle* p);
 size_t                    mb_polygons_poly_size(const mb_polygons_handle* p,
                                                 size_t idx);
