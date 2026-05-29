@@ -290,6 +290,25 @@ func (b Box) MulComponent(s Vec3) Box { return Box{Min: b.Min.Mul(s), Max: b.Max
 // Mat3 is a 3x3 matrix in column-major order: Mat3[col][row]. Chosen to
 // match the column-major convention used by the C++ linalg library so the
 // port can mirror C++ matrix code structurally.
+// Vec4 is a 4-component vector (mirrors C++ vec4 / glm::dvec4). Used for
+// halfedge tangents stored as homogeneous-weighted Bezier control points
+// (xyz = geometric tangent, W = the rational weight; W < 0 marks a quad interior).
+type Vec4 struct{ X, Y, Z, W float64 }
+
+// Vec3 returns the xyz components (mirrors C++ vec3(v4)).
+func (a Vec4) Vec3() Vec3 { return Vec3{X: a.X, Y: a.Y, Z: a.Z} }
+
+// Lerp is the component-wise linear interpolation, matching linalg's lerp:
+// a*(1-t) + b*t (linalg.h:471), NOT the algebraically-equal a+(b-a)*t.
+func (a Vec4) Lerp(b Vec4, t float64) Vec4 {
+	return Vec4{
+		X: a.X*(1-t) + b.X*t,
+		Y: a.Y*(1-t) + b.Y*t,
+		Z: a.Z*(1-t) + b.Z*t,
+		W: a.W*(1-t) + b.W*t,
+	}
+}
+
 type Mat3 [3][3]float64
 
 // Mat3x4 is a 3-row, 4-column matrix in column-major order: Mat3x4[col][row].
@@ -316,6 +335,17 @@ func (a Mat3) MulVec3(v Vec3) Vec3 {
 		Y: a[0][1]*v.X + a[1][1]*v.Y + a[2][1]*v.Z,
 		Z: a[0][2]*v.X + a[1][2]*v.Y + a[2][2]*v.Z,
 	}
+}
+
+// MulScalar scales every element by s, mirroring linalg's `mat3 * scalar`.
+func (a Mat3) MulScalar(s float64) Mat3 {
+	var r Mat3
+	for col := 0; col < 3; col++ {
+		for row := 0; row < 3; row++ {
+			r[col][row] = a[col][row] * s
+		}
+	}
+	return r
 }
 
 // Transpose returns aᵀ.
