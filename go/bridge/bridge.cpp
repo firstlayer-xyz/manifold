@@ -752,6 +752,11 @@ void mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h) {
   h->impl->SimplifyTopology();
 }
 
+void mb_mutable_impl_remove_degenerates(mb_mutable_impl_handle* h,
+                                        int firstNewVert) {
+  h->impl->RemoveDegenerates(firstNewVert);
+}
+
 void mb_mutable_impl_build_collider(mb_mutable_impl_handle* h,
                                     const double* boxes, const uint32_t* morton,
                                     size_t n) {

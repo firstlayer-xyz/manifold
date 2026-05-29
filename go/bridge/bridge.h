@@ -499,6 +499,11 @@ const double*             mb_impl_vert_normals_data(
 
 void                     mb_mutable_impl_simplify_topology(mb_mutable_impl_handle* h);
 
+// mb_mutable_impl_remove_degenerates calls Impl::RemoveDegenerates — the
+// C++ reference for the native-Go port's differential test.
+void                     mb_mutable_impl_remove_degenerates(
+    mb_mutable_impl_handle* h, int firstNewVert);
+
 // mb_mutable_impl_build_collider builds collider_ from the supplied
 // faceBox + faceMorton arrays (already permuted into sorted order by
 // the Go-side SortFaces), then refreshes bBox_ from the collider and

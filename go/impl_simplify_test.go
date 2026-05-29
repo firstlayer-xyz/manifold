@@ -1,8 +1,73 @@
 package manifold
 
 import (
+	"runtime"
 	"testing"
 )
+
+// removeDegenResult runs RemoveDegenerates — the native Go port or the C++
+// bridge reference — on a copy of m's Impl at the given epsilon/tolerance,
+// compacts the result via SortGeometry, and seals it into a Manifold for
+// comparison.
+func removeDegenResult(t *testing.T, m *Manifold, eps float64, useBridge bool) *Manifold {
+	t.Helper()
+	view := getImpl(m)
+	defer view.Delete()
+	impl := view.Copy()
+	defer impl.Delete()
+	impl.SetEpsilonValue(eps)
+	impl.SetToleranceValue(eps)
+	if useBridge {
+		impl.h.RemoveDegenerates(0)
+	} else {
+		impl.RemoveDegenerates(0)
+	}
+	impl.SortGeometry()
+	return impl.ToManifold()
+}
+
+// TestRemoveDegenerates_VsCpp checks the native Go RemoveDegenerates against
+// the C++ reference. The no-op cases (tiny epsilon) confirm a clean mesh
+// passes through identically; the collapse case (epsilon above the edge
+// length) exercises CollapseShortEdges / CollapseEdge and friends, and the
+// two implementations must agree.
+func TestRemoveDegenerates_VsCpp(t *testing.T) {
+	cases := []struct {
+		name string
+		mk   func() *Manifold
+		eps  float64
+	}{
+		{"cube_noop", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, false) }, 1e-9},
+		{"sphere_noop", func() *Manifold { return Sphere(1, 32) }, 1e-9},
+		{"sphere_collapse", func() *Manifold { return Sphere(1, 32) }, 0.3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.mk()
+			defer runtime.KeepAlive(m)
+			goM := removeDegenResult(t, m, tc.eps, false)
+			defer runtime.KeepAlive(goM)
+			refM := removeDegenResult(t, m, tc.eps, true)
+			defer runtime.KeepAlive(refM)
+
+			if g, r := goM.NumVert(), refM.NumVert(); g != r {
+				t.Errorf("NumVert: go=%d ref=%d", g, r)
+			}
+			if g, r := goM.NumTri(), refM.NumTri(); g != r {
+				t.Errorf("NumTri: go=%d ref=%d", g, r)
+			}
+			if g, r := goM.Genus(), refM.Genus(); g != r {
+				t.Errorf("Genus: go=%d ref=%d", g, r)
+			}
+			if !floatClose(goM.Volume(), refM.Volume(), 1e-9, 1e-9) {
+				t.Errorf("Volume: go=%v ref=%v", goM.Volume(), refM.Volume())
+			}
+			if !floatClose(goM.SurfaceArea(), refM.SurfaceArea(), 1e-9, 1e-9) {
+				t.Errorf("SurfaceArea: go=%v ref=%v", goM.SurfaceArea(), refM.SurfaceArea())
+			}
+		})
+	}
+}
 
 // TestFlagStore_Seq exercises the serial branch (n <= 1e5): flagged
 // indices must be processed in ascending order, exactly once each.

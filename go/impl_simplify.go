@@ -123,9 +123,11 @@ func (s *dedupeState) collapseTri(triEdge [3]int) {
 	pair2 := int(s.pair(triEdge[2]))
 	s.pairUp(pair1, pair2)
 	for i := 0; i < 3; i++ {
-		// halfedge_.Set(triEdge[i], -1, -1, Prop): start/end -> -1, prop kept.
+		// halfedge_.Set(idx, startVert, pairedHalfedge, propVert)
+		// (shared.h:210): Set(triEdge[i], -1, -1, Prop) -> startVert and
+		// pairedHalfedge become -1; propVert is kept (no-op).
 		s.setStart(triEdge[i], -1)
-		s.setEnd(triEdge[i], -1)
+		s.setPair(triEdge[i], -1)
 	}
 }
 
@@ -156,12 +158,13 @@ func (s *dedupeState) removeIfFolded(edge int) {
 		s.pairUp(int(s.pair(tri0edge[1])), int(s.pair(tri1edge[2])))
 		s.pairUp(int(s.pair(tri0edge[2])), int(s.pair(tri1edge[1])))
 		for i := 0; i < 3; i++ {
-			// halfedge_.Set(*, -1, -1, -1): start/end/prop all -> -1.
+			// halfedge_.Set(idx, startVert, pairedHalfedge, propVert):
+			// Set(*, -1, -1, -1) -> startVert/pairedHalfedge/propVert all -1.
 			s.setStart(tri0edge[i], -1)
-			s.setEnd(tri0edge[i], -1)
+			s.setPair(tri0edge[i], -1)
 			s.setProp(tri0edge[i], -1)
 			s.setStart(tri1edge[i], -1)
-			s.setEnd(tri1edge[i], -1)
+			s.setPair(tri1edge[i], -1)
 			s.setProp(tri1edge[i], -1)
 		}
 	}
@@ -451,4 +454,115 @@ func (s *dedupeState) recursiveEdgeSwap(edge int, tag *int, visited []int, edgeS
 	for _, e := range []int{int(s.pair(tri1edge[0])), int(s.pair(tri0edge[1]))} {
 		*edgeSwapStack = append(*edgeSwapStack, e)
 	}
+}
+
+// collapseShortEdges is the Go port of Manifold::Impl::CollapseShortEdges
+// (src/edge_op.cpp:164). Flags edges below the collapse threshold and
+// collapses each via collapseEdge. With firstNewVert == 0 (non-Boolean)
+// the threshold is epsilon_; a Boolean pass sets firstNewVert and allows
+// collapsing up to tolerance_ for edges touching new verts.
+func (s *dedupeState) collapseShortEdges(firstNewVert int) {
+	var fs flagStore
+	nbEdges := s.numHalfedge()
+	var scratch []int
+	tol := s.epsilon
+	if firstNewVert != 0 {
+		tol = s.tolerance
+	}
+	shortEdge := func(edge int) bool {
+		pair := int(s.pair(edge))
+		if pair < 0 {
+			return false
+		}
+		start := int(s.start(edge))
+		end := int(s.end(edge))
+		if start < firstNewVert && end < firstNewVert {
+			return false
+		}
+		delta := s.verts[end].Sub(s.verts[start])
+		lenSq := delta.Dot(delta)
+		// end < firstNewVert (old vert) -> tol²; else (new vert) -> epsilon².
+		maxLen := s.epsilon * s.epsilon
+		if end < firstNewVert {
+			maxLen = tol * tol
+		}
+		return lenSq < maxLen
+	}
+	fs.run(nbEdges, shortEdge, func(i int) {
+		s.collapseEdge(i, &scratch, tol, firstNewVert)
+		scratch = scratch[:0]
+	})
+}
+
+// swapDegenerates is the Go port of Manifold::Impl::SwapDegenerates
+// (src/edge_op.cpp:265). Flags degenerate (sliver) triangles whose long
+// edge can be swapped into a neighbor, then runs recursiveEdgeSwap on each
+// flagged edge, draining the resulting edge-swap stack to fixpoint.
+func (s *dedupeState) swapDegenerates(firstNewVert int) {
+	var fs flagStore
+	nbEdges := s.numHalfedge()
+	var scratch []int
+
+	swappableEdge := func(edge int) bool {
+		pair := int(s.pair(edge))
+		if pair < 0 {
+			return false
+		}
+		triEdge := triOf(edge)
+		pairTriEdge := triOf(pair)
+		if int(s.start(triEdge[0])) < firstNewVert &&
+			int(s.start(triEdge[1])) < firstNewVert &&
+			int(s.start(triEdge[2])) < firstNewVert &&
+			int(s.start(pairTriEdge[2])) < firstNewVert {
+			return false
+		}
+		projection := geom.GetAxisAlignedProjection(s.faceNormals[edge/3])
+		var v [3]geom.Vec2
+		for i := 0; i < 3; i++ {
+			v[i] = projection.MulVec3(s.verts[s.start(triEdge[i])])
+		}
+		if geom.CCW(v[0], v[1], v[2], s.tolerance) > 0 || !is01Longest(v[0], v[1], v[2]) {
+			return false
+		}
+		// Switch to neighbor's projection.
+		projection = geom.GetAxisAlignedProjection(s.faceNormals[pair/3])
+		for i := 0; i < 3; i++ {
+			v[i] = projection.MulVec3(s.verts[s.start(pairTriEdge[i])])
+		}
+		return geom.CCW(v[0], v[1], v[2], s.tolerance) > 0 || is01Longest(v[0], v[1], v[2])
+	}
+
+	edgeSwapStack := []int{}
+	visited := make([]int, nbEdges)
+	for i := range visited {
+		visited[i] = -1
+	}
+	tag := 0
+	fs.run(nbEdges, swappableEdge, func(i int) {
+		tag++
+		s.recursiveEdgeSwap(i, &tag, visited, &edgeSwapStack, &scratch)
+		for len(edgeSwapStack) > 0 {
+			last := edgeSwapStack[len(edgeSwapStack)-1]
+			edgeSwapStack = edgeSwapStack[:len(edgeSwapStack)-1]
+			s.recursiveEdgeSwap(last, &tag, visited, &edgeSwapStack, &scratch)
+		}
+	})
+}
+
+// RemoveDegenerates is the Go port of Manifold::Impl::RemoveDegenerates
+// (src/edge_op.cpp:153): clean up topology, collapse short edges, swap
+// degenerate slivers, then recompute vert normals (collapses move verts).
+// firstNewVert restricts edits to newly-created verts (Boolean passes it;
+// 0 otherwise). This is the gating step for the Manifold(MeshGL) ingest
+// path.
+func (mi *MutableImpl) RemoveDegenerates(firstNewVert int) {
+	if len(mi.HalfedgeStarts()) == 0 {
+		return
+	}
+	mi.CleanupTopology()
+	s := newDedupeState(mi)
+	s.collapseShortEdges(firstNewVert)
+	s.swapDegenerates(firstNewVert)
+	s.commit(mi)
+	mi.CalculateVertNormals()
 }

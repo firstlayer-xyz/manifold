@@ -997,6 +997,12 @@ func (mi *MutableImpl) SimplifyTopology() {
 	C.mb_mutable_impl_simplify_topology(mi.p)
 }
 
+// RemoveDegenerates calls C++ Impl::RemoveDegenerates — the reference for
+// the native-Go RemoveDegenerates differential test.
+func (mi *MutableImpl) RemoveDegenerates(firstNewVert int) {
+	C.mb_mutable_impl_remove_degenerates(mi.p, C.int(firstNewVert))
+}
+
 // BuildCollider builds collider_ from the supplied (boxes, morton)
 // arrays, refreshes bBox_ from the new collider, and runs
 // CompactProps. boxes is flat 6 doubles per face (min then max).
