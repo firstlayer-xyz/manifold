@@ -340,6 +340,22 @@ memory model. The C++ relies on word-sized non-atomic reads being
 
 ## Cross-cutting deferred work
 
+- **End state: the bridge becomes a test-only C++ reference oracle.**
+  The `bridge` package plays two roles: (a) the **storage facade** —
+  `bridge.Impl` is `struct{ p *C.mb_impl_handle }`, so vertPos/halfedge/
+  normals live C++-side and every native algorithm reads them through
+  `mb_impl_*` accessors; (b) **algorithm entry points** (Triangulate,
+  RayCast, Boolean, …). Drilling retires (b) one function at a time, but
+  production stays bridge-dependent via (a) until the `Impl` becomes a
+  native Go struct (the storage lever — same work that retires
+  `dedupeState`/`tangentState`). Once BOTH the algorithms are drilled AND
+  the `Impl` is native, production is pure Go and the bridge's only remaining
+  value is as a differential-test reference. At that point it migrates to a
+  **test-only package (`internal/cppref`)**: production never imports it; the
+  `_VsCpp` tests keep using it as the golden C++ oracle forever; the cgo/C++
+  build becomes a test-only dependency. Algorithm oracles can migrate to
+  `cppref` incrementally as drilled (compiler-enforced separation), but the
+  custom cgo glue makes it cheapest to batch at the storage-lever endgame.
 - **`Quality` and `DisjointSets` are independent Go state.** They
   do not share with the C++ side. Fine while the C++ Manifold is
   the black box; revisit only if we ever want one process to
