@@ -79,6 +79,13 @@ func (h halfedges) End(e int) int   { return int(h.starts[nextHalfedge(e)]) }
 func (h halfedges) Pair(e int) int  { return int(h.pairs[e]) }
 func (h halfedges) Prop(e int) int  { return int(h.propVert[e]) }
 
+// Setters mirror the C++ Halfedges class (shared.h:199): start_/paired_/propVert_
+// writes. End is derived, so there is no SetEnd here. Value receivers mutate the
+// shared backing arrays.
+func (h halfedges) SetStart(e, v int) { h.starts[e] = int32(v) }
+func (h halfedges) SetPair(e, v int)  { h.pairs[e] = int32(v) }
+func (h halfedges) SetProp(e, v int)  { h.propVert[e] = int32(v) }
+
 // nextHalfedge is the Go port of NextHalfedge (src/shared.h): the next halfedge
 // within the same triangle, via Next3 ((e/3)*3 + Next3(e%3)).
 func nextHalfedge(e int) int { return e - e%3 + Next3(e%3) }
