@@ -212,17 +212,22 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `meshID && coplanarID && faceID`; `coplanarID` is maintained through the
   create/sort/boolean pipeline, so `collapseColinearEdges` needs no extra
   marking pass.
-- `CreateTangents` — `src/smoothing.cpp`. BOTH forms drilled
-  (`impl_smoothing_tangents.go`), not yet wired into production:
-  - `CreateTangents(int)` — `createTangentsIdx` + `distributeTangents` (the
-    quaternion angular-redistribution pass) + read helpers `getNormal`/
-    `tangentFromNormal`/`circularTangent`/`isInsideQuad`/`equalNormals`/
-    `vertHalfedge` (on a `tangentState` snapshot).
-  - `CreateTangents([]Smoothness)` — `createTangentsFromSmoothness` + the
+- `CreateTangents` — `src/smoothing.cpp`. BOTH forms FULLY DRILLED + wired
+  into production (`impl_smoothing_tangents.go`):
+  - `MutableImpl.CreateTangents(int)` — `distributeTangents` (the quaternion
+    angular-redistribution pass) + read helpers `getNormal`/`tangentFromNormal`/
+    `circularTangent`/`isInsideQuad`/`equalNormals`/`vertHalfedge` (on a
+    `tangentState` snapshot). The method holds its body directly (no thin
+    impl.go facade), matching the SimplifyTopology convention.
+  - `MutableImpl.CreateTangentsFromSmoothness([]Smoothness)` + the
     `flatFaces`/`vertFlatFace`/`sharpenTangent`/`linearizeFlatTangents`/
     `isForward` helpers. The C++ `std::map<int>` ordering is replicated by
     iterating the Go map over sorted keys (so the `vertTangents` push order —
-    used positionally as vert[0]/vert[1] — matches).
+    used positionally as vert[0]/vert[1] — matches). (Go has no overloading, so
+    the []Smoothness overload necessarily keeps a distinct method name.)
+  - `SmoothByNormals` and `SmoothOut` are now fully native (their only bridge
+    touch-point was the CreateTangents facade). End-to-end tested
+    (`TestSmoothByNormals_NativeRefine`, `TestSmoothOut_SmokeRun` + Refine).
   - Differential-tested vs the bridge (`TestCreateTangentsIdx_VsCpp`,
     `TestCreateTangentsFromSmoothness_VsCpp`; smooth sphere + sharp cube)
     within 1e-7 — semantic, not bit-exact: cube cases are bit-identical / 1
@@ -234,11 +239,13 @@ memory model. The C++ relies on word-sized non-atomic reads being
   - `tangentState` is a read-side bridge artifact (like `dedupeState`): a
     snapshot of the Impl arrays because the Impl lives behind cgo today.
     Collapses to direct field access when the persistent Go Impl lands.
-  - STILL BRIDGE: the production facades `MutableImpl.CreateTangents{,FromSmoothness}`
-    (impl.go) still call the bridge — the flip to native + the `SmoothByNormals`/
-    `SmoothOut` / `Smooth(MeshGL)` (`SmoothImpl` + `UpdateSharpenedEdges`)
-    call-site wiring is the next increment. (InterpTri's Bezier machinery is
-    only needed by Refine, not CreateTangents.)
+  - Adversarial line-by-line audit (9 functions): 1 LOW finding fixed —
+    `geom.Vec2/Vec3.Normalize` used reciprocal-multiply (`x*(1/len)`) where
+    `la::normalize` is componentwise division (`x/len`); switched to division
+    (strictly more faithful, ~1 ULP, project-wide).
+  - STILL BRIDGE: `Smooth(MeshGL)` — the `SmoothImpl` constructor
+    (constructors.cpp) + `UpdateSharpenedEdges`, a separate constructor-level
+    drill. (InterpTri's Bezier machinery is only needed by Refine.)
 - `RayCast`, `Minkowski` — still C++; use the bridge Collider.
   When drilled, can use the Go `internal/collider` package directly.
   (`MinGap` is now drilled — native Go via `internal/collider` +

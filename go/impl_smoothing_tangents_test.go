@@ -50,7 +50,7 @@ func TestCircularTangent(t *testing.T) {
 	}
 }
 
-// TestCreateTangentsIdx_VsCpp differential-tests the native createTangentsIdx
+// TestCreateTangentsIdx_VsCpp differential-tests the native CreateTangents
 // against the C++ bridge CreateTangentsIdx on the same Impl copies. Tangents
 // involve acos/sin/cos (stdlib vs C++ musl), so they're compared semantically
 // (tight tolerance), not bit-exact. Exercises both the smooth path (sphere,
@@ -72,7 +72,7 @@ func TestCreateTangentsIdx_VsCpp(t *testing.T) {
 
 			a := view.Copy()
 			defer a.Delete()
-			a.createTangentsIdx(0)
+			a.CreateTangents(0)
 			got := append([]float64(nil), a.HalfedgeTangents()...)
 
 			b := view.Copy()
@@ -127,7 +127,7 @@ func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
 
 			a := view.Copy()
 			defer a.Delete()
-			a.createTangentsFromSmoothness(sharp)
+			a.CreateTangentsFromSmoothness(sharp)
 			got := append([]float64(nil), a.HalfedgeTangents()...)
 
 			b := view.Copy()
@@ -155,5 +155,28 @@ func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
 				t.Fatalf("max tangent diff %g exceeds tolerance (index %d)", maxDiff, maxAt)
 			}
 		})
+	}
+}
+
+// TestSmoothByNormals_NativeRefine exercises the now-native CreateTangents
+// through the public SmoothByNormals API: CalculateNormals(0) populates slot 0,
+// SmoothByNormals(0) derives tangents from them, and Refine consumes the
+// tangents to add verts. Confirms the production facade wiring works end to end.
+func TestSmoothByNormals_NativeRefine(t *testing.T) {
+	m := Sphere(1, 16).CalculateNormals(0, 0)
+	defer runtime.KeepAlive(m)
+	sm := m.SmoothByNormals(0)
+	defer runtime.KeepAlive(sm)
+	if sm.IsEmpty() {
+		t.Fatal("SmoothByNormals returned empty")
+	}
+	if sm.Status() != NoError {
+		t.Fatalf("SmoothByNormals Status: %v", sm.Status())
+	}
+	refined := sm.Refine(4)
+	defer runtime.KeepAlive(refined)
+	if refined.NumVert() <= sm.NumVert() {
+		t.Errorf("Refine after SmoothByNormals should add verts: before=%d after=%d",
+			sm.NumVert(), refined.NumVert())
 	}
 }

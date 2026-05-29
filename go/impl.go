@@ -331,13 +331,3 @@ func (mi *MutableImpl) Hull(vertPos []geom.Vec3) {
 	mi.SortGeometry()
 	mi.SetNormalsAndCoplanar()
 }
-
-// CreateTangents calls C++ Impl::CreateTangents(int normalIdx).
-func (mi *MutableImpl) CreateTangents(normalIdx int) {
-	mi.h.CreateTangentsIdx(normalIdx)
-}
-
-// CreateTangentsFromSmoothness calls C++ Impl::CreateTangents(sharpenedEdges).
-func (mi *MutableImpl) CreateTangentsFromSmoothness(edges []bridge.Smoothness) {
-	mi.h.CreateTangentsFromSmoothness(edges)
-}

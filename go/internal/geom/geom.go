@@ -41,8 +41,9 @@ func (a Vec2) Abs() Vec2 { return Vec2{X: math.Abs(a.X), Y: math.Abs(a.Y)} }
 // (IEEE 754 0/0); mirrors la::normalize. Callers that need a guarded result
 // use SafeNormalize.
 func (a Vec2) Normalize() Vec2 {
-	inv := 1.0 / a.Length()
-	return Vec2{X: a.X * inv, Y: a.Y * inv}
+	// Componentwise division, matching la::normalize = a / length(a).
+	length := a.Length()
+	return Vec2{X: a.X / length, Y: a.Y / length}
 }
 
 // SafeNormalize is the Go port of EarClip::SafeNormalize (src/polygon.cpp:524):
@@ -161,8 +162,10 @@ func (a Vec3) Length() float64 { return math.Sqrt(a.Dot(a)) }
 // components (IEEE 754 0/0); callers that care must guard against |a| == 0
 // themselves (matching the C++ la::normalize behavior).
 func (a Vec3) Normalize() Vec3 {
-	inv := 1.0 / a.Length()
-	return Vec3{X: a.X * inv, Y: a.Y * inv, Z: a.Z * inv}
+	// Componentwise division, matching la::normalize = a / length(a)
+	// (linalg.h:1642). x/len is not bit-identical to x*(1/len) in IEEE-754.
+	length := a.Length()
+	return Vec3{X: a.X / length, Y: a.Y / length, Z: a.Z / length}
 }
 
 // Degrees converts radians to degrees. Mirrors C++ manifold::degrees.

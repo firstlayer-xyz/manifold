@@ -305,13 +305,13 @@ func (ts *tangentState) distributeTangents(tangent []geom.Vec4, fixedHalfedges [
 	}
 }
 
-// createTangentsIdx is the Go port of Impl::CreateTangents(int)
+// CreateTangents is the Go port of Impl::CreateTangents(int)
 // (src/smoothing.cpp:781): compute halfedgeTangent_ as weighted cubic Beziers
 // constrained to the per-halfedge normals in property slot normalIdx, creating
 // circular arcs where the two endpoint normals agree, fixing tangents at normal
 // discontinuities, and aligning flat-face and missing-normal cases, then
 // evening the angular distribution via DistributeTangents.
-func (mi *MutableImpl) createTangentsIdx(normalIdx int) {
+func (mi *MutableImpl) CreateTangents(normalIdx int) {
 	ts := newTangentState(mi)
 	ts.halfedgeTangent = nil // C++ halfedgeTangent_.clear() (line 785)
 	numVert := len(ts.verts)
@@ -578,12 +578,13 @@ func (ts *tangentState) linearizeFlatTangents(tangent []geom.Vec4) {
 	}
 }
 
-// createTangentsFromSmoothness is the Go port of
+// CreateTangentsFromSmoothness is the Go port of
 // Impl::CreateTangents(vector<Smoothness>) (src/smoothing.cpp:936): build
 // tangents from the flat-face-aware vert normals, then sharpen the edges
 // flagged in sharpenedEdges (smoothness < 1), making sharp-edge tangents
 // continuous and shrinking the crossing tangents toward the sharp edge.
-func (mi *MutableImpl) createTangentsFromSmoothness(sharpenedEdges []bridge.Smoothness) {
+// (Go has no overloading, so the []Smoothness overload keeps a distinct name.)
+func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoothness) {
 	ts := newTangentState(mi)
 	ts.halfedgeTangent = nil // C++ halfedgeTangent_.clear() (line 939)
 	numHalfedge := len(ts.starts)
