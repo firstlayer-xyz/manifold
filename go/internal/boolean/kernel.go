@@ -6,6 +6,64 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
+// mesh is the read-view of one operand Impl that the kernel cascade reads:
+// vertex positions/normals, face normals, and the halfedge view. The C++ kernel
+// takes Manifold::Impl& inA/inB; the Go kernel takes *mesh.
+type mesh struct {
+	vertPos    []geom.Vec3
+	vertNormal []geom.Vec3
+	faceNormal []geom.Vec3
+	halfedge   halfedges
+}
+
+// b2i is the Go equivalent of C++ bool->int (1/0), used where the kernel
+// subtracts two Shadows() results into a -1/0/1 overlap count.
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// shadow01 is the Go port of Shadow01<expandP, forward> (boolean3.cpp:76): the
+// x-shadow overlap (-1/0/1) of vertex a0 against edge b1 (b1s->b1e), plus the
+// edge's interpolated (y, z) at a0.x. The C++ bool template params expandP /
+// forward are passed at runtime. Returns (s01, NaN-yz) when there is no shadow.
+// Float-expression order is transcribed byte-for-byte (symbolic perturbation).
+func shadow01(expandP, forward bool, a0, b1, b1s, b1e int, inA, inB *mesh) (int, geom.Vec2) {
+	a0x := inA.vertPos[a0].X
+	b1sx := inB.vertPos[b1s].X
+	b1ex := inB.vertPos[b1e].X
+	a0xp := inA.vertNormal[a0].X
+	b1sxp := inB.vertNormal[b1s].X
+	b1exp := inB.vertNormal[b1e].X
+	var s01 int
+	if forward {
+		s01 = b2i(shadows(a0x, b1ex, withSign(expandP, a0xp)-b1exp)) -
+			b2i(shadows(a0x, b1sx, withSign(expandP, a0xp)-b1sxp))
+	} else {
+		s01 = b2i(shadows(b1sx, a0x, withSign(expandP, b1sxp)-a0xp)) -
+			b2i(shadows(b1ex, a0x, withSign(expandP, b1exp)-a0xp))
+	}
+	yz01 := geom.Vec2{X: math.NaN(), Y: math.NaN()}
+
+	if s01 != 0 {
+		yz01 = interpolate(inB.vertPos[b1s], inB.vertPos[b1e], inA.vertPos[a0].X)
+		b1pair := inB.halfedge.Pair(b1)
+		dir := inB.faceNormal[b1/3].Y + inB.faceNormal[b1pair/3].Y
+		if forward {
+			if !shadows(inA.vertPos[a0].Y, yz01.X, -dir) {
+				s01 = 0
+			}
+		} else {
+			if !shadows(yz01.X, inA.vertPos[a0].Y, withSign(expandP, dir)) {
+				s01 = 0
+			}
+		}
+	}
+	return s01, yz01
+}
+
 // halfedges is a read-view of the Impl's halfedge arrays (Go port of the C++
 // Halfedges accessor: Start/End/Pair) over the bridge-exposed slices. End(e) is
 // the start of the next halfedge in the triangle (the manifold invariant), as
