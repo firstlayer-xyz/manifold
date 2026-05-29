@@ -28,8 +28,8 @@ import (
 //
 // C++ policy = autoPolicy(NumTri(), 1e4). We mirror.
 func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
-	if mi.HalfedgeStarts() == nil {
-		return // empty
+	if mi.NumTri() == 0 {
+		return // C++ `if (IsEmpty()) return;` where IsEmpty() == NumTri()==0
 	}
 	if gaussianIdx < 0 && meanIdx < 0 {
 		return
@@ -65,11 +65,13 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 			dz := verts[endVert].Z - verts[startVert].Z
 			length := math.Sqrt(dx*dx + dy*dy + dz*dz)
 			edgeLen[i] = length
-			if length > 0 {
-				edge[i].X = dx / length
-				edge[i].Y = dy / length
-				edge[i].Z = dz / length
-			}
+			// C++ divides unconditionally (properties.cpp:46
+			// `edge[i] /= edgeLength[i]`): a zero-length (degenerate) edge
+			// yields NaN components, matching C++. No guard — adding one
+			// would diverge on degenerate input.
+			edge[i].X = dx / length
+			edge[i].Y = dy / length
+			edge[i].Z = dz / length
 			neighborTri := int(pairs[edgeIdx]) / 3
 			n1 := faceNormals[tri]
 			n2 := faceNormals[neighborTri]

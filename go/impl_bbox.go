@@ -15,15 +15,15 @@ import (
 //
 // C++ uses two `reduce` calls — one for min, one for max — each with
 // a NaN-skipping lambda. The no-policy reduce defaults to threshold
-// 1e5 via autoPolicy. We mirror with two parallel.Reduce calls; both
-// lambdas are associative+commutative (NaN propagates as identity)
-// so the parallel reorder is safe.
+// kSeqThreshold = 1e4 via autoPolicy. We mirror with two parallel.Reduce
+// calls; both lambdas are associative+commutative (NaN propagates as
+// identity) so the parallel reorder is safe.
 func (mi *MutableImpl) CalculateBBox() {
 	verts := mi.Verts()
 	inf := math.Inf(1)
 	idMin := geom.Vec3{X: inf, Y: inf, Z: inf}
 	idMax := geom.Vec3{X: -inf, Y: -inf, Z: -inf}
-	policy := parallel.AutoPolicy(len(verts), 100000)
+	policy := parallel.AutoPolicy(len(verts), 10000)
 	minV := parallel.Reduce(policy, verts, idMin, func(a, b geom.Vec3) geom.Vec3 {
 		if math.IsNaN(a.X) {
 			return b
@@ -50,11 +50,12 @@ func (mi *MutableImpl) CalculateBBox() {
 			Z: math.Max(a.Z, b.Z),
 		}
 	})
-	// Box::IsFinite check from common.h: min.x < max.x && min.y < max.y
-	// && min.z < max.z. A degenerate (empty or all-NaN) impl never
-	// satisfies this; mirror the C++ early-out via MakeEmpty(NoError=0).
-	finite := minV.X < maxV.X && minV.Y < maxV.Y && minV.Z < maxV.Z
-	if !finite {
+	// C++ Box::IsFinite() (common.h:434) = all(isfinite(min)) &&
+	// all(isfinite(max)) — i.e. all six components finite, NOT an ordering
+	// check. An empty mesh reduces to min=+inf/max=-inf (not finite); a
+	// planar mesh (e.g. min.z==max.z) is still finite and must be kept.
+	if !(geom.Box{Min: minV, Max: maxV}).IsFinite() {
+		// Decimated out of existence - early out.
 		mi.h.MakeEmpty(0) // Error::NoError
 		return
 	}
