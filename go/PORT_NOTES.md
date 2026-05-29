@@ -220,15 +220,23 @@ memory model. The C++ relies on word-sized non-atomic reads being
   multi-KLOC.
 - `Triangulate` (Earcut/CDT, `src/polygon.cpp` ~1000 lines) —
   called from `extrude`'s cap-triangulation step.
-- `Manifold(MeshGL{,64})` constructor — ~200 lines. Its
-  `RemoveDegenerates` dependency is now fully drilled (see above:
-  `CollapseShortEdges` + `SwapDegenerates` + collapse/swap core,
-  differential-tested). Drilled on this chain: `IsManifold`,
-  `Is2Manifold`, `RemoveUnreferencedVerts`, `DedupePropVerts`,
-  `SplitPinchedVerts`, `DedupeEdges` (+ `dedupeEdge`/`updateVert`/
-  `pairUp`), `CleanupTopology`, `RemoveDegenerates`. Still bridge:
-  the two-arg `CreateHalfedges` (merged-vert input) and the MeshGL
-  ingest entry point itself (the ~200-line constructor body).
+- `Manifold(MeshGL{,64})` constructor — COMMON PATH DRILLED. The native
+  ingest (`validateMeshGL` + `newImplFromMeshGL`, `impl_meshgl_ingest.go`)
+  ports the full C++ constructor body (src/impl.h:277-504): validation
+  cascade, prop2vert merge, dual-stride vert/prop split, run handling
+  (triRef + meshIDtransform), triProp build + degenerate cull, single-arg
+  CreateHalfedges, and the finalize tail. Generic over float32/float64;
+  `useSingle` threads into SetEpsilon. Differential-tested vs the bridge
+  (`TestMeshGLIngest_VsCpp` / `_Float32_VsCpp`). Still bridge:
+  - **needsPropMap** (extra props AND a vertex merge) falls back to
+    `bridge.ManifoldFromMeshGL{,64}` because it needs the two-arg
+    `CreateHalfedges(triProp, triVert)` form — the last real blocker, to be
+    drilled next (the single-arg form is already a faithful subset).
+  - **ReserveIDs** stays the bridge atomic permanently (PORT_NOTES
+    "ReserveIDs" note: splitting it causes cross-process meshID collisions).
+  - The facade mutators (`MakeEmpty`, `SetTriRefs`, `AddMeshIDTransform`,
+    `SetProperties`, …) remain the working-copy commit mechanism shared
+    with every other drilled step.
 
 ## Cross-cutting deferred work
 
