@@ -1,8 +1,8 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
 
 // extrude is the Go port of C++ Manifold::Extrude
@@ -41,14 +41,22 @@ func extrude(crossSection Polygons, height float64,
 	// C++ does `++nDivisions` immediately; mirror that.
 	nDivisions++
 
-	// Step 2: bottom layer.
+	// Step 2: bottom layer + indexed cross-section for the cap triangulation.
+	// Mirrors the C++ loop that fills vertPos and polygonsIndexed together
+	// with a running vertex index (src/constructors.cpp:265-274).
 	var verts []geom.Vec3
 	nCrossSection := 0
+	idx := 0
+	var polygonsIndexed triangulate.PolygonsIdx
 	for _, poly := range crossSection {
 		nCrossSection += len(poly)
+		simpleIndexed := make(triangulate.SimplePolygonIdx, 0, len(poly))
 		for _, pv := range poly {
 			verts = append(verts, geom.Vec3{X: pv.X, Y: pv.Y, Z: 0})
+			simpleIndexed = append(simpleIndexed, triangulate.PolyVert{Pos: pv, Idx: idx})
+			idx++
 		}
+		polygonsIndexed = append(polygonsIndexed, simpleIndexed)
 	}
 	isCone := scaleTop.X == 0 && scaleTop.Y == 0
 
@@ -122,25 +130,18 @@ func extrude(crossSection Polygons, height float64,
 		}
 	}
 
-	// Step 5: cap triangulation. We use bridge.Triangulate (still a
-	// bridge call until we port Triangulate itself) on the original
-	// cross-section, then map indices to the appropriate vert layer.
-	polyFlat := make([][]geom.Vec2, len(crossSection))
-	for i, poly := range crossSection {
-		polyFlat[i] = make([]geom.Vec2, len(poly))
-		copy(polyFlat[i], poly)
-	}
-	// C++ Extrude calls TriangulateIdx(polygonsIndexed) with no epsilon
-	// (src/constructors.cpp:309), so epsilon takes its default of -1
-	// (include/manifold/polygon.h:55) — NOT 0.
-	top := bridge.Triangulate(polyFlat, -1)
-	for t := 0; t < len(top); t += 3 {
+	// Step 5: cap triangulation. C++ Extrude calls TriangulateIdx(polygonsIndexed)
+	// with no epsilon (src/constructors.cpp:309), so epsilon takes its default of
+	// -1 (include/manifold/polygon.h:55) — NOT 0. Iterate the ivec3 triples and
+	// map indices to the appropriate vert layer, matching the C++ loop.
+	top := triangulate.TriangulateIdx(polygonsIndexed, -1, true)
+	for _, tri := range top {
 		// Bottom: flipped winding to face -Z.
-		tris = append(tris, int32(top[t+0]), int32(top[t+2]), int32(top[t+1]))
+		tris = append(tris, int32(tri[0]), int32(tri[2]), int32(tri[1]))
 		if !isCone {
 			// Top: same winding, offset to the topmost layer.
 			off := int32(nCrossSection * nDivisions)
-			tris = append(tris, top[t+0]+off, top[t+1]+off, top[t+2]+off)
+			tris = append(tris, int32(tri[0])+off, int32(tri[1])+off, int32(tri[2])+off)
 		}
 	}
 

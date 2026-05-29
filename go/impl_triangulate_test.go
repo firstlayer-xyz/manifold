@@ -8,7 +8,22 @@ import (
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
+
+// nativeFlat triangulates via the internal package and flattens the [][3]int
+// result to the bridge's []int32 layout, purely so differential tests can
+// compare against bridge.Triangulate's flat output. Test scaffolding only —
+// production code (extrude/revolve) consumes the [][3]int triples directly,
+// matching the C++ std::vector<ivec3>.
+func nativeFlat(polys [][]geom.Vec2, epsilon float64) []int32 {
+	tris := triangulate.Triangulate(polys, epsilon, true)
+	flat := make([]int32, 0, 3*len(tris))
+	for _, t := range tris {
+		flat = append(flat, int32(t[0]), int32(t[1]), int32(t[2]))
+	}
+	return flat
+}
 
 // regularPolygon returns a single CCW-wound regular n-gon of radius r.
 func regularPolygon(n int, r float64) [][]geom.Vec2 {
@@ -36,7 +51,7 @@ func TestTriangulateConvex_VsCpp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := triangulateNative(tc.polys, -1)
+			got := nativeFlat(tc.polys, -1)
 			want := bridge.Triangulate(tc.polys, -1)
 			// Convex input routes through TriangulateConvex in both Go and C++,
 			// so the zig-zag fan is deterministic and the triples match exactly.
@@ -169,7 +184,7 @@ func TestTriangulateConcave_VsCpp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := triangulateNative(tc.polys, -1)
+			got := nativeFlat(tc.polys, -1)
 			want := bridge.Triangulate(tc.polys, -1)
 			// The Go output must be a genuine triangulation of the polygon.
 			checkValidTriangulation(t, tc.polys, got)
@@ -222,7 +237,7 @@ func TestTriangulateHoles_VsCpp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := triangulateNative(tc.polys, -1)
+			got := nativeFlat(tc.polys, -1)
 			want := bridge.Triangulate(tc.polys, -1)
 			checkValidTriangulation(t, tc.polys, got)
 			if len(got) != len(want) {

@@ -14,6 +14,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
+	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
 
 // Vec2 is a 2D vector with double-precision components.
@@ -1348,8 +1349,8 @@ func (m *Manifold) WarpBatch(fn func([]Vec3)) *Manifold {
 // (0 = global default).
 //
 // Ported top-down from C++ Manifold::Revolve in src/constructors.cpp.
-// New bridges: bridge.Triangulate (for front/back caps when not a full
-// revolution) and MutableImpl.CreateHalfedges (turns the tri-index
+// Uses triangulate.Triangulate for the front/back caps when not a full
+// revolution, and MutableImpl.CreateHalfedges (turns the tri-index
 // buffer into the Impl's halfedge representation).
 func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64) *Manifold {
 	// Polygon massaging: drop negative-x verts, interpolate at x=0 crossings.
@@ -1497,20 +1498,22 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 		}
 	}
 
-	// Front + back triangulated caps for partial revolution.
+	// Front + back triangulated caps for partial revolution. C++ passes
+	// pImpl_->epsilon_, which is still its default of -1 here (SetEpsilon
+	// runs later), so -1 is faithful.
 	if !isFullRevolution {
-		front := bridge.Triangulate(polygons, -1)
-		for i := 0; i < len(front); i += 3 {
+		front := triangulate.Triangulate(polygons, -1, true)
+		for _, t := range front {
 			tris = append(tris,
-				int32(startPoses[front[i]]),
-				int32(startPoses[front[i+1]]),
-				int32(startPoses[front[i+2]]))
+				int32(startPoses[t[0]]),
+				int32(startPoses[t[1]]),
+				int32(startPoses[t[2]]))
 		}
-		for i := 0; i < len(front); i += 3 {
+		for _, t := range front {
 			tris = append(tris,
-				int32(endPoses[front[i+2]]),
-				int32(endPoses[front[i+1]]),
-				int32(endPoses[front[i]]))
+				int32(endPoses[t[2]]),
+				int32(endPoses[t[1]]),
+				int32(endPoses[t[0]]))
 		}
 	}
 

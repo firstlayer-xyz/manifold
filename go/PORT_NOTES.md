@@ -251,8 +251,22 @@ memory model. The C++ relies on word-sized non-atomic reads being
     `Contains` guard, and `totalCost` is an order-insensitive max) — a
     perf-only deferral, verified by the audit. Real `internal/tree2d`
     replaces it later.
-  - Not yet wired into `extrude`/`revolve` cap triangulation (increment 8):
-    those call sites still use `bridge.Triangulate` until the switch-over.
+  - Wired into the cap triangulation of `extrude` (native
+    `triangulate.TriangulateIdx(polygonsIndexed)`, mirroring C++ Extrude)
+    and `revolve` (native `triangulate.Triangulate(polygons, -1)`,
+    mirroring C++ Revolve where `epsilon_` is still its default of -1).
+    Both iterate the `[][3]int` triples directly — the Go ≈
+    `std::vector<ivec3>` — matching the C++ `for (const ivec3& tri : ...)`
+    loops. No flatten-to-`[]int32` shim: the earlier `triangulateNative`
+    adapter (which only existed to mimic `bridge.Triangulate`'s flat
+    signature) was removed; the test-only `nativeFlat` helper does the
+    flattening solely to diff against the bridge oracle.
+  - Validated against the manifold polygon corpus (the same fixtures as
+    the C++ PolygonTest: polygon_corpus.txt, sponge.txt, zebra.txt,
+    zebra3.txt) via `TestTriangulateCorpus_VsCpp` — every entry matches
+    the curated expected triangle count and the bridge count, across the
+    Basic / Turn180 / Duplicate variants. zebra/zebra3 are gated behind
+    `-short` (the increment-6 brute-force collider is O(n^2)).
 - `Manifold(MeshGL{,64})` constructor — FULLY DRILLED. The native ingest
   (`validateMeshGL` + `newImplFromMeshGL`, `impl_meshgl_ingest.go`) ports
   the entire C++ constructor body (src/impl.h:277-504): validation cascade,
