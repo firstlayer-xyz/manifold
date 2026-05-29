@@ -103,6 +103,20 @@ func InclusiveScan[T Numeric](policy ExecutionPolicy, in []T, out []T) {
 	wg3.Wait()
 }
 
+// ExclusiveScanFunc is the binary-op form of manifold::exclusive_scan
+// (src/parallel.h:609, the f-taking overload): out[0] = init, out[i] =
+// op(out[i-1], in[i-1]). Boolean3::Result uses it with AbsSum
+// (op(a,b)=abs(a)+abs(b)) for vertex numbering. Sequential for now — the SEQ
+// path; AbsSum is associative+commutative, so a parallel two-pass form like
+// ExclusiveScan's is safe to add later. policy is accepted for API symmetry.
+func ExclusiveScanFunc[T any](policy ExecutionPolicy, in, out []T, init T, op func(a, b T) T) {
+	acc := init
+	for i := range in {
+		out[i] = acc
+		acc = op(acc, in[i])
+	}
+}
+
 // ExclusiveScan is the Go port of manifold::exclusive_scan from
 // src/parallel.h. Writes out[0] = init, out[i] = init + sum(in[0..i-1])
 // for i >= 1. Same two-pass parallel structure as InclusiveScan.
