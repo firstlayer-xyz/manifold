@@ -205,7 +205,9 @@ func (c *Collider) CollisionsPoint(queries []geom.Vec3, parallel_ bool, selfColl
 	}
 	parallel.ForEachN(policy, len(queries), func(i int) {
 		p := queries[i]
-		c.dfs(i, selfCollision, func(b geom.Box) bool { return b.Contains(p) }, record)
+		// The C++ collider tests box.DoesOverlap(query); for a vec3 query that is
+		// the XY-projected overload (collider.h:173, common.h:427), not 3D Contains.
+		c.dfs(i, selfCollision, func(b geom.Box) bool { return b.DoesOverlapPoint(p) }, record)
 	})
 }
 

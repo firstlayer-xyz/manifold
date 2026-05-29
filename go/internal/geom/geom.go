@@ -263,9 +263,14 @@ func (b Box) UnionPoint(p Vec3) Box {
 	return Box{Min: minVec(b.Min, p), Max: maxVec(b.Max, p)}
 }
 
-// DoesOverlapPoint reports whether p lies inside b (boundary included).
-// Mirrors C++ Box::DoesOverlap(const vec3&).
-func (b Box) DoesOverlapPoint(p Vec3) bool { return b.Contains(p) }
+// DoesOverlapPoint is the Go port of C++ Box::DoesOverlap(vec3) (common.h:427):
+// whether p projects within b's XY extent. It is "projected in z" — the z axis
+// is deliberately ignored (the collider casts its winding/intersection ray along
+// z, so candidate faces are those overlapping in XY). This is NOT full 3D
+// containment; that is Contains.
+func (b Box) DoesOverlapPoint(p Vec3) bool {
+	return p.X <= b.Max.X && p.X >= b.Min.X && p.Y <= b.Max.Y && p.Y >= b.Min.Y
+}
 
 // Transform is the Go port of C++ Box::Transform(const mat3x4&) from
 // include/manifold/common.h: applies the affine transform to b's min

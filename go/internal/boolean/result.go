@@ -444,6 +444,76 @@ func countVerts(h halfedges, count, inclusion []int, i int) {
 	}
 }
 
+// Op mirrors the C++ OpType enum (common.h:608): Add=0, Subtract=1, Intersect=2.
+const (
+	OpAdd       = 0
+	OpSubtract  = 1
+	OpIntersect = 2
+)
+
+// ResultMesh is the triangulated output of Boolean3::Result before the
+// Impl-level finalize tail (CreateProperties, UpdateReference, SimplifyTopology,
+// RemoveUnreferencedVerts, CalculateBBox, SortGeometry, IncrementMeshIDs), which
+// the manifold facade runs on the constructed Impl. PropVert is the per-halfedge
+// property index; End is derived from Starts. NPvNQv (nPv+nQv) is the original
+// vertex count SimplifyTopology needs.
+type ResultMesh struct {
+	VertPos   []geom.Vec3
+	Starts    []int32
+	Pairs     []int32
+	PropVert  []int32
+	TriNormal []geom.Vec3
+	TriRef    []TriRef
+	Epsilon   float64
+	Tolerance float64
+	NumVertR  int
+	NPvNQv    int
+}
+
+// Result is the Go port of Boolean3::Result (boolean_result.cpp:693) up to and
+// including ReorderHalfedges: decode the op into the c1/c2/c3 inclusion
+// coefficients, run the pure assembly (assemble), triangulate (face2Tri), and
+// reorder the halfedges. ok=false is the empty result (numVertR==0). The early
+// status/empty/valid exits and the Impl finalize tail are the manifold facade's
+// job. The C++ DEBUG_ASSERT that expandP matches the op is debug-only and omitted.
+func (b *Boolean3) Result(op int) (ResultMesh, bool) {
+	c1 := 1
+	if op == OpIntersect {
+		c1 = 0
+	}
+	c2 := 0
+	if op == OpAdd {
+		c2 = 1
+	}
+	c3 := -1
+	if op == OpIntersect {
+		c3 = 1
+	}
+	invertQ := op == OpSubtract
+
+	asm, ok := b.assemble(c1, c2, c3, invertQ)
+	if !ok {
+		return ResultMesh{}, false
+	}
+
+	out, triNormal, triRef := face2Tri(asm.FaceEdge, asm.FaceHalfedges, asm.HalfedgeRef,
+		asm.VertPos, asm.FaceNormal, asm.Epsilon, false)
+	reorderHalfedges(out)
+
+	return ResultMesh{
+		VertPos:   asm.VertPos,
+		Starts:    out.starts,
+		Pairs:     out.pairs,
+		PropVert:  out.propVert,
+		TriNormal: triNormal,
+		TriRef:    triRef,
+		Epsilon:   asm.Epsilon,
+		Tolerance: asm.Tolerance,
+		NumVertR:  asm.NumVertR,
+		NPvNQv:    asm.NPvNQv,
+	}, true
+}
+
 // reorderHalfedges is the Go port of Manifold::Impl::ReorderHalfedges
 // (sort.cpp:517). The Append* helpers add a face's halfedges in a
 // non-deterministic order, so step 1 rotates each face to start at its smallest

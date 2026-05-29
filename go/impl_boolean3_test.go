@@ -64,3 +64,76 @@ func TestBoolean3Ctor_Sanity(t *testing.T) {
 		}
 	}
 }
+
+// TestBoolean3Result_Sanity exercises the entire native Result pipeline
+// (assemble -> face2Tri -> reorderHalfedges) at runtime on two overlapping
+// cubes, for all three ops. It asserts the pre-SimplifyTopology mesh is a
+// consistently-paired manifold (the C++ DEBUG_ASSERTs IsManifold at this point)
+// with one normal/ref per triangle. Full differential validation vs the bridge
+// comes once the Impl finalize tail is wired.
+func TestBoolean3Result_Sanity(t *testing.T) {
+	ma := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)  // [-1,1]^3
+	mb := Cube(Vec3{X: 2, Y: 2, Z: 2}, false) // [0,2]^3
+	defer runtime.KeepAlive(ma)
+	defer runtime.KeepAlive(mb)
+	va := getImpl(ma)
+	defer va.Delete()
+	vb := getImpl(mb)
+	defer vb.Delete()
+
+	makeOp := func(v *Impl) boolean.Operand {
+		min, max := v.BBox()
+		fb, fm := v.GetFaceBoxMorton()
+		return boolean.Operand{
+			VertPos:    v.Verts(),
+			VertNormal: v.VertNormals(),
+			FaceNormal: v.FaceNormals(),
+			Starts:     v.HalfedgeStarts(),
+			Pairs:      v.HalfedgePairs(),
+			PropVert:   v.HalfedgeProps(),
+			BBox:       geom.Box{Min: min, Max: max},
+			Collider:   collider.New(fb, fm),
+		}
+	}
+	pOp := makeOp(va)
+	qOp := makeOp(vb)
+
+	cases := []struct {
+		name    string
+		op      int
+		expandP bool
+	}{
+		{"Add", boolean.OpAdd, true},
+		{"Subtract", boolean.OpSubtract, false},
+		{"Intersect", boolean.OpIntersect, false},
+	}
+	for _, tc := range cases {
+		b3 := boolean.NewBoolean3(pOp, qOp, tc.expandP)
+		rm, ok := b3.Result(tc.op)
+		if !ok {
+			t.Fatalf("%s: Result returned empty", tc.name)
+		}
+		n := len(rm.Starts)
+		if n == 0 || n%3 != 0 {
+			t.Fatalf("%s: bad halfedge count %d", tc.name, n)
+		}
+		numTri := n / 3
+		if len(rm.TriNormal) != numTri || len(rm.TriRef) != numTri {
+			t.Errorf("%s: triNormal=%d triRef=%d, want %d each", tc.name, len(rm.TriNormal), len(rm.TriRef), numTri)
+		}
+		// Consistently-paired manifold: Start(Pair(e))==End(e), Pair(Pair(e))==e.
+		end := func(e int) int32 { return rm.Starts[3*(e/3)+(e+1)%3] }
+		for e := 0; e < n; e++ {
+			p := int(rm.Pairs[e])
+			if p < 0 || p >= n {
+				t.Fatalf("%s: edge %d pair %d out of range", tc.name, e, p)
+			}
+			if rm.Starts[p] != end(e) {
+				t.Errorf("%s: edge %d Start(Pair)=%d != End=%d", tc.name, e, rm.Starts[p], end(e))
+			}
+			if int(rm.Pairs[p]) != e {
+				t.Errorf("%s: edge %d Pair(Pair)=%d != %d", tc.name, e, rm.Pairs[p], e)
+			}
+		}
+	}
+}
