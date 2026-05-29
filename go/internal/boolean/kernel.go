@@ -141,6 +141,140 @@ func intersect(aL, aR, bL, bR geom.Vec3) geom.Vec4 {
 	return xyzz
 }
 
+func nanVec3() geom.Vec3 { n := math.NaN(); return geom.Vec3{X: n, Y: n, Z: n} }
+func nanVec4() geom.Vec4 { n := math.NaN(); return geom.Vec4{X: n, Y: n, Z: n, W: n} }
+
+// kernel11 is the Go port of Kernel11<expandP> (boolean3.cpp:108): the 1-vs-1
+// (edge/edge) intersection — overlap count s11 and crossing xyzz11. The C++
+// local bool `shadows` is `sh` here (the predicate shadows() shares the name).
+type kernel11 struct {
+	inP, inQ *mesh
+	expandP  bool
+}
+
+func (k kernel11) call(p1, p1s, p1e, q1, q1s, q1e int) (int, geom.Vec4) {
+	xyzz11 := nanVec4()
+	s11 := 0
+
+	// For pRL[k], qRL[k], k==0 is left, k==1 is right.
+	kk := 0
+	var pRL, qRL [2]geom.Vec3
+	// Either left or right must shadow, but not both, ensuring the intersection
+	// is between left and right.
+	sh := false
+	s11 = 0
+
+	p0 := [2]int{p1s, p1e}
+	for i := 0; i < 2; i++ {
+		s01, yz01 := shadow01(k.expandP, true, p0[i], q1, q1s, q1e, k.inP, k.inQ)
+		// NaN means no overlap.
+		if isFinite(yz01.X) {
+			sign := 1
+			if i == 0 {
+				sign = -1
+			}
+			s11 += s01 * sign
+			if kk < 2 && (kk == 0 || (s01 != 0) != sh) {
+				sh = s01 != 0
+				pRL[kk] = k.inP.vertPos[p0[i]]
+				qRL[kk] = geom.Vec3{X: pRL[kk].X, Y: yz01.X, Z: yz01.Y}
+				kk++
+			}
+		}
+	}
+
+	q0 := [2]int{q1s, q1e}
+	for i := 0; i < 2; i++ {
+		s10, yz10 := shadow01(k.expandP, false, q0[i], p1, p1s, p1e, k.inQ, k.inP)
+		if isFinite(yz10.X) {
+			sign := 1
+			if i == 0 {
+				sign = -1
+			}
+			s11 += s10 * sign
+			if kk < 2 && (kk == 0 || (s10 != 0) != sh) {
+				sh = s10 != 0
+				qRL[kk] = k.inQ.vertPos[q0[i]]
+				pRL[kk] = geom.Vec3{X: qRL[kk].X, Y: yz10.X, Z: yz10.Y}
+				kk++
+			}
+		}
+	}
+
+	if s11 == 0 { // No intersection
+		xyzz11 = nanVec4()
+	} else {
+		// DEBUG_ASSERT(kk == 2)
+		xyzz11 = intersect(pRL[0], pRL[1], qRL[0], qRL[1])
+
+		p1pair := k.inP.halfedge.Pair(p1)
+		dirP := k.inP.faceNormal[p1/3].Z + k.inP.faceNormal[p1pair/3].Z
+		q1pair := k.inQ.halfedge.Pair(q1)
+		dirQ := k.inQ.faceNormal[q1/3].Z + k.inQ.faceNormal[q1pair/3].Z
+		if !shadows(xyzz11.Z, xyzz11.W, withSign(k.expandP, dirP)-dirQ) {
+			s11 = 0
+		}
+	}
+	return s11, xyzz11
+}
+
+// kernel02 is the Go port of Kernel02<expandP, forward> (boolean3.cpp:177): the
+// 0-vs-2 (vertex/face) winding — overlap count s02 and z-coordinate z02.
+type kernel02 struct {
+	inA, inB *mesh
+	expandP  bool
+	forward  bool
+}
+
+func (k kernel02) call(a0, b2 int) (int, float64) {
+	var edgeB [3]faceEdge
+	loadFaceEdges(k.inB.halfedge, b2, &edgeB)
+	return k.callEdges(a0, b2, &edgeB)
+}
+
+func (k kernel02) callEdges(a0, b2 int, edgeB *[3]faceEdge) (int, float64) {
+	s02 := 0
+	z02 := 0.0
+
+	kk := 0
+	var yzzRL [2]geom.Vec3
+	sh := false
+
+	for i := 0; i < 3; i++ {
+		s01, yz01 := shadow01(k.expandP, k.forward, a0, edgeB[i].edge, edgeB[i].start, edgeB[i].end, k.inA, k.inB)
+		if isFinite(yz01.X) {
+			sign := 1
+			if k.forward == edgeB[i].isForward {
+				sign = -1
+			}
+			s02 += s01 * sign
+			if kk < 2 && (kk == 0 || (s01 != 0) != sh) {
+				sh = s01 != 0
+				yzzRL[kk] = geom.Vec3{X: yz01.X, Y: yz01.Y, Z: yz01.Y}
+				kk++
+			}
+		}
+	}
+
+	if s02 == 0 { // No intersection
+		z02 = math.NaN()
+	} else {
+		// DEBUG_ASSERT(kk == 2)
+		vertPosA := k.inA.vertPos[a0]
+		z02 = interpolate(yzzRL[0], yzzRL[1], vertPosA.Y).Y // [1] = z
+		if k.forward {
+			if !shadows(vertPosA.Z, z02, -k.inB.faceNormal[b2].Z) {
+				s02 = 0
+			}
+		} else {
+			if !shadows(z02, vertPosA.Z, withSign(k.expandP, k.inB.faceNormal[b2].Z)) {
+				s02 = 0
+			}
+		}
+	}
+	return s02, z02
+}
+
 // faceEdge is the Go port of the FaceEdge struct (boolean3.cpp:55): an edge of a
 // triangle, oriented forward (start < end) with isForward recording whether the
 // canonical halfedge was the forward one.
