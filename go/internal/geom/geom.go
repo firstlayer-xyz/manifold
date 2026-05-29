@@ -22,6 +22,94 @@ func (a Vec2) Dot(b Vec2) float64 { return a.X*b.X + a.Y*b.Y }
 // Length returns |a|. Mirrors la::length(vec2).
 func (a Vec2) Length() float64 { return math.Sqrt(a.X*a.X + a.Y*a.Y) }
 
+// Add returns a + b.
+func (a Vec2) Add(b Vec2) Vec2 { return Vec2{X: a.X + b.X, Y: a.Y + b.Y} }
+
+// Scale returns a scaled by s.
+func (a Vec2) Scale(s float64) Vec2 { return Vec2{X: a.X * s, Y: a.Y * s} }
+
+// Min returns the component-wise minimum. Mirrors la::min(vec2, vec2).
+func (a Vec2) Min(b Vec2) Vec2 { return Vec2{X: math.Min(a.X, b.X), Y: math.Min(a.Y, b.Y)} }
+
+// Max returns the component-wise maximum. Mirrors la::max(vec2, vec2).
+func (a Vec2) Max(b Vec2) Vec2 { return Vec2{X: math.Max(a.X, b.X), Y: math.Max(a.Y, b.Y)} }
+
+// Abs returns the component-wise absolute value. Mirrors la::abs(vec2).
+func (a Vec2) Abs() Vec2 { return Vec2{X: math.Abs(a.X), Y: math.Abs(a.Y)} }
+
+// Normalize returns a / |a|. For a zero vector this yields NaN components
+// (IEEE 754 0/0); mirrors la::normalize. Callers that need a guarded result
+// use SafeNormalize.
+func (a Vec2) Normalize() Vec2 {
+	inv := 1.0 / a.Length()
+	return Vec2{X: a.X * inv, Y: a.Y * inv}
+}
+
+// SafeNormalize is the Go port of EarClip::SafeNormalize (src/polygon.cpp:524):
+// normalize, but return the zero vector if the result's x is non-finite
+// (NaN or ±Inf — i.e. a zero-length input).
+func (a Vec2) SafeNormalize() Vec2 {
+	n := a.Normalize()
+	if !math.IsNaN(n.X) && !math.IsInf(n.X, 0) {
+		return n
+	}
+	return Vec2{}
+}
+
+// Determinant2x2 is the Go port of src/polygon.cpp:39 determinant2x2:
+// a.x*b.y - a.y*b.x. Hand-written (NOT routed through a 3D cross): the
+// floating-point operation order is load-bearing for the triangulator's
+// epsilon bands, and the C++ comment notes la::determinant is mis-optimized.
+func Determinant2x2(a, b Vec2) float64 { return a.X*b.Y - a.Y*b.X }
+
+// Rect is a 2D axis-aligned bounding box. Mirrors C++ manifold::Rect
+// (include/manifold/common.h:442). The zero value is NOT empty — use
+// EmptyRect for the infinity-initialized empty rectangle.
+type Rect struct {
+	Min, Max Vec2
+}
+
+// EmptyRect returns the default-constructed empty rectangle
+// (min = +inf, max = -inf), matching C++ Rect().
+func EmptyRect() Rect {
+	inf := math.Inf(1)
+	return Rect{Min: Vec2{X: inf, Y: inf}, Max: Vec2{X: -inf, Y: -inf}}
+}
+
+// NewRect returns the smallest rectangle containing a and b. Mirrors
+// Rect(a, b) = {min(a,b), max(a,b)}.
+func NewRect(a, b Vec2) Rect { return Rect{Min: a.Min(b), Max: a.Max(b)} }
+
+// Size returns max - min.
+func (r Rect) Size() Vec2 { return r.Max.Sub(r.Min) }
+
+// Scale returns the absolute-largest coordinate of any contained point:
+// max(|min|, |max|) over both axes. Mirrors Rect::Scale.
+func (r Rect) Scale() float64 {
+	absMax := r.Min.Abs().Max(r.Max.Abs())
+	return math.Max(absMax.X, absMax.Y)
+}
+
+// Center returns 0.5*(max+min).
+func (r Rect) Center() Vec2 { return r.Max.Add(r.Min).Scale(0.5) }
+
+// Contains reports whether p is inside r (border included). Mirrors
+// Rect::Contains via la::gequal on both bounds.
+func (r Rect) Contains(p Vec2) bool {
+	return p.X >= r.Min.X && p.Y >= r.Min.Y && r.Max.X >= p.X && r.Max.Y >= p.Y
+}
+
+// DoesOverlap reports whether r overlaps o (equality included).
+func (r Rect) DoesOverlap(o Rect) bool {
+	return r.Min.X <= o.Max.X && r.Min.Y <= o.Max.Y &&
+		r.Max.X >= o.Min.X && r.Max.Y >= o.Min.Y
+}
+
+// Union returns the smallest rectangle containing r and p.
+func (r Rect) Union(p Vec2) Rect {
+	return Rect{Min: r.Min.Min(p), Max: r.Max.Max(p)}
+}
+
 // Vec3 is a 3D vector of doubles.
 type Vec3 struct {
 	X, Y, Z float64
