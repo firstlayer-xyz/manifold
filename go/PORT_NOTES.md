@@ -246,10 +246,26 @@ memory model. The C++ relies on word-sized non-atomic reads being
   - STILL BRIDGE: `Smooth(MeshGL)` — the `SmoothImpl` constructor
     (constructors.cpp) + `UpdateSharpenedEdges`, a separate constructor-level
     drill. (InterpTri's Bezier machinery is only needed by Refine.)
-- `RayCast`, `Minkowski` — still C++; use the bridge Collider.
-  When drilled, can use the Go `internal/collider` package directly.
-  (`MinGap` is now drilled — native Go via `internal/collider` +
-  `geom.DistanceTriangleTriangleSquared`.)
+- `RayCast` — DRILLED (native). `Impl.RayCast` builds an ephemeral face
+  collider and runs the native Boolean3 kernel cascade (`internal/boolean`:
+  Shadow01 -> Kernel02 -> Kernel11 -> Kernel12, over a degenerate single-edge
+  ray mesh). First consumer of the boolean kernel; the bridge `RayCast`
+  survives only as the `TestRayCast_VsCpp` oracle (bit-exact match — the
+  cascade is pure arithmetic, no transcendentals). This is the boolean
+  engine's first end-to-end milestone (see the boolean-engine entry).
+- `Minkowski` — still C++; use the bridge Collider. (`MinGap` is drilled —
+  native Go via `internal/collider` + `geom.DistanceTriangleTriangleSquared`.)
+- **Boolean / CSG engine** (`src/boolean3.cpp`, `boolean_result.cpp`,
+  `csg_tree.cpp`) — IN PROGRESS in `internal/boolean` (raw mesh arrays in, no
+  manifold/bridge dependency). Done: the symbolic-perturbation predicates
+  (Shadows/withSign/Interpolate), Intersect, LoadFaceEdges, and the full kernel
+  cascade Shadow01/Kernel02/Kernel11/Kernel12 — validated end-to-end via
+  RayCast. C++ const-Impl& members lift to `*mesh` read-views; template bools
+  to runtime struct fields; operator() to `call`. Next: Intersect12 + Winding03
+  (the collider-driven drivers + DisjointSets flood-fill) + the Boolean3 ctor,
+  then Boolean3::Result, then the CSG tree + dispatch rewire (the big bridge
+  shrink). The kernel inlines aren't individually bridge-shimmable, so they're
+  validated collectively at RayCast (and later at the Boolean3-ctor shims).
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
   algorithms above.

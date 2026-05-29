@@ -12,6 +12,8 @@ package manifold
 
 import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
+	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 	"github.com/firstlayer-xyz/manifold/go/internal/quickhull"
@@ -165,9 +167,23 @@ func (i *Impl) GetMeshGL64(normalIdx int) meshGLP[float64, uint64] {
 	return getMeshGLImpl[float64, uint64](i, normalIdx)
 }
 
-// RayCast wraps Impl::RayCast (still in C++).
+// RayCast is the Go port of Impl::RayCast — see internal/boolean.RayCast (the
+// Boolean3 kernel cascade). Builds an ephemeral face collider, then casts the
+// ray through the native kernel. Differential-tested vs the bridge in
+// TestRayCast_VsCpp.
 func (i *Impl) RayCast(origin, endpoint geom.Vec3) []bridge.RayHit {
-	return i.h.RayCast(origin, endpoint)
+	if i.NumTri() == 0 {
+		return nil
+	}
+	faceBox, faceMorton := i.GetFaceBoxMorton()
+	col := collider.New(faceBox, faceMorton)
+	hits := boolean.RayCast(i.Verts(), i.VertNormals(), i.FaceNormals(),
+		i.HalfedgeStarts(), i.HalfedgePairs(), col, origin, endpoint)
+	out := make([]bridge.RayHit, len(hits))
+	for j, h := range hits {
+		out[j] = bridge.RayHit{FaceID: h.FaceID, Distance: h.Distance, Position: h.Position, Normal: h.Normal}
+	}
+	return out
 }
 
 // Minkowski wraps Impl::Minkowski (still in C++).
