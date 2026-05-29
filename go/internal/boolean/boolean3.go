@@ -18,6 +18,7 @@ type Operand struct {
 	FaceNormal []geom.Vec3
 	Starts     []int32
 	Pairs      []int32
+	PropVert   []int32
 	BBox       geom.Box
 	Collider   *collider.Collider
 }
@@ -27,7 +28,7 @@ func (o Operand) mesh() *mesh {
 		vertPos:    o.VertPos,
 		vertNormal: o.VertNormal,
 		faceNormal: o.FaceNormal,
-		halfedge:   halfedges{starts: o.Starts, pairs: o.Pairs},
+		halfedge:   halfedges{starts: o.Starts, pairs: o.Pairs, propVert: o.PropVert},
 	}
 }
 

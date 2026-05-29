@@ -210,6 +210,131 @@ func appendPartialEdges(outR *outImpl, halfedgeR []Halfedge, wholeHalfedgeP []bo
 	}
 }
 
+// appendNewEdges is the Go port of AppendNewEdges (boolean_result.cpp:385): for
+// each new edge (a P-face x Q-face pair in edgesNew), order its verts along the
+// bounding box's longest dimension, PairUp the spans, and distribute the halfedges
+// to the two faces named by the key. concurrent_map is std::map (ordered), so
+// edgesNew is iterated in lexicographic (faceP, faceQ) key order; value.second is a
+// reference, so the slice is sorted/positioned in place. IsCancelled is parallel-only.
+func appendNewEdges(outR *outImpl, halfedgeR []Halfedge, facePtrR []int,
+	edgesNew map[[2]int][]edgePos, halfedgeRef []TriRef, facePQ2R []int, numFaceP int) {
+	vertPosR := outR.vertPos
+
+	keys := make([][2]int, 0, len(edgesNew))
+	for k := range edgesNew {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i][0] < keys[j][0] || (keys[i][0] == keys[j][0] && keys[i][1] < keys[j][1])
+	})
+
+	for _, key := range keys {
+		faceP := key[0]
+		faceQ := key[1]
+		positions := edgesNew[key]
+		sortEdgePos(positions)
+
+		bbox := emptyBox()
+		for _, edge := range positions {
+			bbox = bbox.UnionPoint(vertPosR[edge.vert])
+		}
+		size := bbox.Size()
+		// Order the points along their longest dimension.
+		i := 2
+		if size.X > size.Y && size.X > size.Z {
+			i = 0
+		} else if size.Y > size.Z {
+			i = 1
+		}
+		for j := range positions {
+			positions[j].pos = axis(vertPosR[positions[j].vert], i)
+		}
+
+		// add halfedges to result
+		faceLeft := facePQ2R[faceP]
+		faceRight := facePQ2R[numFaceP+faceQ]
+		forwardRef := TriRef{MeshID: 0, OriginalID: -1, FaceID: faceP, CoplanarID: -1}
+		backwardRef := TriRef{MeshID: 1, OriginalID: -1, FaceID: faceQ, CoplanarID: -1}
+		pairUp(positions, func(e Halfedge) {
+			forwardEdge := facePtrR[faceLeft]
+			facePtrR[faceLeft]++
+			backwardEdge := facePtrR[faceRight]
+			facePtrR[faceRight]++
+
+			e.PairedHalfedge = backwardEdge
+			halfedgeR[forwardEdge] = e
+			halfedgeRef[forwardEdge] = forwardRef
+
+			e.StartVert, e.EndVert = e.EndVert, e.StartVert
+			e.PairedHalfedge = forwardEdge
+			halfedgeR[backwardEdge] = e
+			halfedgeRef[backwardEdge] = backwardRef
+		})
+	}
+}
+
+// appendWholeEdges is the Go port of AppendWholeEdges (boolean_result.cpp:490) with
+// its DuplicateHalfedges functor (boolean_result.cpp:437) inlined as a sequential
+// for-each over inP's halfedges: each wholly-retained forward halfedge (startVert <
+// endVert, nonzero winding) is emitted |i03[startVert]| times — duplicated for
+// multiple output components, reversed when winding is negative — remapped via vP2R
+// into the two faces sharing it. AtomicAdd is a plain post-increment in the SEQ path;
+// the C++ outR parameter is unused and dropped.
+func appendWholeEdges(facePtrR []int, halfedgesR []Halfedge, halfedgeRef []TriRef,
+	inP *mesh, wholeHalfedgeP []bool, i03, vP2R, faceP2R []int, forward bool) {
+	halfedgesP := inP.halfedge
+	for idx := 0; idx < len(halfedgesP.starts); idx++ {
+		if !wholeHalfedgeP[idx] {
+			continue
+		}
+		startVert := halfedgesP.Start(idx)
+		endVert := halfedgesP.Start(nextHalfedge(idx))
+		if startVert >= endVert {
+			continue
+		}
+		inclusion := i03[startVert]
+		if inclusion == 0 {
+			continue
+		}
+		if inclusion < 0 { // reverse
+			startVert, endVert = endVert, startVert
+		}
+		startVert = vP2R[startVert]
+		endVert = vP2R[endVert]
+		propVert := halfedgesP.Prop(idx)
+		pair := halfedgesP.Pair(idx)
+		pairPropVert := halfedgesP.Prop(pair)
+		faceLeftP := idx / 3
+		newFace := faceP2R[faceLeftP]
+		faceRightP := pair / 3
+		faceRight := faceP2R[faceRightP]
+		// Negative inclusion means the halfedges are reversed, which means our
+		// reference is now to the endVert instead of the startVert, which is one
+		// position advanced CCW.
+		meshID := 1
+		if forward {
+			meshID = 0
+		}
+		forwardRef := TriRef{MeshID: meshID, OriginalID: -1, FaceID: faceLeftP, CoplanarID: -1}
+		backwardRef := TriRef{MeshID: meshID, OriginalID: -1, FaceID: faceRightP, CoplanarID: -1}
+
+		for i := 0; i < absInt(inclusion); i++ {
+			forwardEdge := facePtrR[newFace]
+			facePtrR[newFace]++
+			backwardEdge := facePtrR[faceRight]
+			facePtrR[faceRight]++
+
+			halfedgesR[forwardEdge] = Halfedge{StartVert: startVert, EndVert: endVert, PairedHalfedge: backwardEdge, PropVert: propVert}
+			halfedgesR[backwardEdge] = Halfedge{StartVert: endVert, EndVert: startVert, PairedHalfedge: forwardEdge, PropVert: pairPropVert}
+			halfedgeRef[forwardEdge] = forwardRef
+			halfedgeRef[backwardEdge] = backwardRef
+
+			startVert++
+			endVert++
+		}
+	}
+}
+
 // outImpl is the output Manifold::Impl being assembled by Boolean3::Result.
 // Fields are filled as the assembly progresses; more are added as later helpers
 // land (halfedge, triRef, properties).

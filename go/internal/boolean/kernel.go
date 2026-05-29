@@ -69,13 +69,15 @@ func shadow01(expandP, forward bool, a0, b1, b1s, b1e int, inA, inB *mesh) (int,
 // the start of the next halfedge in the triangle (the manifold invariant), as
 // elsewhere in the Go port.
 type halfedges struct {
-	starts []int32
-	pairs  []int32
+	starts   []int32
+	pairs    []int32
+	propVert []int32
 }
 
 func (h halfedges) Start(e int) int { return int(h.starts[e]) }
 func (h halfedges) End(e int) int   { return int(h.starts[nextHalfedge(e)]) }
 func (h halfedges) Pair(e int) int  { return int(h.pairs[e]) }
+func (h halfedges) Prop(e int) int  { return int(h.propVert[e]) }
 
 // nextHalfedge is the Go port of NextHalfedge (src/shared.h): the next halfedge
 // within the same triangle, via Next3 ((e/3)*3 + Next3(e%3)).
