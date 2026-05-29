@@ -31,17 +31,23 @@ import (
 // variant partitions ids[] into ranges (keeping duplicate-edge
 // segments contiguous) and runs each range in parallel; I've left
 // that as a known future TODO since the serial result is identical.
-func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
-	numHalfedge := len(triVerts)
+func (mi *MutableImpl) CreateHalfedges(triProp []int32, triVert []int32) {
+	numHalfedge := len(triProp)
 	if numHalfedge%3 != 0 {
-		panic("CreateHalfedges: triVerts length must be a multiple of 3")
+		panic("CreateHalfedges: triProp length must be a multiple of 3")
+	}
+	if len(triVert) != 0 && len(triVert) != numHalfedge {
+		panic("CreateHalfedges: triVert must be empty or the same length as triProp")
 	}
 	numTri := numHalfedge / 3
 	numEdge := numHalfedge / 2
 	policy := parallel.AutoPolicy(numTri, 100000)
 
-	// PrepHalfedges: build per-halfedge (startVert, endVert, propVert)
-	// records. For the single-arg form, startVert = propVert = v0.
+	// PrepHalfedges (src/impl.cpp:352-372): build per-halfedge
+	// (startVert, endVert, propVert) records. startVert/endVert come from
+	// triVert (or triProp when triVert is empty — the single-arg form,
+	// where startVert == propVert); propVert ALWAYS comes from triProp.
+	// The edge key / bucket offset is computed from startVert/endVert.
 	type heRec struct {
 		startVert, endVert, propVert int32
 	}
@@ -64,12 +70,16 @@ func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
 					j = 0
 				}
 				e := 3*tri + i
-				v0 := triVerts[3*tri+i]
-				v1 := triVerts[3*tri+j]
+				p0 := triProp[3*tri+i]
+				v0, v1 := p0, triProp[3*tri+j]
+				if len(triVert) > 0 {
+					v0 = triVert[3*tri+i]
+					v1 = triVert[3*tri+j]
+				}
 				if v0 == v1 {
 					panic("CreateHalfedges: topological degeneracy (v0 == v1)")
 				}
-				he[e] = heRec{startVert: v0, endVert: v1, propVert: v0}
+				he[e] = heRec{startVert: v0, endVert: v1, propVert: p0}
 				var fwd uint64
 				minV, maxV := v0, v1
 				if v0 < v1 {
@@ -98,12 +108,16 @@ func (mi *MutableImpl) CreateHalfedges(triVerts []int32) {
 					j = 0
 				}
 				e := 3*tri + i
-				v0 := triVerts[3*tri+i]
-				v1 := triVerts[3*tri+j]
+				p0 := triProp[3*tri+i]
+				v0, v1 := p0, triProp[3*tri+j]
+				if len(triVert) > 0 {
+					v0 = triVert[3*tri+i]
+					v1 = triVert[3*tri+j]
+				}
 				if v0 == v1 {
 					panic("CreateHalfedges: topological degeneracy (v0 == v1)")
 				}
-				he[e] = heRec{startVert: v0, endVert: v1, propVert: v0}
+				he[e] = heRec{startVert: v0, endVert: v1, propVert: p0}
 				var off int32
 				if v0 <= v1 {
 					off = int32(vertCount)

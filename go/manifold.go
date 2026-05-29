@@ -898,9 +898,8 @@ type MeshGL64 struct {
 // happens on the C++ side; an invalid mesh produces a Manifold with
 // non-NoError Status.
 func NewManifoldFromMeshGL64(m MeshGL64) *Manifold {
-	// Native validation cascade (src/impl.h:281-345). On empty/malformed
-	// input we report the Error natively; valid input falls through to the
-	// bridge body (being drilled increment by increment).
+	// Native validation cascade (src/impl.h:281-345); on empty/malformed
+	// input report the Error natively, else build the Impl natively.
 	if status, proceed := validateMeshGL(
 		m.NumProp, m.VertProperties, m.TriVerts,
 		m.MergeFromVert, m.MergeToVert,
@@ -909,25 +908,13 @@ func NewManifoldFromMeshGL64(m MeshGL64) *Manifold {
 	); !proceed {
 		return emptyManifold(status)
 	}
-	if mfd, handled := newImplFromMeshGL(
+	return newImplFromMeshGL(
 		m.NumProp, m.VertProperties, m.TriVerts,
 		m.MergeFromVert, m.MergeToVert,
 		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
 		m.FaceID, m.HalfedgeTangent, m.Tolerance,
 		false, // MeshGL64 -> double precision
-	); handled {
-		return mfd
-	}
-	// needsPropMap (extra props + vertex merge) still needs the two-arg
-	// CreateHalfedges (Inc 7) — fall back to the bridge body.
-	return wrap(bridge.ManifoldFromMeshGL64(
-		m.NumProp,
-		m.VertProperties, m.TriVerts,
-		m.MergeFromVert, m.MergeToVert,
-		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
-		m.FaceID, m.HalfedgeTangent,
-		m.Tolerance,
-	))
+	)
 }
 
 // NewManifoldFromMeshGL constructs a Manifold from a Go-owned MeshGL.
@@ -941,23 +928,13 @@ func NewManifoldFromMeshGL(m MeshGL) *Manifold {
 	); !proceed {
 		return emptyManifold(status)
 	}
-	if mfd, handled := newImplFromMeshGL(
+	return newImplFromMeshGL(
 		m.NumProp, m.VertProperties, m.TriVerts,
 		m.MergeFromVert, m.MergeToVert,
 		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
 		m.FaceID, m.HalfedgeTangent, m.Tolerance,
 		true, // MeshGL -> single precision
-	); handled {
-		return mfd
-	}
-	return wrap(bridge.ManifoldFromMeshGL(
-		m.NumProp,
-		m.VertProperties, m.TriVerts,
-		m.MergeFromVert, m.MergeToVert,
-		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
-		m.FaceID, m.HalfedgeTangent,
-		m.Tolerance,
-	))
+	)
 }
 
 // Smoothness mirrors C++ struct manifold::Smoothness. Used by Smooth to
@@ -1543,7 +1520,7 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 	defer newImpl.Delete()
 	newImpl.ResizeVerts(len(verts))
 	copy(newImpl.Verts(), verts)
-	newImpl.CreateHalfedges(tris)
+	newImpl.CreateHalfedges(tris, nil)
 	newImpl.InitializeOriginal()
 	newImpl.CalculateBBox()
 	newImpl.SetEpsilon(-1, false)

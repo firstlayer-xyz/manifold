@@ -154,7 +154,7 @@ func LevelSet(
 	defer impl.Delete()
 	impl.h.ResizeVerts(len(vertPos))
 	copy(impl.Verts(), vertPos)
-	impl.CreateHalfedges(triVerts)
+	impl.CreateHalfedges(triVerts, nil)
 	impl.CleanupTopology()
 	impl.RemoveUnreferencedVerts()
 	impl.InitializeOriginal()

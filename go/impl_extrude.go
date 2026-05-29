@@ -149,7 +149,7 @@ func extrude(crossSection Polygons, height float64,
 	defer mi.Delete()
 	mi.h.ResizeVerts(len(verts))
 	copy(mi.Verts(), verts)
-	mi.CreateHalfedges(tris)
+	mi.CreateHalfedges(tris, nil)
 	mi.InitializeOriginal()
 	mi.CalculateBBox()
 	mi.SetEpsilon(-1, false)

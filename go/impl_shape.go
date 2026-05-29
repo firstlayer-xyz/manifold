@@ -100,7 +100,7 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *MutableImpl {
 		verts[i] = m.ApplyAffine(v)
 	}
 
-	mi.CreateHalfedges(table.triVerts)
+	mi.CreateHalfedges(table.triVerts, nil)
 	mi.InitializeOriginal()
 	mi.CalculateBBox()
 	mi.SetEpsilon(-1, false)

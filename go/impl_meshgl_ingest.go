@@ -95,11 +95,8 @@ func emptyManifold(status Error) *Manifold {
 
 // newImplFromMeshGL is the Go port of the body of the C++ ingest
 // constructor Manifold::Impl::Impl(const MeshGLP&) (src/impl.h:347-504) —
-// everything after the validation cascade. It builds the Impl natively for
-// the COMMON path and returns (manifold, true). For the needsPropMap case
-// (extra properties AND a vertex merge, which needs the two-arg
-// CreateHalfedges not yet drilled) it returns (nil, false) so the caller
-// falls back to the bridge.
+// everything after the validation cascade. It builds the Impl natively and
+// seals it into a Manifold (including the error early-outs via MakeEmpty).
 //
 // useSingle == std::is_same<Precision,float>::value (true for MeshGL/
 // float32, false for MeshGL64) and threads into SetEpsilon.
@@ -110,7 +107,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	runIndex []I, runOriginalID []uint32, runTransform []P, runFlags []uint8,
 	faceID []I, halfedgeTangent []P, tolerance P,
 	useSingle bool,
-) (*Manifold, bool) {
+) *Manifold {
 	numVert := len(vertProperties) / fullProp
 	numTri := len(triVerts) / 3
 	extraProp := fullProp - 3
@@ -127,16 +124,16 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 			from := int(mergeFromVert[i])
 			to := int(mergeToVert[i])
 			if from >= numVert || to >= numVert {
-				return emptyManifold(MergeIndexOutOfBounds), true
+				return emptyManifold(MergeIndexOutOfBounds)
 			}
 			prop2vert[from] = int32(to)
 		}
 	}
 
-	// needsPropMap requires the two-arg CreateHalfedges (Inc 7) — defer.
-	if extraProp > 0 && len(prop2vert) > 0 {
-		return nil, false
-	}
+	// needsPropMap: extra properties AND a vertex merge, so propVert
+	// (triProp) is decoupled from startVert/endVert (triVert) and the
+	// two-arg CreateHalfedges is required.
+	needsPropMap := extraProp > 0 && len(prop2vert) > 0
 
 	mi := newImpl()
 	defer mi.Delete()
@@ -217,18 +214,25 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 		}
 	}
 
-	// triProp build + degenerate cull (src/impl.h:434-462). Common path:
-	// no triVert, push the (possibly prop2vert-remapped) triV into triProp.
+	// triProp / triVert build + degenerate cull (src/impl.h:434-462).
+	// triP[j]=raw vert (= prop index), triV[j]=prop2vert-remapped vert.
+	// Common path pushes triV into triProp (single-arg form). needsPropMap
+	// pushes triP into triProp and triV into triVert (two-arg form).
 	triProp := make([]int32, 0, 3*numTri)
+	var triVert []int32
+	if needsPropMap {
+		triVert = make([]int32, 0, 3*numTri)
+	}
 	var keptMeshID, keptOrigID, keptFaceID, keptCoplanar []int32
 	for i := 0; i < numTri; i++ {
-		var triV [3]int32
+		var triP, triV [3]int32
 		for j := 0; j < 3; j++ {
 			vert := int(triVerts[3*i+j])
 			if vert >= numVert {
 				mi.h.MakeEmpty(int(VertexIndexOutOfBounds))
-				return mi.ToManifold(), true
+				return mi.ToManifold()
 			}
+			triP[j] = int32(vert)
 			if len(prop2vert) == 0 {
 				triV[j] = int32(vert)
 			} else {
@@ -236,7 +240,12 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 			}
 		}
 		if triV[0] != triV[1] && triV[1] != triV[2] && triV[2] != triV[0] {
-			triProp = append(triProp, triV[0], triV[1], triV[2])
+			if needsPropMap {
+				triProp = append(triProp, triP[0], triP[1], triP[2])
+				triVert = append(triVert, triV[0], triV[1], triV[2])
+			} else {
+				triProp = append(triProp, triV[0], triV[1], triV[2])
+			}
 			r := triRefTemp[i]
 			keptMeshID = append(keptMeshID, r.meshID)
 			keptOrigID = append(keptOrigID, r.originalID)
@@ -246,10 +255,10 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	}
 	mi.h.SetTriRefs(keptMeshID, keptOrigID, keptFaceID, keptCoplanar)
 
-	mi.CreateHalfedges(triProp)
+	mi.CreateHalfedges(triProp, triVert)
 	if !mi.IsManifold() {
 		mi.h.MakeEmpty(int(NotManifold))
-		return mi.ToManifold(), true
+		return mi.ToManifold()
 	}
 
 	// Finalize tail (src/impl.h:473-503), exact order.
@@ -263,10 +272,10 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	mi.SortGeometry()
 	if !mi.IsFinite() {
 		mi.h.MakeEmpty(int(NonFiniteVertex))
-		return mi.ToManifold(), true
+		return mi.ToManifold()
 	}
 	mi.h.SetMeshRelationOriginalID(-1)
-	return mi.ToManifold(), true
+	return mi.ToManifold()
 }
 
 type triRefData struct{ meshID, originalID, faceID, coplanarID int32 }

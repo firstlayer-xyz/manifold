@@ -106,6 +106,13 @@ func TestMeshGLIngest_VsCpp(t *testing.T) {
 			c.NumProp = 4
 			return c
 		}},
+		// cube with per-face normals: extra props (NumProp=6) AND a vertex
+		// merge -> needsPropMap, exercising the two-arg CreateHalfedges.
+		{"cube_normals_needsPropMap", func() MeshGL64 {
+			cn := Cube(Vec3{X: 1, Y: 1, Z: 1}, false).CalculateNormals(0, 60)
+			defer runtime.KeepAlive(cn)
+			return cn.GetMeshGL64(0)
+		}},
 	}
 
 	_ = numTri
