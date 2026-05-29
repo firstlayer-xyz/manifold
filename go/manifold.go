@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/disjointsets"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
@@ -1238,7 +1239,7 @@ func (m *Manifold) Decompose() []*Manifold {
 	}
 
 	numVert := len(impl.Verts())
-	uf := NewDisjointSets(numVert)
+	uf := disjointsets.New(numVert)
 
 	starts := impl.HalfedgeStarts()
 	for edge := 0; edge < len(starts); edge++ {

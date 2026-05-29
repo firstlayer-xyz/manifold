@@ -1,11 +1,11 @@
-package manifold
+package disjointsets
 
 import "testing"
 
 // TestDisjointSets_Basic covers the find/unite/same primitives on a
 // small forest.
 func TestDisjointSets_Basic(t *testing.T) {
-	d := NewDisjointSets(6)
+	d := New(6)
 	if d.Size() != 6 {
 		t.Fatalf("Size: got %d, want 6", d.Size())
 	}
@@ -38,7 +38,7 @@ func TestDisjointSets_Basic(t *testing.T) {
 // lonely (rank-0) nodes get fresh sequential labels; multi-element
 // components share a label per root.
 func TestDisjointSets_ConnectedComponents(t *testing.T) {
-	d := NewDisjointSets(5)
+	d := New(5)
 	d.Unite(0, 1)
 	d.Unite(1, 2)
 	// {0,1,2} is one component; {3}, {4} are lonely.

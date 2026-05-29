@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync/atomic"
 
+	"github.com/firstlayer-xyz/manifold/go/internal/disjointsets"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -96,7 +97,7 @@ func (mi *MutableImpl) DedupePropVerts() {
 	// GetLabels (impl.cpp): union-find over the merge-candidate edges,
 	// then connected-components labeling over the propVerts.
 	numPropVert := len(properties) / numProp
-	uf := NewDisjointSets(numPropVert)
+	uf := disjointsets.New(numPropVert)
 	for _, e := range vert2vert {
 		if e[0] == -1 || e[1] == -1 {
 			continue
