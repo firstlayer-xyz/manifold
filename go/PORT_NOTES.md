@@ -244,13 +244,15 @@ memory model. The C++ relies on word-sized non-atomic reads being
     differences can reorder near-equal-cost ears on symmetric inputs (C++
     TestPoly itself checks only the count). `triangulateNative`
     (impl_triangulate.go) is now **pure native — no bridge fallback**.
-  - **Deferred shortcut — brute-force collider (increment 9).**
-    `VertCollider` returns a flat `[]*vert` and `EarCost` scans it filtered
-    by `earBox.Contains`, instead of `BuildTwoDTree`/`QueryTwoDTree`.
-    Output-identical (the kd-tree only invokes its callback behind the same
-    `Contains` guard, and `totalCost` is an order-insensitive max) — a
-    perf-only deferral, verified by the audit. Real `internal/tree2d`
-    replaces it later.
+  - The 2D kd-tree (`tree2d.go`: `BuildTwoDTree`/`BuildTwoDTreeImpl`/
+    `QueryTwoDTree`, a verbatim port of src/tree2d.{h,cpp}) backs the ear
+    collider: `VertCollider` returns an `idxCollider{points, itr}`, builds
+    the tree in place, and `EarCost` queries it by the ear's bounding box
+    (recovering each vert via `itr[point.Idx]`). C++ `VecView` sub-views map
+    to Go sub-slices (shared backing array, in-place `sort.SliceStable`).
+    Replaced the earlier O(n^2) brute-force scan with the tree's O(n log n)
+    build + O(log n + k) per-ear query; output-identical (all differential
+    tests still pass). Adversarial line-by-line audit: 0 findings.
   - Wired into the cap triangulation of `extrude` (native
     `triangulate.TriangulateIdx(polygonsIndexed)`, mirroring C++ Extrude)
     and `revolve` (native `triangulate.Triangulate(polygons, -1)`,

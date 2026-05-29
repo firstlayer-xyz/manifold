@@ -155,11 +155,9 @@ func delaunayCost(diff geom.Vec2, scale, epsilon float64) float64 {
 }
 
 // earCost is the Go port of Vert::EarCost (polygon.cpp:478): the cost of this
-// ear, checking it against every other vert. Increment-6 uses a brute-force
-// scan over the collider verts filtered by earBox.Contains — output-identical
-// to QueryTwoDTree (which also Contains-filters), since totalCost is an
-// order-insensitive max. The real 2D kd-tree replaces the scan in increment 9.
-func (v *vert) earCost(epsilon float64, collider []*vert) float64 {
+// ear, checking it against the verts inside the ear's bounding box via the 2D
+// kd-tree. totalCost is the (order-insensitive) max over those verts.
+func (v *vert) earCost(epsilon float64, collider idxCollider) float64 {
 	openSide := v.left.pos.Sub(v.right.pos)
 	center := v.left.pos.Add(v.right.pos).Scale(0.5)
 	scale := 4 / openSide.Dot(openSide)
@@ -182,12 +180,11 @@ func (v *vert) earCost(epsilon float64, collider []*vert) float64 {
 
 	lid := v.left.meshIdx
 	rid := v.right.meshIdx
-	for _, test := range collider {
-		if !earBox.Contains(test.pos) {
-			continue
-		}
+	queryTwoDTree(collider.points, earBox, func(point PolyVert) {
+		test := collider.itr[point.Idx]
 		if !clipped(test) && test.meshIdx != v.meshIdx &&
-			test.meshIdx != lid && test.meshIdx != rid { // skip duplicated verts
+			test.meshIdx != lid &&
+			test.meshIdx != rid { // skip duplicated verts
 			cost := v.costOf(test, openSide, epsilon)
 			if cost < -epsilon {
 				cost = delaunayCost(test.pos.Sub(center), scale, epsilon)
@@ -196,6 +193,6 @@ func (v *vert) earCost(epsilon float64, collider []*vert) float64 {
 				totalCost = cost
 			}
 		}
-	}
+	})
 	return totalCost
 }

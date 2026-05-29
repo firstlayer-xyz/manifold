@@ -362,9 +362,18 @@ func (ec *earClip) joinPolygons(start, connector *vert) {
 	ec.clipIfDegenerate(newConnector)
 }
 
+// idxCollider is the Go port of EarClip::IdxCollider (src/polygon.cpp:306): the
+// kd-tree points (each carrying an index back into itr) plus the verts they
+// reference. BuildTwoDTree reorders points in place, so point.Idx is how
+// EarCost recovers the original vert after the reorder.
+type idxCollider struct {
+	points []PolyVert
+	itr    []*vert
+}
+
 // processEar is the Go port of EarClip::ProcessEar (src/polygon.cpp:802):
 // recompute v's cost and update its position in earsQueue_ (remove + reinsert).
-func (ec *earClip) processEar(v *vert, collider []*vert) {
+func (ec *earClip) processEar(v *vert, collider idxCollider) {
 	if v.ear.Valid() {
 		ec.earsQueue.Erase(v.ear)
 		v.ear = msHandle[*vert]{}
@@ -381,19 +390,25 @@ func (ec *earClip) processEar(v *vert, collider []*vert) {
 }
 
 // vertCollider is the Go port of EarClip::VertCollider (src/polygon.cpp:821):
-// collect all un-clipped verts of the polygon. Increment 6 returns the flat
-// slice and earCost scans it; increment 9 builds the real 2D kd-tree.
-func (ec *earClip) vertCollider(start *vert) []*vert {
-	var verts []*vert
-	ec.loop(start, func(v *vert) { verts = append(verts, v) })
-	return verts
+// collect all un-clipped verts of the polygon into a kd-tree, each point
+// expanded (in EarCost) by epsilon. Each ear uses this tree to quickly find the
+// subset of verts to check for cost.
+func (ec *earClip) vertCollider(start *vert) idxCollider {
+	var itr []*vert
+	var points []PolyVert
+	ec.loop(start, func(v *vert) {
+		points = append(points, PolyVert{Pos: v.pos, Idx: len(itr)})
+		itr = append(itr, v)
+	})
+	buildTwoDTree(points)
+	return idxCollider{points: points, itr: itr}
 }
 
 // triangulatePoly is the Go port of EarClip::TriangulatePoly
 // (src/polygon.cpp:836): the main ear-clipping loop for one simple polygon.
 func (ec *earClip) triangulatePoly(start *vert) {
 	collider := ec.vertCollider(start)
-	if len(collider) == 0 {
+	if len(collider.itr) == 0 {
 		return
 	}
 
