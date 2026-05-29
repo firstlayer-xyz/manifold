@@ -123,8 +123,8 @@ func TestBox_TranslateScaleFinite(t *testing.T) {
 func TestSindCosd_ExactAtMultiplesOf90(t *testing.T) {
 	// The whole point of sind/cosd is that multiples of 90° come out exact.
 	cases := []struct {
-		deg            float64
-		wantS, wantC   float64
+		deg          float64
+		wantS, wantC float64
 	}{
 		{0, 0, 1},
 		{90, 1, 0},
@@ -342,6 +342,30 @@ func TestCCW_SignAndColinearity(t *testing.T) {
 			if got := CCW(tc.p0, tc.p1, tc.p2, tc.tol); got != tc.want {
 				t.Errorf("CCW(%v,%v,%v, tol=%v) = %d, want %d",
 					tc.p0, tc.p1, tc.p2, tc.tol, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestQuaternionRotation checks RotationQuat + Qrot against known rotations:
+// rotating a basis vector 90° about an axis lands on the expected basis vector.
+func TestQuaternionRotation(t *testing.T) {
+	half := math.Pi / 2
+	cases := []struct {
+		name          string
+		axis, v, want Vec3
+		angle         float64
+	}{
+		{"x_about_z_90", Vec3{Z: 1}, Vec3{X: 1}, Vec3{Y: 1}, half},  // +X -> +Y
+		{"y_about_z_90", Vec3{Z: 1}, Vec3{Y: 1}, Vec3{X: -1}, half}, // +Y -> -X
+		{"x_about_y_90", Vec3{Y: 1}, Vec3{X: 1}, Vec3{Z: -1}, half}, // +X -> -Z
+		{"identity", Vec3{Z: 1}, Vec3{X: 1, Y: 2, Z: 3}, Vec3{X: 1, Y: 2, Z: 3}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Qrot(RotationQuat(tc.axis, tc.angle), tc.v)
+			if !vec3Eq(got, tc.want, 1e-12) {
+				t.Fatalf("Qrot(RotationQuat(%v,%v),%v) = %v, want %v", tc.axis, tc.angle, tc.v, got, tc.want)
 			}
 		})
 	}

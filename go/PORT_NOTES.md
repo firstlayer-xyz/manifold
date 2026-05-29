@@ -212,11 +212,27 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `meshID && coplanarID && faceID`; `coplanarID` is maintained through the
   create/sort/boolean pipeline, so `collapseColinearEdges` needs no extra
   marking pass.
-- `CreateTangents` (`CreateTangentsIdx` and
-  `CreateTangentsFromSmoothness`) — `src/smoothing.cpp`, depends on
-  `GetNormal`, `TangentFromNormal`, `CircularTangent`,
-  `IsInsideQuad` plus the Bezier/quaternion machinery in
-  `InterpTri`. (ForVert is drilled.)
+- `CreateTangents` — `src/smoothing.cpp`. PARTIALLY drilled
+  (`impl_smoothing_tangents.go`):
+  - `CreateTangents(int)` (the normalIdx form) is native: `createTangentsIdx`
+    + `distributeTangents` (the quaternion angular-redistribution pass) + the
+    read helpers `getNormal`/`tangentFromNormal`/`circularTangent`/
+    `isInsideQuad`/`equalNormals`/`vertHalfedge` (on a `tangentState`
+    snapshot). Differential-tested vs the bridge (`TestCreateTangentsIdx_VsCpp`,
+    smooth sphere + sharp cube) within 1e-9 — semantic, not bit-exact, because
+    tangents use acos/sin/cos (Go stdlib vs C++ musl). NOT yet wired into the
+    production `MutableImpl.CreateTangents` (still bridge) — that flip + the
+    Smooth* wiring is the next increment.
+  - Added `geom.Vec4` (+ linalg-faithful `Lerp`), `geom.Mat3.MulScalar`, and
+    `geom.RotationQuat`/`Qrot` (quaternion rotation, unit-tested). `prevHalfedge`
+    added next to `nextHalfedge`. Reuses the existing `forVert`/`forVertTransform`.
+  - `tangentState` is a read-side bridge artifact (like `dedupeState`): a
+    snapshot of the Impl arrays because the Impl lives behind cgo today.
+    Collapses to direct field access when the persistent Go Impl lands.
+  - STILL BRIDGE: `CreateTangents(vector<Smoothness>)` (the sharpened-edge form,
+    smoothing.cpp:936) + `UpdateSharpenedEdges`, and `SmoothImpl` (the
+    Smooth(MeshGL) constructor). No `MarkCoplanar`-style prerequisites; the
+    InterpTri Bezier machinery is only needed by Refine, not CreateTangents.
 - `RayCast`, `Minkowski` — still C++; use the bridge Collider.
   When drilled, can use the Go `internal/collider` package directly.
   (`MinGap` is now drilled — native Go via `internal/collider` +

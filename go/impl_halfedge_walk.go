@@ -16,6 +16,18 @@ func nextHalfedge(current int) int {
 	return current + 1
 }
 
+// prevHalfedge mirrors PrevHalfedge in src/shared.h:38:
+//
+//	current += current % 3 == 0 ? 2 : -1
+//
+// Walks to the previous halfedge of the same triangle.
+func prevHalfedge(current int) int {
+	if current%3 == 0 {
+		return current + 2
+	}
+	return current - 1
+}
+
 // triOf returns the three halfedge indices of the triangle containing
 // edge, in order {edge, next, next-next}. Mirrors C++ TriOf
 // (src/edge_op.cpp:25).

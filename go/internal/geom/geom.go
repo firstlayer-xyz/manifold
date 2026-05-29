@@ -309,6 +309,46 @@ func (a Vec4) Lerp(b Vec4, t float64) Vec4 {
 	}
 }
 
+// A Vec4 also represents a quaternion (x,y,z,w), as in linalg. qxdir/qydir/qzdir
+// are the rotated basis vectors (linalg.h:1820/1828/1838), used by Qrot.
+func qxdir(q Vec4) Vec3 {
+	return Vec3{
+		X: q.W*q.W + q.X*q.X - q.Y*q.Y - q.Z*q.Z,
+		Y: (q.X*q.Y + q.Z*q.W) * 2,
+		Z: (q.Z*q.X - q.Y*q.W) * 2,
+	}
+}
+
+func qydir(q Vec4) Vec3 {
+	return Vec3{
+		X: (q.X*q.Y - q.Z*q.W) * 2,
+		Y: q.W*q.W - q.X*q.X + q.Y*q.Y - q.Z*q.Z,
+		Z: (q.Y*q.Z + q.X*q.W) * 2,
+	}
+}
+
+func qzdir(q Vec4) Vec3 {
+	return Vec3{
+		X: (q.Z*q.X + q.Y*q.W) * 2,
+		Y: (q.Y*q.Z - q.X*q.W) * 2,
+		Z: q.W*q.W - q.X*q.X - q.Y*q.Y + q.Z*q.Z,
+	}
+}
+
+// Qrot rotates v by the quaternion q (la::qrot, linalg.h:1853):
+// qxdir(q)*v.x + qydir(q)*v.y + qzdir(q)*v.z.
+func Qrot(q Vec4, v Vec3) Vec3 {
+	return qxdir(q).Scale(v.X).Add(qydir(q).Scale(v.Y)).Add(qzdir(q).Scale(v.Z))
+}
+
+// RotationQuat returns the normalized quaternion for a rotation of angle
+// radians about axis (la::rotation_quat, linalg.h:1892):
+// {axis * sin(angle/2), cos(angle/2)}.
+func RotationQuat(axis Vec3, angle float64) Vec4 {
+	a := axis.Scale(math.Sin(angle / 2))
+	return Vec4{X: a.X, Y: a.Y, Z: a.Z, W: math.Cos(angle / 2)}
+}
+
 type Mat3 [3][3]float64
 
 // Mat3x4 is a 3-row, 4-column matrix in column-major order: Mat3x4[col][row].
