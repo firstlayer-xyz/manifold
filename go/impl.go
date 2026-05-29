@@ -281,8 +281,7 @@ func (mi *MutableImpl) ResizeVertNormals(n int) { mi.h.ResizeVertNormals(n) }
 
 // --- Bridge-only mutators (still C++ algorithms) ---
 
-// SimplifyTopology calls C++ Impl::SimplifyTopology.
-func (mi *MutableImpl) SimplifyTopology() { mi.h.SimplifyTopology() }
+// SimplifyTopology is native Go — see impl_simplify.go.
 
 // Subdivide calls C++ Impl::Subdivide with the constant-n splits lambda.
 func (mi *MutableImpl) SubdivideN(n int) { mi.h.SubdivideN(n) }

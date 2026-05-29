@@ -247,7 +247,7 @@ func (m *Manifold) Simplify(tolerance float64) *Manifold {
 		newImpl.SetToleranceValue(tolerance)
 		newImpl.SetNormalsAndCoplanar()
 	}
-	newImpl.SimplifyTopology()
+	newImpl.SimplifyTopology(0)
 	newImpl.SortGeometry()
 	newImpl.SetToleranceValue(oldTolerance)
 	return newImpl.ToManifold()
@@ -360,7 +360,7 @@ func (m *Manifold) SetTolerance(tol float64) *Manifold {
 	if tol > s.Tolerance {
 		newImpl.SetToleranceValue(tol)
 		newImpl.SetNormalsAndCoplanar()
-		newImpl.SimplifyTopology()
+		newImpl.SimplifyTopology(0)
 		newImpl.SortGeometry()
 	} else {
 		// For reducing tolerance, keep it at least equal to epsilon.

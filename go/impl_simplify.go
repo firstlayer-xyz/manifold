@@ -494,6 +494,58 @@ func (s *dedupeState) collapseShortEdges(firstNewVert int) {
 	})
 }
 
+// collapseColinearEdges is the Go port of Manifold::Impl::CollapseColinearEdges
+// (src/edge_op.cpp:210). Repeatedly collapses edges whose startVert is
+// surrounded by only two original faces (a redundant colinear vert),
+// looping until a pass collapses nothing. "Colinear" is a GLOBAL property
+// read via TriRef.SameFace (coplanarID, set upstream), not a local
+// geometric test — which is what keeps it free of error stacking. Unlike
+// CollapseShortEdges, the per-edge collapse always uses the 2-arg form
+// (tol=-1 -> epsilon, firstNewVert=0); the outer firstNewVert only gates
+// the predicate.
+func (s *dedupeState) collapseColinearEdges(firstNewVert int) {
+	var fs flagStore
+	nbEdges := s.numHalfedge()
+	var scratch []int
+	for {
+		numFlagged := 0
+		colinearEdge := func(edge int) bool {
+			pair := int(s.pair(edge))
+			if pair < 0 || int(s.start(edge)) < firstNewVert {
+				return false
+			}
+			// Flag redundant edges — startVert surrounded by only two
+			// original triangles.
+			ref0 := s.triRefs[edge/3]
+			current := nextHalfedge(pair)
+			ref1 := s.triRefs[current/3]
+			ref1Updated := !triRefSameFace(ref0, ref1)
+			for current != edge {
+				current = nextHalfedge(int(s.pair(current)))
+				ref := s.triRefs[current/3]
+				if !triRefSameFace(ref, ref0) && !triRefSameFace(ref, ref1) {
+					if !ref1Updated {
+						ref1 = ref
+						ref1Updated = true
+					} else {
+						return false
+					}
+				}
+			}
+			return true
+		}
+		fs.run(nbEdges, colinearEdge, func(i int) {
+			if s.collapseEdge(i, &scratch, -1, 0) {
+				numFlagged++
+			}
+			scratch = scratch[:0]
+		})
+		if numFlagged == 0 {
+			break
+		}
+	}
+}
+
 // swapDegenerates is the Go port of Manifold::Impl::SwapDegenerates
 // (src/edge_op.cpp:265). Flags degenerate (sliver) triangles whose long
 // edge can be swapped into a neighbor, then runs recursiveEdgeSwap on each
@@ -562,6 +614,24 @@ func (mi *MutableImpl) RemoveDegenerates(firstNewVert int) {
 	mi.CleanupTopology()
 	s := newDedupeState(mi)
 	s.collapseShortEdges(firstNewVert)
+	s.swapDegenerates(firstNewVert)
+	s.commit(mi)
+	mi.CalculateVertNormals()
+}
+
+// SimplifyTopology is the Go port of Manifold::Impl::SimplifyTopology
+// (src/edge_op.cpp:141): RemoveDegenerates plus an extra
+// CollapseColinearEdges pass between the short-edge and swap passes.
+// Used by the Boolean result cleanup and the Refine family. firstNewVert
+// restricts edits to newly-created verts (Boolean passes it; 0 otherwise).
+func (mi *MutableImpl) SimplifyTopology(firstNewVert int) {
+	if len(mi.HalfedgeStarts()) == 0 {
+		return
+	}
+	mi.CleanupTopology()
+	s := newDedupeState(mi)
+	s.collapseShortEdges(firstNewVert)
+	s.collapseColinearEdges(firstNewVert)
 	s.swapDegenerates(firstNewVert)
 	s.commit(mi)
 	mi.CalculateVertNormals()

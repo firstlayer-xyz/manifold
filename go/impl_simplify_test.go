@@ -49,22 +49,75 @@ func TestRemoveDegenerates_VsCpp(t *testing.T) {
 			defer runtime.KeepAlive(goM)
 			refM := removeDegenResult(t, m, tc.eps, true)
 			defer runtime.KeepAlive(refM)
+			assertSameManifold(t, goM, refM)
+		})
+	}
+}
 
-			if g, r := goM.NumVert(), refM.NumVert(); g != r {
-				t.Errorf("NumVert: go=%d ref=%d", g, r)
-			}
-			if g, r := goM.NumTri(), refM.NumTri(); g != r {
-				t.Errorf("NumTri: go=%d ref=%d", g, r)
-			}
-			if g, r := goM.Genus(), refM.Genus(); g != r {
-				t.Errorf("Genus: go=%d ref=%d", g, r)
-			}
-			if !floatClose(goM.Volume(), refM.Volume(), 1e-9, 1e-9) {
-				t.Errorf("Volume: go=%v ref=%v", goM.Volume(), refM.Volume())
-			}
-			if !floatClose(goM.SurfaceArea(), refM.SurfaceArea(), 1e-9, 1e-9) {
-				t.Errorf("SurfaceArea: go=%v ref=%v", goM.SurfaceArea(), refM.SurfaceArea())
-			}
+// assertSameManifold checks that two manifolds are topologically and
+// geometrically identical — the differential-equality check for the
+// edge_op.cpp ports (Go vs the C++ bridge reference).
+func assertSameManifold(t *testing.T, goM, refM *Manifold) {
+	t.Helper()
+	if g, r := goM.NumVert(), refM.NumVert(); g != r {
+		t.Errorf("NumVert: go=%d ref=%d", g, r)
+	}
+	if g, r := goM.NumTri(), refM.NumTri(); g != r {
+		t.Errorf("NumTri: go=%d ref=%d", g, r)
+	}
+	if g, r := goM.Genus(), refM.Genus(); g != r {
+		t.Errorf("Genus: go=%d ref=%d", g, r)
+	}
+	if !floatClose(goM.Volume(), refM.Volume(), 1e-9, 1e-9) {
+		t.Errorf("Volume: go=%v ref=%v", goM.Volume(), refM.Volume())
+	}
+	if !floatClose(goM.SurfaceArea(), refM.SurfaceArea(), 1e-9, 1e-9) {
+		t.Errorf("SurfaceArea: go=%v ref=%v", goM.SurfaceArea(), refM.SurfaceArea())
+	}
+}
+
+// simplifyTopoResult runs SimplifyTopology — native Go or the C++ bridge
+// reference — on a copy of m's Impl, compacts via SortGeometry, and seals
+// it into a Manifold.
+func simplifyTopoResult(t *testing.T, m *Manifold, eps float64, useBridge bool) *Manifold {
+	t.Helper()
+	view := getImpl(m)
+	defer view.Delete()
+	impl := view.Copy()
+	defer impl.Delete()
+	impl.SetEpsilonValue(eps)
+	impl.SetToleranceValue(eps)
+	if useBridge {
+		impl.h.SimplifyTopology()
+	} else {
+		impl.SimplifyTopology(0)
+	}
+	impl.SortGeometry()
+	return impl.ToManifold()
+}
+
+// TestSimplifyTopology_VsCpp checks native Go SimplifyTopology (which adds
+// a CollapseColinearEdges pass to RemoveDegenerates) against the C++
+// reference, over no-op and aggressive-collapse cases.
+func TestSimplifyTopology_VsCpp(t *testing.T) {
+	cases := []struct {
+		name string
+		mk   func() *Manifold
+		eps  float64
+	}{
+		{"cube_noop", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, false) }, 1e-9},
+		{"sphere_noop", func() *Manifold { return Sphere(1, 32) }, 1e-9},
+		{"sphere_collapse", func() *Manifold { return Sphere(1, 32) }, 0.3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.mk()
+			defer runtime.KeepAlive(m)
+			goM := simplifyTopoResult(t, m, tc.eps, false)
+			defer runtime.KeepAlive(goM)
+			refM := simplifyTopoResult(t, m, tc.eps, true)
+			defer runtime.KeepAlive(refM)
+			assertSameManifold(t, goM, refM)
 		})
 	}
 }
