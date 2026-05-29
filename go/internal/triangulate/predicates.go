@@ -15,6 +15,32 @@ func cppMin(a, b float64) float64 {
 	return a
 }
 
+// isFinite mirrors std::isfinite: true when x is neither infinite nor NaN.
+func isFinite(x float64) bool {
+	return !math.IsInf(x, 0) && !math.IsNaN(x)
+}
+
+// interpY2X mirrors Vert::InterpY2X (polygon.cpp:415): the x-value on the edge
+// this->this.right corresponding to start.y, or NaN if the edge does not cross
+// start.y from below to above, to the right of start, within epsilon. onTop != 0
+// restricts which end may terminate within the epsilon band.
+func (v *vert) interpY2X(start geom.Vec2, onTop int, epsilon float64) float64 {
+	if math.Abs(v.pos.Y-start.Y) <= epsilon {
+		if v.right.pos.Y <= start.Y+epsilon || onTop == 1 {
+			return math.NaN()
+		}
+		return v.pos.X
+	} else if v.pos.Y < start.Y-epsilon {
+		if v.right.pos.Y > start.Y+epsilon {
+			return v.pos.X + (start.Y-v.pos.Y)*(v.right.pos.X-v.pos.X)/(v.right.pos.Y-v.pos.Y)
+		} else if v.right.pos.Y < start.Y-epsilon || onTop == -1 {
+			return math.NaN()
+		}
+		return v.right.pos.X
+	}
+	return math.NaN()
+}
+
 // insideEdge is the Go port of Vert::InsideEdge (src/polygon.cpp:345): returns
 // true if the receiver is on the inside of the edge tail->tail.right, walking
 // edges until a clear (beyond-epsilon) answer is found. toLeft chooses the

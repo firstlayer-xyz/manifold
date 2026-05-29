@@ -66,43 +66,31 @@ func TriangulateConvex(polys PolygonsIdx) *HalfedgeTriangulation {
 
 // TriangulateIdxHalfedges is the Go port of TriangulateIdxHalfedges
 // (src/polygon.cpp:931): convex fast path, else the EarClip ear-clipper.
-// EarClip is not yet ported (increments 5-7), so the concave branch returns
-// (nil, false) and callers fall back to the reference triangulator.
-func TriangulateIdxHalfedges(polys PolygonsIdx, epsilon float64, allowConvex bool) (*HalfedgeTriangulation, bool) {
-	if allowConvex && IsConvex(polys, epsilon) {
-		result := TriangulateConvex(polys)
-		// The convex path leaves epsilon unresolved (matches C++: the -1 ->
-		// bBox.Scale()*kPrecision resolution happens only inside EarClip).
-		result.Epsilon = epsilon
-		result.Finalize()
-		return result, true
+func TriangulateIdxHalfedges(polys PolygonsIdx, epsilon float64, allowConvex bool) *HalfedgeTriangulation {
+	result := newHalfedgeTriangulation()
+	updatedEpsilon := epsilon
+	if allowConvex && IsConvex(polys, epsilon) { // fast path
+		result = TriangulateConvex(polys)
+	} else {
+		ec := newEarClip(polys, epsilon)
+		result = ec.triangulate()
+		updatedEpsilon = ec.epsilon
 	}
-	ec := newEarClip(polys, epsilon)
-	result, ok := ec.triangulate()
-	if !ok {
-		// Has holes — keyholing (CutKeyhole) not yet ported (increment 7).
-		return nil, false
-	}
-	result.Epsilon = ec.epsilon
+	result.Epsilon = updatedEpsilon
 	result.Finalize()
-	return result, true
+	return result
 }
 
-// TriangulateIdx returns the triangle index triples for indexed polygons,
-// or (nil, false) when the concave EarClip path is needed (not yet ported).
-func TriangulateIdx(polys PolygonsIdx, epsilon float64, allowConvex bool) ([][3]int, bool) {
-	result, ok := TriangulateIdxHalfedges(polys, epsilon, allowConvex)
-	if !ok {
-		return nil, false
-	}
-	return result.Triangles(), true
+// TriangulateIdx is the Go port of TriangulateIdx (src/polygon.cpp:972):
+// the triangle index triples for indexed polygons.
+func TriangulateIdx(polys PolygonsIdx, epsilon float64, allowConvex bool) [][3]int {
+	return TriangulateIdxHalfedges(polys, epsilon, allowConvex).Triangles()
 }
 
 // Triangulate is the Go port of Triangulate (src/polygon.cpp:996): assign a
 // single running index to every vertex across all contours in order, then
-// triangulate. Returns (triangles, handled); handled=false means the input
-// is non-convex and the not-yet-ported EarClip path is required.
-func Triangulate(polygons [][]geom.Vec2, epsilon float64, allowConvex bool) ([][3]int, bool) {
+// triangulate.
+func Triangulate(polygons [][]geom.Vec2, epsilon float64, allowConvex bool) [][3]int {
 	idx := 0
 	polys := make(PolygonsIdx, 0, len(polygons))
 	for _, poly := range polygons {

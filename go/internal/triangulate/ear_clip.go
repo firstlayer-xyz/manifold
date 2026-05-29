@@ -89,18 +89,16 @@ func newEarClip(polys PolygonsIdx, epsilon float64) *earClip {
 // src/polygon.cpp:36 kBest = -infinity.
 var kBest = math.Inf(-1)
 
-// triangulate is the Go port of EarClip::Triangulate (src/polygon.cpp:255).
-// Increment 6 handles the no-hole case; if any hole was found, keyholing
-// (CutKeyhole, increment 7) is required, so it returns (nil, false) and the
-// caller falls back to the reference triangulator.
-func (ec *earClip) triangulate() (*HalfedgeTriangulation, bool) {
-	if ec.holes.Len() > 0 {
-		return nil, false
+// triangulate is the Go port of EarClip::Triangulate (src/polygon.cpp:255):
+// key-hole every hole into an outer contour, then ear-clip each simple polygon.
+func (ec *earClip) triangulate() *HalfedgeTriangulation {
+	for _, start := range ec.holes.InOrder() {
+		ec.cutKeyhole(start)
 	}
 	for _, start := range ec.simples {
 		ec.triangulatePoly(start)
 	}
-	return ec.result, true
+	return ec.result
 }
 
 // pushVert appends a vert and returns a stable pointer to it. Panics if the
@@ -258,6 +256,110 @@ func (ec *earClip) findStart(first *vert) {
 			ec.outers = append(ec.outers, start)
 		}
 	}
+}
+
+// cutKeyhole is the Go port of EarClip::CutKeyhole (src/polygon.cpp:703): find
+// the outer-contour edge a hole's rightmost start connects to (a horizontal
+// "keyhole" to the right), refine it, and bridge the two polygons.
+func (ec *earClip) cutKeyhole(start *vert) {
+	bBox := ec.hole2BBox[start]
+	onTop := 0
+	if start.pos.Y >= bBox.Max.Y-ec.epsilon {
+		onTop = 1
+	} else if start.pos.Y <= bBox.Min.Y+ec.epsilon {
+		onTop = -1
+	}
+	var connector *vert // nil == polygon_.end()
+
+	checkEdge := func(edge *vert) {
+		x := edge.interpY2X(start.pos, onTop, ec.epsilon)
+		if isFinite(x) && start.insideEdge(edge, ec.epsilon, true) &&
+			(connector == nil ||
+				geom.CCW(geom.Vec2{X: x, Y: start.pos.Y}, connector.pos, connector.right.pos, ec.epsilon) == 1 ||
+				func() bool {
+					if connector.pos.Y < edge.pos.Y {
+						return edge.insideEdge(connector, ec.epsilon, false)
+					}
+					return !connector.insideEdge(edge, ec.epsilon, false)
+				}()) {
+			connector = edge
+		}
+	}
+
+	for _, first := range ec.outers {
+		ec.loop(first, checkEdge)
+	}
+
+	if connector == nil {
+		// Hole did not find an outer contour; treat it as its own simple poly.
+		ec.simples = append(ec.simples, start)
+		return
+	}
+
+	connector = ec.findCloserBridge(start, connector)
+
+	ec.joinPolygons(start, connector)
+}
+
+// findCloserBridge is the Go port of EarClip::FindCloserBridge
+// (src/polygon.cpp:748): convert the initial keyhole guess into the final one
+// by finding any reflex verts inside the triangle containing the best
+// connection and the initial horizontal line.
+func (ec *earClip) findCloserBridge(start, edge *vert) *vert {
+	var connector *vert
+	switch {
+	case edge.pos.X < start.pos.X:
+		connector = edge.right
+	case edge.right.pos.X < start.pos.X:
+		connector = edge
+	case edge.right.pos.Y-start.pos.Y > start.pos.Y-edge.pos.Y:
+		connector = edge
+	default:
+		connector = edge.right
+	}
+	if math.Abs(connector.pos.Y-start.pos.Y) <= ec.epsilon {
+		return connector
+	}
+	above := -1.0
+	if connector.pos.Y > start.pos.Y {
+		above = 1
+	}
+
+	checkVert := func(v *vert) {
+		inside := above * float64(geom.CCW(start.pos, v.pos, connector.pos, ec.epsilon))
+		if v.pos.X > start.pos.X-ec.epsilon &&
+			v.pos.Y*above > start.pos.Y*above-ec.epsilon &&
+			(inside > 0 || (inside == 0 && v.pos.X < connector.pos.X &&
+				v.pos.Y*above < connector.pos.Y*above)) &&
+			v.insideEdge(edge, ec.epsilon, true) && v.isReflex(ec.epsilon) {
+			connector = v
+		}
+	}
+
+	for _, first := range ec.outers {
+		ec.loop(first, checkVert)
+	}
+
+	return connector
+}
+
+// joinPolygons is the Go port of EarClip::JoinPolygons (src/polygon.cpp:783):
+// create a keyhole between a hole's start vert and the connector vert of an
+// outer polygon by duplicating both verts and reattaching the four links. The
+// duplication can create degenerate ears, so they are clipped immediately.
+func (ec *earClip) joinPolygons(start, connector *vert) {
+	newStart := ec.pushVert(*start)
+	newConnector := ec.pushVert(*connector)
+
+	start.right.left = newStart
+	connector.left.right = newConnector
+	link(start, connector)
+	link(newConnector, newStart)
+
+	ec.clipIfDegenerate(start)
+	ec.clipIfDegenerate(newStart)
+	ec.clipIfDegenerate(connector)
+	ec.clipIfDegenerate(newConnector)
 }
 
 // processEar is the Go port of EarClip::ProcessEar (src/polygon.cpp:802):

@@ -8,7 +8,6 @@ import (
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
-	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
 
 // regularPolygon returns a single CCW-wound regular n-gon of radius r.
@@ -37,12 +36,10 @@ func TestTriangulateConvex_VsCpp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Confirm the native convex path is actually taken (not fallback).
-			if _, ok := triangulate.Triangulate(tc.polys, -1, true); !ok {
-				t.Fatalf("expected convex fast path for %s", tc.name)
-			}
 			got := triangulateNative(tc.polys, -1)
 			want := bridge.Triangulate(tc.polys, -1)
+			// Convex input routes through TriangulateConvex in both Go and C++,
+			// so the zig-zag fan is deterministic and the triples match exactly.
 			if !slices.Equal(got, want) {
 				t.Fatalf("triangles differ:\n native=%v\n bridge=%v", got, want)
 			}
@@ -172,10 +169,6 @@ func TestTriangulateConcave_VsCpp(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Must be handled natively (concave -> EarClip, not the bridge).
-			if _, ok := triangulate.Triangulate(tc.polys, -1, true); !ok {
-				t.Fatalf("%s should be handled natively (no holes)", tc.name)
-			}
 			got := triangulateNative(tc.polys, -1)
 			want := bridge.Triangulate(tc.polys, -1)
 			// The Go output must be a genuine triangulation of the polygon.
@@ -185,6 +178,56 @@ func TestTriangulateConcave_VsCpp(t *testing.T) {
 				t.Errorf("triangle count %d != bridge %d", len(got)/3, len(want)/3)
 			}
 			// Exact set-match where float allows; otherwise both are valid.
+			if !sameTriangulation(got, want) {
+				t.Logf("%s: triangulation differs from C++ as a set (both valid; float-tied ear costs)", tc.name)
+			}
+		})
+	}
+}
+
+// TestTriangulateHoles_VsCpp exercises the key-holing path (CutKeyhole /
+// FindCloserBridge / JoinPolygons): polygons with one or more CW holes inside a
+// CCW outer contour. The native EarClip must bridge each hole into an outer and
+// produce a valid triangulation of the region between them, with the same
+// triangle count as the C++ bridge.
+func TestTriangulateHoles_VsCpp(t *testing.T) {
+	// CCW outer, CW hole(s).
+	square1Hole := [][]geom.Vec2{
+		{{X: 0, Y: 0}, {X: 6, Y: 0}, {X: 6, Y: 6}, {X: 0, Y: 6}},
+		{{X: 2, Y: 2}, {X: 2, Y: 4}, {X: 4, Y: 4}, {X: 4, Y: 2}},
+	}
+	square2Holes := [][]geom.Vec2{
+		{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 6}, {X: 0, Y: 6}},
+		{{X: 1, Y: 1}, {X: 1, Y: 3}, {X: 3, Y: 3}, {X: 3, Y: 1}},
+		{{X: 6, Y: 2}, {X: 6, Y: 4}, {X: 8, Y: 4}, {X: 8, Y: 2}},
+	}
+	// Hole shifted to the right edge — stresses the rightward keyhole search.
+	offCenterHole := [][]geom.Vec2{
+		{{X: 0, Y: 0}, {X: 8, Y: 0}, {X: 8, Y: 4}, {X: 0, Y: 4}},
+		{{X: 5, Y: 1}, {X: 5, Y: 3}, {X: 7, Y: 3}, {X: 7, Y: 1}},
+	}
+	// Triangular hole (odd vert count) inside a pentagon outer.
+	triHole := [][]geom.Vec2{
+		{{X: 0, Y: 0}, {X: 6, Y: 0}, {X: 7, Y: 4}, {X: 3, Y: 7}, {X: -1, Y: 4}},
+		{{X: 2, Y: 2}, {X: 2, Y: 4}, {X: 4, Y: 3}},
+	}
+	cases := []struct {
+		name  string
+		polys [][]geom.Vec2
+	}{
+		{"square_1hole", square1Hole},
+		{"square_2holes", square2Holes},
+		{"offcenter_hole", offCenterHole},
+		{"tri_hole", triHole},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := triangulateNative(tc.polys, -1)
+			want := bridge.Triangulate(tc.polys, -1)
+			checkValidTriangulation(t, tc.polys, got)
+			if len(got) != len(want) {
+				t.Errorf("triangle count %d != bridge %d", len(got)/3, len(want)/3)
+			}
 			if !sameTriangulation(got, want) {
 				t.Logf("%s: triangulation differs from C++ as a set (both valid; float-tied ear costs)", tc.name)
 			}
