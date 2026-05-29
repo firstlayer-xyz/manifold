@@ -898,6 +898,17 @@ type MeshGL64 struct {
 // happens on the C++ side; an invalid mesh produces a Manifold with
 // non-NoError Status.
 func NewManifoldFromMeshGL64(m MeshGL64) *Manifold {
+	// Native validation cascade (src/impl.h:281-345). On empty/malformed
+	// input we report the Error natively; valid input falls through to the
+	// bridge body (being drilled increment by increment).
+	if status, proceed := validateMeshGL(
+		m.NumProp, m.VertProperties, m.TriVerts,
+		m.MergeFromVert, m.MergeToVert,
+		m.RunIndex, m.RunOriginalID, m.RunTransform,
+		m.FaceID, m.HalfedgeTangent,
+	); !proceed {
+		return emptyManifold(status)
+	}
 	return wrap(bridge.ManifoldFromMeshGL64(
 		m.NumProp,
 		m.VertProperties, m.TriVerts,
@@ -911,6 +922,14 @@ func NewManifoldFromMeshGL64(m MeshGL64) *Manifold {
 // NewManifoldFromMeshGL constructs a Manifold from a Go-owned MeshGL.
 // Ported from C++ `Manifold(const MeshGL&)`.
 func NewManifoldFromMeshGL(m MeshGL) *Manifold {
+	if status, proceed := validateMeshGL(
+		m.NumProp, m.VertProperties, m.TriVerts,
+		m.MergeFromVert, m.MergeToVert,
+		m.RunIndex, m.RunOriginalID, m.RunTransform,
+		m.FaceID, m.HalfedgeTangent,
+	); !proceed {
+		return emptyManifold(status)
+	}
 	return wrap(bridge.ManifoldFromMeshGL(
 		m.NumProp,
 		m.VertProperties, m.TriVerts,
