@@ -113,6 +113,14 @@ func TestMeshGLIngest_VsCpp(t *testing.T) {
 			defer runtime.KeepAlive(cn)
 			return cn.GetMeshGL64(0)
 		}},
+		// malformed index with high bits set but a valid low-32: C++ casts
+		// the uint64 index to uint32 before the bounds check, so both impls
+		// must truncate to the original valid index (not VertexOutOfBounds).
+		{"highbit_index_truncates", func() MeshGL64 {
+			c := cloneMeshGL64(base)
+			c.TriVerts[0] |= uint64(1) << 32
+			return c
+		}},
 	}
 
 	_ = numTri

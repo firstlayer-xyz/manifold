@@ -39,11 +39,15 @@ func validateMeshGL[P float32 | float64, I uint32 | uint64](
 	faceID []I,
 	halfedgeTangent []P,
 ) (Error, bool) {
+	// C++ stores numVert/numTri as uint32_t locals (src/impl.h:286), so for
+	// MeshGL64 they are narrowed to 32 bits before the cascade comparisons.
+	// Mirror the narrowing (a no-op for any constructible mesh — >2^32
+	// indices would need a >16GB buffer — but faithful to the C++ truncation).
 	numVert := 0
 	if numProp > 0 {
-		numVert = len(vertProperties) / numProp
+		numVert = int(uint32(len(vertProperties) / numProp))
 	}
-	numTri := len(triVerts) / 3
+	numTri := int(uint32(len(triVerts) / 3))
 
 	if numVert == 0 && numTri == 0 {
 		return NoError, false
@@ -227,7 +231,11 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	for i := 0; i < numTri; i++ {
 		var triP, triV [3]int32
 		for j := 0; j < 3; j++ {
-			vert := int(triVerts[3*i+j])
+			// C++ casts the index to uint32 before the bounds check
+			// (src/impl.h:443): `uint32_t vert = (uint32_t)triVerts[...]`.
+			// For MeshGL64 (uint64 indices) this truncates to the low 32
+			// bits; mirror it so a malformed >=2^32 index decides identically.
+			vert := int(uint32(triVerts[3*i+j]))
 			if vert >= numVert {
 				mi.h.MakeEmpty(int(VertexIndexOutOfBounds))
 				return mi.ToManifold()
