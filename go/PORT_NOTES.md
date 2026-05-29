@@ -197,7 +197,13 @@ memory model. The C++ relies on word-sized non-atomic reads being
 
 - `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance`
   — `src/subdivision.cpp` (~800 lines).
-- `SimplifyTopology` — `src/edge_op.cpp` (~800 lines).
+- `SimplifyTopology` — `src/edge_op.cpp`. PARTIALLY drilled:
+  `RemoveDegenerates` and its whole collapse/swap core are now native
+  Go (`flagStore`, `collapseEdge`+`collapseTri`/`removeIfFolded`/
+  `formLoop`, `recursiveEdgeSwap`+`is01Longest`, `collapseShortEdges`,
+  `swapDegenerates`), differential-tested vs the bridge. Still bridge:
+  `SimplifyTopology` itself = `CollapseColinearEdges` (needs
+  `MarkCoplanar`) on top of the `RemoveDegenerates` steps.
 - `CreateTangents` (`CreateTangentsIdx` and
   `CreateTangentsFromSmoothness`) — `src/smoothing.cpp`, depends on
   `GetNormal`, `TangentFromNormal`, `CircularTangent`,
@@ -214,15 +220,15 @@ memory model. The C++ relies on word-sized non-atomic reads being
   multi-KLOC.
 - `Triangulate` (Earcut/CDT, `src/polygon.cpp` ~1000 lines) —
   called from `extrude`'s cap-triangulation step.
-- `Manifold(MeshGL{,64})` constructor — ~200 lines plus
-  `RemoveDegenerates` (which depends on `CollapseShortEdges` +
-  `SwapDegenerates`, both still bridge). Drilled so far on this
-  chain: `IsManifold`, `Is2Manifold`, `RemoveUnreferencedVerts`,
-  `DedupePropVerts`, `SplitPinchedVerts` (both branches),
-  `DedupeEdges` (both branches + map fallback) +
-  `dedupeEdge`/`updateVert`/`pairUp`, `CleanupTopology`. Still
-  bridge: `CollapseShortEdges`, `SwapDegenerates` (inside
-  `RemoveDegenerates`), plus the MeshGL ingest entry point itself.
+- `Manifold(MeshGL{,64})` constructor — ~200 lines. Its
+  `RemoveDegenerates` dependency is now fully drilled (see above:
+  `CollapseShortEdges` + `SwapDegenerates` + collapse/swap core,
+  differential-tested). Drilled on this chain: `IsManifold`,
+  `Is2Manifold`, `RemoveUnreferencedVerts`, `DedupePropVerts`,
+  `SplitPinchedVerts`, `DedupeEdges` (+ `dedupeEdge`/`updateVert`/
+  `pairUp`), `CleanupTopology`, `RemoveDegenerates`. Still bridge:
+  the two-arg `CreateHalfedges` (merged-vert input) and the MeshGL
+  ingest entry point itself (the ~200-line constructor body).
 
 ## Cross-cutting deferred work
 
