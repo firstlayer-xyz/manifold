@@ -219,8 +219,37 @@ memory model. The C++ relies on word-sized non-atomic reads being
   algorithms above.
 - `Boolean3` / `CSG tree` / `LoadPNode` / `NewCsgOpNode` —
   multi-KLOC.
-- `Triangulate` (Earcut/CDT, `src/polygon.cpp` ~1000 lines) —
-  called from `extrude`'s cap-triangulation step.
+- `Triangulate` (`src/polygon.cpp`) — PARTIALLY DRILLED, in the
+  `internal/triangulate` package. Native today (line-by-line ports):
+  - `Triangulate` / `TriangulateIdx` / `TriangulateIdxHalfedges`
+    dispatch (polygon.cpp:931-1017), `IsConvex` + `TriangulateConvex`
+    zig-zag fan (172/195), `HalfedgeTriangulation` (polygon_internal.h).
+  - The full `EarClip` ear-clipper for **simple polygons (no holes)**:
+    ring construction + lifecycle (`Initialize`/`Link`/`Clipped`/`Loop`/
+    `ClipEar`/`ClipIfDegenerate`), all predicates (`InsideEdge`/`IsConvex`/
+    `IsReflex`/`SignedDist`/`Cost`/`DelaunayCost`/`EarCost`), `FindStart`
+    (Kahan/Neumaier area), `ProcessEar`, `VertCollider`, `TriangulatePoly`
+    clip loop. Adversarial line-by-line audit: 0 confirmed divergences.
+  - `std::multiset<VertItr, MinCost/MaxX>` replicated by
+    `orderedMultiset` (AVL + insertion-seq FIFO tie-break), 50k-op fuzzed.
+  - Differential-tested vs the bridge (`TestTriangulateConvex_VsCpp`,
+    `TestTriangulateConcave_VsCpp`): convex matches exactly; concave is
+    validity-equivalent (valid triangulation, same triangle count) and
+    matches as a SET where float allows — last-ULP `EarCost` differences
+    can reorder near-equal-cost ears on symmetric inputs (C++ TestPoly
+    itself checks only the count). `triangulateNative` (impl_triangulate.go)
+    falls back to `bridge.Triangulate` only for the cases below.
+  - **Deferred shortcuts:**
+    - **Brute-force collider (increment 9).** `VertCollider` returns a
+      flat `[]*vert` and `EarCost` scans it filtered by `earBox.Contains`,
+      instead of `BuildTwoDTree`/`QueryTwoDTree`. Output-identical (the
+      kd-tree only invokes its callback behind the same `Contains` guard,
+      and `totalCost` is an order-insensitive max) — a perf-only deferral,
+      verified by the audit. Real `internal/tree2d` replaces it later.
+    - **Holes / keyholing (increment 7).** `CutKeyhole`/`FindCloserBridge`/
+      `JoinPolygons` (polygon.cpp:703-797) not yet ported, so any contour
+      with a negative-area (hole) ring routes to `bridge.Triangulate`.
+  - Not yet wired into `extrude`/`revolve` cap triangulation (increment 8).
 - `Manifold(MeshGL{,64})` constructor — FULLY DRILLED. The native ingest
   (`validateMeshGL` + `newImplFromMeshGL`, `impl_meshgl_ingest.go`) ports
   the entire C++ constructor body (src/impl.h:277-504): validation cascade,

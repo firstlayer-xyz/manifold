@@ -77,7 +77,15 @@ func TriangulateIdxHalfedges(polys PolygonsIdx, epsilon float64, allowConvex boo
 		result.Finalize()
 		return result, true
 	}
-	return nil, false
+	ec := newEarClip(polys, epsilon)
+	result, ok := ec.triangulate()
+	if !ok {
+		// Has holes — keyholing (CutKeyhole) not yet ported (increment 7).
+		return nil, false
+	}
+	result.Epsilon = ec.epsilon
+	result.Finalize()
+	return result, true
 }
 
 // TriangulateIdx returns the triangle index triples for indexed polygons,
