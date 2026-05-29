@@ -275,6 +275,110 @@ func (k kernel02) callEdges(a0, b2 int, edgeB *[3]faceEdge) (int, float64) {
 	return s02, z02
 }
 
+// kernel12 is the Go port of Kernel12<expandP, forward> (boolean3.cpp:231): the
+// 1-vs-2 (edge/face) intersection — overlap count x12 and the 3D point v12,
+// composing kernel02 + kernel11. The coordinate reorders (256-301) are the
+// riskiest transcription and are mapped index-for-index ([0]=X,[1]=Y,[2]=Z).
+type kernel12 struct {
+	inA, inB *mesh
+	forward  bool
+	k02      kernel02
+	k11      kernel11
+}
+
+// newKernel12 wires a kernel12 from the two operands, mirroring the
+// Intersect12_ instantiation (boolean3.cpp:367-373): a = edge mesh, b = face
+// mesh (swapped by forward); k02{a,b}; k11{inP,inQ} (the originals, NOT a/b, so
+// p1 is always from inP regardless of forward).
+func newKernel12(inP, inQ *mesh, expandP, forward bool) kernel12 {
+	a, b := inP, inQ
+	if !forward {
+		a, b = inQ, inP
+	}
+	return kernel12{
+		inA:     a,
+		inB:     b,
+		forward: forward,
+		k02:     kernel02{inA: a, inB: b, expandP: expandP, forward: forward},
+		k11:     kernel11{inP: inP, inQ: inQ, expandP: expandP},
+	}
+}
+
+func (k kernel12) call(a1, b2 int) (int, geom.Vec3) {
+	x12 := 0
+	v12 := nanVec3()
+
+	// For xzyLR-[k], k==0 is left, k==1 is right.
+	kk := 0
+	var xzyLR0, xzyLR1 [2]geom.Vec3
+	sh := false
+	x12 = 0
+
+	edgeAStart := k.inA.halfedge.Start(a1)
+	edgeAEnd := k.inA.halfedge.End(a1)
+	var edgeB [3]faceEdge
+	loadFaceEdges(k.inB.halfedge, b2, &edgeB)
+
+	for _, vertA := range [2]int{edgeAStart, edgeAEnd} {
+		s, z := k.k02.callEdges(vertA, b2, &edgeB)
+		if isFinite(z) {
+			sign := -1
+			if (vertA == edgeAStart) == k.forward {
+				sign = 1
+			}
+			x12 += s * sign
+			if kk < 2 && (kk == 0 || (s != 0) != sh) {
+				sh = s != 0
+				xzyLR0[kk] = k.inA.vertPos[vertA]
+				xzyLR0[kk].Y, xzyLR0[kk].Z = xzyLR0[kk].Z, xzyLR0[kk].Y // std::swap(y, z)
+				xzyLR1[kk] = xzyLR0[kk]
+				xzyLR1[kk].Y = z // [1] = z
+				kk++
+			}
+		}
+	}
+
+	for i := 0; i < 3; i++ {
+		var s int
+		var xyzz geom.Vec4
+		if k.forward {
+			s, xyzz = k.k11.call(a1, edgeAStart, edgeAEnd, edgeB[i].edge, edgeB[i].start, edgeB[i].end)
+		} else {
+			s, xyzz = k.k11.call(edgeB[i].edge, edgeB[i].start, edgeB[i].end, a1, edgeAStart, edgeAEnd)
+		}
+		if isFinite(xyzz.X) {
+			sign := -1
+			if edgeB[i].isForward {
+				sign = 1
+			}
+			x12 -= s * sign
+			if kk < 2 && (kk == 0 || (s != 0) != sh) {
+				sh = s != 0
+				xzyLR0[kk].X = xyzz.X // [0] = x
+				xzyLR0[kk].Y = xyzz.Z // [1] = z
+				xzyLR0[kk].Z = xyzz.Y // [2] = y
+				xzyLR1[kk] = xzyLR0[kk]
+				xzyLR1[kk].Y = xyzz.W // [1] = w
+				if !k.forward {
+					xzyLR0[kk].Y, xzyLR1[kk].Y = xzyLR1[kk].Y, xzyLR0[kk].Y // std::swap([1],[1])
+				}
+				kk++
+			}
+		}
+	}
+
+	if x12 == 0 { // No intersection
+		v12 = nanVec3()
+	} else {
+		// DEBUG_ASSERT(kk == 2)
+		xzyy := intersect(xzyLR0[0], xzyLR0[1], xzyLR1[0], xzyLR1[1])
+		v12.X = xzyy.X // [0]
+		v12.Y = xzyy.Z // [2]
+		v12.Z = xzyy.Y // [1]
+	}
+	return x12, v12
+}
+
 // faceEdge is the Go port of the FaceEdge struct (boolean3.cpp:55): an edge of a
 // triangle, oriented forward (start < end) with isForward recording whether the
 // canonical halfedge was the forward one.
