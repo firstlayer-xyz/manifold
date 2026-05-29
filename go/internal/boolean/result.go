@@ -1,6 +1,53 @@
 package boolean
 
-import "github.com/firstlayer-xyz/manifold/go/internal/geom"
+import (
+	"sort"
+
+	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+)
+
+// Halfedge mirrors the C++ Halfedge (shared.h:174): a directed half-edge with
+// its start/end verts, paired halfedge, and property vert.
+type Halfedge struct {
+	StartVert, EndVert, PairedHalfedge, PropVert int
+}
+
+// TriRef mirrors the C++ TriRef (shared.h:288): the provenance of an output
+// triangle — its mesh-instance id, original mesh id, face id, and coplanar id.
+type TriRef struct {
+	MeshID, OriginalID, FaceID, CoplanarID int
+}
+
+// pairUp is the Go port of PairUp (boolean_result.cpp:285): pair start verts
+// with end verts to form edges. Partition the starts to the front, stable-sort
+// each half by EdgePos order (pos, then collisionID), then pair edgePos[i] with
+// edgePos[i+nEdges] and emit a Halfedge per pair. The C++ std::partition is
+// unstable; a stable partition here is deterministic and equivalent — the
+// pairing is "arbitrary for the manifoldness guarantee" and the result is
+// compared semantically.
+func pairUp(positions []edgePos, f func(Halfedge)) {
+	nEdges := len(positions) / 2
+	// Stable partition: starts first, preserving order.
+	parted := make([]edgePos, 0, len(positions))
+	for _, e := range positions {
+		if e.isStart {
+			parted = append(parted, e)
+		}
+	}
+	for _, e := range positions {
+		if !e.isStart {
+			parted = append(parted, e)
+		}
+	}
+	copy(positions, parted)
+
+	starts, ends := positions[:nEdges], positions[nEdges:]
+	sortEdgePos(starts)
+	sortEdgePos(ends)
+	for i := 0; i < nEdges; i++ {
+		f(Halfedge{StartVert: starts[i].vert, EndVert: ends[i].vert, PairedHalfedge: -1})
+	}
+}
 
 // absInt is std::abs for int.
 func absInt(x int) int {
@@ -20,6 +67,17 @@ type edgePos struct {
 	vert        int
 	collisionID int
 	isStart     bool
+}
+
+// edgePosLess mirrors EdgePos::operator< (boolean_result.cpp:197): order by pos
+// (position along the edge), breaking ties by collisionID for determinism.
+func edgePosLess(a, b edgePos) bool {
+	return a.pos < b.pos || (a.pos == b.pos && a.collisionID < b.collisionID)
+}
+
+// sortEdgePos is std::stable_sort over EdgePos (by EdgePos::operator<).
+func sortEdgePos(s []edgePos) {
+	sort.SliceStable(s, func(i, j int) bool { return edgePosLess(s[i], s[j]) })
 }
 
 // addNewEdgeVerts is the Go port of AddNewEdgeVerts (boolean_result.cpp:204):
@@ -62,6 +120,93 @@ func addNewEdgeVerts(edgesP map[int][]edgePos, edgesNew map[[2]int][]edgePos,
 		edgesP[edgeP] = push(edgesP[edgeP], direction)
 		edgesNew[keyRight] = push(edgesNew[keyRight], direction != !forward)
 		edgesNew[keyLeft] = push(edgesNew[keyLeft], direction != forward)
+	}
+}
+
+// appendPartialEdges is the Go port of AppendPartialEdges (boolean_result.cpp:304):
+// each edge in edgesP is partially retained. For each, look up its original verts
+// and include them by winding number (i03), remapped to the output via vP2R; place
+// every vert along the edge vector (dot with edgeVec); PairUp the spans; and
+// distribute the resulting halfedges to the two faces sharing the edge. forward=false
+// mirrors P<->Q. SEQ path: the per-iter IsCancelled checks are parallel-cancellation
+// only, so they're dropped; Vec<char> wholeHalfedgeP is a []bool; concurrent_map is
+// std::map (ordered), so edgesP is iterated in sorted key order; the C++ copies
+// value.second by value, so we copy the slice before sorting/appending.
+func appendPartialEdges(outR *outImpl, halfedgeR []Halfedge, wholeHalfedgeP []bool,
+	facePtrR []int, edgesP map[int][]edgePos, halfedgeRef []TriRef, inP *mesh,
+	i03, vP2R, faceP2R []int, forward bool) {
+	vertPosP := inP.vertPos
+	halfedgeP := inP.halfedge
+
+	edges := make([]int, 0, len(edgesP))
+	for edgeP := range edgesP {
+		edges = append(edges, edgeP)
+	}
+	sort.Ints(edges)
+
+	for _, edgeP := range edges {
+		edgePosP := append([]edgePos(nil), edgesP[edgeP]...)
+		sortEdgePos(edgePosP)
+
+		pairP := halfedgeP.Pair(edgeP)
+		wholeHalfedgeP[edgeP] = false
+		wholeHalfedgeP[pairP] = false
+
+		vStart := halfedgeP.Start(edgeP)
+		vEnd := halfedgeP.End(edgeP)
+		edgeVec := vertPosP[vEnd].Sub(vertPosP[vStart])
+		// Fill in the edge positions of the old points.
+		for i := range edgePosP {
+			edgePosP[i].pos = outR.vertPos[edgePosP[i].vert].Dot(edgeVec)
+		}
+
+		inclusion := i03[vStart]
+		ep := edgePos{pos: outR.vertPos[vP2R[vStart]].Dot(edgeVec), vert: vP2R[vStart],
+			collisionID: intMax, isStart: inclusion > 0}
+		for j := 0; j < absInt(inclusion); j++ {
+			edgePosP = append(edgePosP, ep)
+			ep.vert++
+		}
+
+		inclusion = i03[vEnd]
+		ep = edgePos{pos: outR.vertPos[vP2R[vEnd]].Dot(edgeVec), vert: vP2R[vEnd],
+			collisionID: intMax, isStart: inclusion < 0}
+		for j := 0; j < absInt(inclusion); j++ {
+			edgePosP = append(edgePosP, ep)
+			ep.vert++
+		}
+
+		// add halfedges to result
+		faceLeftP := edgeP / 3
+		faceLeft := faceP2R[faceLeftP]
+		faceRightP := pairP / 3
+		faceRight := faceP2R[faceRightP]
+		// Negative inclusion means the halfedges are reversed, which means our
+		// reference is now to the endVert instead of the startVert, which is one
+		// position advanced CCW. This is only valid if this is a retained vert; it
+		// will be ignored later if the vert is new.
+		meshID := 1
+		if forward {
+			meshID = 0
+		}
+		forwardRef := TriRef{MeshID: meshID, OriginalID: -1, FaceID: faceLeftP, CoplanarID: -1}
+		backwardRef := TriRef{MeshID: meshID, OriginalID: -1, FaceID: faceRightP, CoplanarID: -1}
+
+		pairUp(edgePosP, func(e Halfedge) {
+			forwardEdge := facePtrR[faceLeft]
+			facePtrR[faceLeft]++
+			backwardEdge := facePtrR[faceRight]
+			facePtrR[faceRight]++
+
+			e.PairedHalfedge = backwardEdge
+			halfedgeR[forwardEdge] = e
+			halfedgeRef[forwardEdge] = forwardRef
+
+			e.StartVert, e.EndVert = e.EndVert, e.StartVert
+			e.PairedHalfedge = forwardEdge
+			halfedgeR[backwardEdge] = e
+			halfedgeRef[backwardEdge] = backwardRef
+		})
 	}
 }
 

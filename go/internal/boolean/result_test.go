@@ -92,6 +92,36 @@ func TestSizeOutput(t *testing.T) {
 	}
 }
 
+// TestPairUp covers the partition + per-half stable-sort + pairing: starts and
+// ends interleaved with out-of-order pos, so the sort must reorder each half
+// before pairing edgePos[i] with edgePos[i+nEdges].
+func TestPairUp(t *testing.T) {
+	// starts: vert2@pos1, vert3@pos4 ; ends: vert1@pos3, vert4@pos2.
+	// After per-half sort by pos: starts [vert2@1, vert3@4], ends [vert4@2, vert1@3].
+	// Pairs: (2,4), (3,1).
+	positions := []edgePos{
+		{vert: 1, pos: 3, isStart: false},
+		{vert: 2, pos: 1, isStart: true},
+		{vert: 3, pos: 4, isStart: true},
+		{vert: 4, pos: 2, isStart: false},
+	}
+	var got []Halfedge
+	pairUp(positions, func(h Halfedge) { got = append(got, h) })
+
+	want := []Halfedge{
+		{StartVert: 2, EndVert: 4, PairedHalfedge: -1},
+		{StartVert: 3, EndVert: 1, PairedHalfedge: -1},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d halfedges, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("halfedge[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 // TestAddNewEdgeVerts covers one forward crossing: vert lands on P's edge and
 // the two new edges (left/right faces of edgeP x faceQ), with isStart per the
 // XOR rule and the right keys.
