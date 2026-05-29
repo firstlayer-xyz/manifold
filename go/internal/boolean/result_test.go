@@ -53,3 +53,41 @@ func TestCountNewVerts(t *testing.T) {
 		t.Errorf("countP[1] = %d, want 2", countP[1])
 	}
 }
+
+// TestSizeOutput covers SizeOutput on a trivial 2-triangle case (one P tri, one
+// Q tri, all retained verts included once, no new crossings): both faces kept,
+// 3 sides each.
+func TestSizeOutput(t *testing.T) {
+	tri := func() *mesh {
+		return &mesh{
+			faceNormal: []geom.Vec3{{Z: 1}},
+			halfedge:   halfedges{starts: []int32{0, 1, 2}, pairs: []int32{0, 1, 2}},
+		}
+	}
+	inP, inQ := tri(), tri()
+	inP.faceNormal = []geom.Vec3{{X: 1}}
+	inQ.faceNormal = []geom.Vec3{{Y: 1}}
+	var outR outImpl
+	i03 := []int{1, 1, 1}
+	i30 := []int{1, 1, 1}
+	faceEdge, facePQ2R := sizeOutput(&outR, inP, inQ, i03, i30, nil, nil, nil, nil, true)
+
+	if len(outR.faceNormal) != 2 {
+		t.Fatalf("faceNormal len = %d, want 2", len(outR.faceNormal))
+	}
+	if outR.faceNormal[0] != (geom.Vec3{X: 1}) {
+		t.Errorf("faceNormal[0] = %v, want P normal {1,0,0}", outR.faceNormal[0])
+	}
+	if outR.faceNormal[1] != (geom.Vec3{Y: -1}) { // Q negated (invertQ)
+		t.Errorf("faceNormal[1] = %v, want negated Q normal {0,-1,0}", outR.faceNormal[1])
+	}
+	// old face i -> new face index = # kept faces before i. Both kept:
+	// inclusive_scan gives [0,1,2], resized to numTriP+numTriQ=2 -> [0,1].
+	if len(facePQ2R) != 2 || facePQ2R[0] != 0 || facePQ2R[1] != 1 {
+		t.Errorf("facePQ2R = %v, want [0 1]", facePQ2R)
+	}
+	// Each kept face has 3 sides: faceEdge = [0, 3, 6].
+	if len(faceEdge) != 3 || faceEdge[0] != 0 || faceEdge[1] != 3 || faceEdge[2] != 6 {
+		t.Errorf("faceEdge = %v, want [0 3 6]", faceEdge)
+	}
+}
