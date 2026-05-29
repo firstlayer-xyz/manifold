@@ -89,6 +89,23 @@ func TestMeshGLIngest_VsCpp(t *testing.T) {
 			c.HalfedgeTangent = []float64{math.NaN(), 0, 0, 0}
 			return c
 		}},
+		// extra property column, no merge -> exercises the native
+		// dual-stride vert/prop split (NumProp 3 -> 4).
+		{"props_no_merge", func() MeshGL64 {
+			c := cloneMeshGL64(base)
+			c.MergeFromVert, c.MergeToVert = nil, nil
+			nv := len(c.VertProperties) / 3
+			np := make([]float64, nv*4)
+			for i := 0; i < nv; i++ {
+				np[4*i+0] = c.VertProperties[3*i+0]
+				np[4*i+1] = c.VertProperties[3*i+1]
+				np[4*i+2] = c.VertProperties[3*i+2]
+				np[4*i+3] = float64(i) * 0.5 // arbitrary finite extra prop
+			}
+			c.VertProperties = np
+			c.NumProp = 4
+			return c
+		}},
 	}
 
 	_ = numTri
@@ -107,5 +124,34 @@ func TestMeshGLIngest_VsCpp(t *testing.T) {
 				assertSameManifold(t, goM, refM)
 			}
 		})
+	}
+}
+
+// TestMeshGLIngest_Float32_VsCpp exercises the MeshGL (float32) ingest path,
+// which sets useSingle=true in SetEpsilon — the single most error-prone
+// point per the scoping analysis (a wrong flag silently shifts tolerance_).
+func TestMeshGLIngest_Float32_VsCpp(t *testing.T) {
+	for _, mk := range []func() *Manifold{
+		func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, false) },
+		func() *Manifold { return Sphere(1, 16) },
+	} {
+		src := mk()
+		defer runtime.KeepAlive(src)
+		m := src.GetMeshGL(-1)
+		goM := NewManifoldFromMeshGL(m)
+		defer runtime.KeepAlive(goM)
+		refM := wrap(bridge.ManifoldFromMeshGL(
+			m.NumProp,
+			m.VertProperties, m.TriVerts,
+			m.MergeFromVert, m.MergeToVert,
+			m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
+			m.FaceID, m.HalfedgeTangent,
+			m.Tolerance,
+		))
+		defer runtime.KeepAlive(refM)
+		if g, r := goM.Status(), refM.Status(); g != r {
+			t.Fatalf("Status: go=%d ref=%d", g, r)
+		}
+		assertSameManifold(t, goM, refM)
 	}
 }

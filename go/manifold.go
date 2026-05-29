@@ -909,6 +909,17 @@ func NewManifoldFromMeshGL64(m MeshGL64) *Manifold {
 	); !proceed {
 		return emptyManifold(status)
 	}
+	if mfd, handled := newImplFromMeshGL(
+		m.NumProp, m.VertProperties, m.TriVerts,
+		m.MergeFromVert, m.MergeToVert,
+		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
+		m.FaceID, m.HalfedgeTangent, m.Tolerance,
+		false, // MeshGL64 -> double precision
+	); handled {
+		return mfd
+	}
+	// needsPropMap (extra props + vertex merge) still needs the two-arg
+	// CreateHalfedges (Inc 7) — fall back to the bridge body.
 	return wrap(bridge.ManifoldFromMeshGL64(
 		m.NumProp,
 		m.VertProperties, m.TriVerts,
@@ -929,6 +940,15 @@ func NewManifoldFromMeshGL(m MeshGL) *Manifold {
 		m.FaceID, m.HalfedgeTangent,
 	); !proceed {
 		return emptyManifold(status)
+	}
+	if mfd, handled := newImplFromMeshGL(
+		m.NumProp, m.VertProperties, m.TriVerts,
+		m.MergeFromVert, m.MergeToVert,
+		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
+		m.FaceID, m.HalfedgeTangent, m.Tolerance,
+		true, // MeshGL -> single precision
+	); handled {
+		return mfd
 	}
 	return wrap(bridge.ManifoldFromMeshGL(
 		m.NumProp,

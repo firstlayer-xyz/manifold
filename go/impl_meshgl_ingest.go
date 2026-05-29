@@ -3,6 +3,8 @@ package manifold
 import (
 	"math"
 
+	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
@@ -89,4 +91,186 @@ func emptyManifold(status Error) *Manifold {
 	defer mi.Delete()
 	mi.h.MakeEmpty(int(status))
 	return mi.ToManifold()
+}
+
+// newImplFromMeshGL is the Go port of the body of the C++ ingest
+// constructor Manifold::Impl::Impl(const MeshGLP&) (src/impl.h:347-504) —
+// everything after the validation cascade. It builds the Impl natively for
+// the COMMON path and returns (manifold, true). For the needsPropMap case
+// (extra properties AND a vertex merge, which needs the two-arg
+// CreateHalfedges not yet drilled) it returns (nil, false) so the caller
+// falls back to the bridge.
+//
+// useSingle == std::is_same<Precision,float>::value (true for MeshGL/
+// float32, false for MeshGL64) and threads into SetEpsilon.
+func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
+	fullProp int,
+	vertProperties []P, triVerts []I,
+	mergeFromVert, mergeToVert []I,
+	runIndex []I, runOriginalID []uint32, runTransform []P, runFlags []uint8,
+	faceID []I, halfedgeTangent []P, tolerance P,
+	useSingle bool,
+) (*Manifold, bool) {
+	numVert := len(vertProperties) / fullProp
+	numTri := len(triVerts) / 3
+	extraProp := fullProp - 3
+
+	// prop2vert: iota, then last-writer-wins from the merge vectors
+	// (src/impl.h:347-360). Direct assignment, NOT union-find.
+	var prop2vert []int32
+	if len(mergeFromVert) > 0 {
+		prop2vert = make([]int32, numVert)
+		for i := range prop2vert {
+			prop2vert[i] = int32(i)
+		}
+		for i := range mergeFromVert {
+			from := int(mergeFromVert[i])
+			to := int(mergeToVert[i])
+			if from >= numVert || to >= numVert {
+				return emptyManifold(MergeIndexOutOfBounds), true
+			}
+			prop2vert[from] = int32(to)
+		}
+	}
+
+	// needsPropMap requires the two-arg CreateHalfedges (Inc 7) — defer.
+	if extraProp > 0 && len(prop2vert) > 0 {
+		return nil, false
+	}
+
+	mi := newImpl()
+	defer mi.Delete()
+
+	// numProp_ / properties_ / tolerance_ / vertPos_ (src/impl.h:362-376).
+	mi.h.SetNumProp(extraProp)
+	mi.SetToleranceValue(float64(tolerance))
+	mi.h.ResizeVerts(numVert)
+	verts := mi.Verts()
+	props := make([]float64, numVert*extraProp)
+	for i := 0; i < numVert; i++ {
+		base := fullProp * i
+		verts[i] = geom.Vec3{
+			X: float64(vertProperties[base+0]),
+			Y: float64(vertProperties[base+1]),
+			Z: float64(vertProperties[base+2]),
+		}
+		for j := 0; j < extraProp; j++ {
+			props[i*extraProp+j] = float64(vertProperties[base+3+j])
+		}
+	}
+	if extraProp > 0 {
+		mi.h.SetProperties(props)
+	}
+
+	// halfedgeTangent_ (src/impl.h:378-382).
+	if n := len(halfedgeTangent); n > 0 {
+		tangents := make([]float64, n)
+		for i := range halfedgeTangent {
+			tangents[i] = float64(halfedgeTangent[i])
+		}
+		mi.h.SetHalfedgeTangents(tangents)
+	}
+
+	// Run handling: temp triRef + meshIDtransform (src/impl.h:384-432).
+	ri := make([]int, len(runIndex))
+	for i, x := range runIndex {
+		ri[i] = int(x)
+	}
+	runEnd := len(triVerts)
+	switch {
+	case len(ri) == 0:
+		ri = []int{0, runEnd}
+	case len(ri) == len(runOriginalID):
+		ri = append(ri, runEnd)
+	case len(ri) == 1:
+		ri = append(ri, runEnd)
+	}
+	startID := int(bridge.ImplReserveIDs(uint32(max(1, len(runOriginalID)))))
+	roid := runOriginalID
+	if len(roid) == 0 {
+		roid = []uint32{uint32(startID)}
+	}
+	triRefTemp := make([]triRefData, numTri)
+	for i := 0; i < len(roid); i++ {
+		meshID := startID + i
+		originalID := int(roid[i])
+		backside := i < len(runFlags) && runFlags[i]&1 != 0
+		runHasN := (i < len(runFlags) && runFlags[i]&2 != 0) && extraProp >= 3
+		for tri := ri[i] / 3; tri < ri[i+1]/3; tri++ {
+			fid := int32(-1)
+			if len(faceID) > 0 {
+				fid = int32(faceID[tri])
+			}
+			triRefTemp[tri] = triRefData{int32(meshID), int32(originalID), fid, int32(tri)}
+		}
+		if len(runTransform) == 0 {
+			mi.h.AddMeshIDTransform(meshID, originalID, identityMat3x4(), false, runHasN)
+		} else {
+			m := runTransform[12*i:]
+			tf := [4][3]float64{
+				{float64(m[0]), float64(m[1]), float64(m[2])},
+				{float64(m[3]), float64(m[4]), float64(m[5])},
+				{float64(m[6]), float64(m[7]), float64(m[8])},
+				{float64(m[9]), float64(m[10]), float64(m[11])},
+			}
+			mi.h.AddMeshIDTransform(meshID, originalID, tf, backside, runHasN)
+		}
+	}
+
+	// triProp build + degenerate cull (src/impl.h:434-462). Common path:
+	// no triVert, push the (possibly prop2vert-remapped) triV into triProp.
+	triProp := make([]int32, 0, 3*numTri)
+	var keptMeshID, keptOrigID, keptFaceID, keptCoplanar []int32
+	for i := 0; i < numTri; i++ {
+		var triV [3]int32
+		for j := 0; j < 3; j++ {
+			vert := int(triVerts[3*i+j])
+			if vert >= numVert {
+				mi.h.MakeEmpty(int(VertexIndexOutOfBounds))
+				return mi.ToManifold(), true
+			}
+			if len(prop2vert) == 0 {
+				triV[j] = int32(vert)
+			} else {
+				triV[j] = prop2vert[vert]
+			}
+		}
+		if triV[0] != triV[1] && triV[1] != triV[2] && triV[2] != triV[0] {
+			triProp = append(triProp, triV[0], triV[1], triV[2])
+			r := triRefTemp[i]
+			keptMeshID = append(keptMeshID, r.meshID)
+			keptOrigID = append(keptOrigID, r.originalID)
+			keptFaceID = append(keptFaceID, r.faceID)
+			keptCoplanar = append(keptCoplanar, r.coplanarID)
+		}
+	}
+	mi.h.SetTriRefs(keptMeshID, keptOrigID, keptFaceID, keptCoplanar)
+
+	mi.CreateHalfedges(triProp)
+	if !mi.IsManifold() {
+		mi.h.MakeEmpty(int(NotManifold))
+		return mi.ToManifold(), true
+	}
+
+	// Finalize tail (src/impl.h:473-503), exact order.
+	mi.CalculateBBox()
+	mi.SetEpsilon(-1, useSingle)
+	mi.CleanupTopology()
+	mi.DedupePropVerts()
+	mi.SetNormalsAndCoplanar()
+	mi.RemoveDegenerates(0)
+	mi.RemoveUnreferencedVerts()
+	mi.SortGeometry()
+	if !mi.IsFinite() {
+		mi.h.MakeEmpty(int(NonFiniteVertex))
+		return mi.ToManifold(), true
+	}
+	mi.h.SetMeshRelationOriginalID(-1)
+	return mi.ToManifold(), true
+}
+
+type triRefData struct{ meshID, originalID, faceID, coplanarID int32 }
+
+func identityMat3x4() [4][3]float64 {
+	return [4][3]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}}
 }
