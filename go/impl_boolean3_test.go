@@ -65,6 +65,56 @@ func TestBoolean3Ctor_Sanity(t *testing.T) {
 	}
 }
 
+// TestBoolean3Ctor_Windings checks Winding03 against analytic ground truth:
+// for A=[-1,1]^3 vs B=[0,2]^3, exactly one A-vert (1,1,1) is strictly inside B
+// and exactly one B-vert (0,0,0) is strictly inside A, so w03 and w30 each have
+// exactly one nonzero winding, at that interior vert. This directly guards the
+// collider point-query / flood-fill that previously returned all-zero windings.
+func TestBoolean3Ctor_Windings(t *testing.T) {
+	ma := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)  // [-1,1]^3
+	mb := Cube(Vec3{X: 2, Y: 2, Z: 2}, false) // [0,2]^3
+	defer runtime.KeepAlive(ma)
+	defer runtime.KeepAlive(mb)
+	va := getImpl(ma)
+	defer va.Delete()
+	vb := getImpl(mb)
+	defer vb.Delete()
+	mk := func(v *Impl) boolean.Operand {
+		mn, mx := v.BBox()
+		fb, fm := v.GetFaceBoxMorton()
+		return boolean.Operand{VertPos: v.Verts(), VertNormal: v.VertNormals(), FaceNormal: v.FaceNormals(),
+			Starts: v.HalfedgeStarts(), Pairs: v.HalfedgePairs(), PropVert: v.HalfedgeProps(),
+			BBox: geom.Box{Min: mn, Max: mx}, Collider: collider.New(fb, fm)}
+	}
+	p, q := mk(va), mk(vb)
+
+	// strictlyInside reports whether all coords of pt are in the open box (lo,hi).
+	strictlyInside := func(pt geom.Vec3, lo, hi float64) bool {
+		return pt.X > lo && pt.X < hi && pt.Y > lo && pt.Y < hi && pt.Z > lo && pt.Z < hi
+	}
+	// checkOne asserts exactly one nonzero winding, at a vert that is strictly
+	// inside the other solid's open box.
+	checkOne := func(name string, w []int, verts []geom.Vec3, lo, hi float64) {
+		nz := []int{}
+		for i, x := range w {
+			if x != 0 {
+				nz = append(nz, i)
+			}
+		}
+		if len(nz) != 1 {
+			t.Fatalf("%s: expected exactly 1 nonzero winding, got %d (%v)", name, len(nz), w)
+		}
+		if !strictlyInside(verts[nz[0]], lo, hi) {
+			t.Errorf("%s: nonzero winding at vert %d=%v, not strictly inside (%g,%g)", name, nz[0], verts[nz[0]], lo, hi)
+		}
+	}
+	for _, expandP := range []bool{true, false} {
+		b3 := boolean.NewBoolean3(p, q, expandP)
+		checkOne("w03", b3.W03(), p.VertPos, 0, 2)  // A-vert inside B=[0,2]
+		checkOne("w30", b3.W30(), q.VertPos, -1, 1) // B-vert inside A=[-1,1]
+	}
+}
+
 // TestBoolean3Result_Sanity exercises the entire native Result pipeline
 // (assemble -> face2Tri -> reorderHalfedges) at runtime on two overlapping
 // cubes, for all three ops. It asserts the pre-SimplifyTopology mesh is a
