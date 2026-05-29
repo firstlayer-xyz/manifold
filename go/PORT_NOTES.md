@@ -198,13 +198,20 @@ memory model. The C++ relies on word-sized non-atomic reads being
 
 - `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance`
   — `src/subdivision.cpp` (~800 lines).
-- `SimplifyTopology` — `src/edge_op.cpp`. PARTIALLY drilled:
-  `RemoveDegenerates` and its whole collapse/swap core are now native
-  Go (`flagStore`, `collapseEdge`+`collapseTri`/`removeIfFolded`/
+- `SimplifyTopology` — `src/edge_op.cpp`. FULLY DRILLED (native Go,
+  `impl_simplify.go`). `RemoveDegenerates` and the whole collapse/swap
+  core (`flagStore`, `collapseEdge`+`collapseTri`/`removeIfFolded`/
   `formLoop`, `recursiveEdgeSwap`+`is01Longest`, `collapseShortEdges`,
-  `swapDegenerates`), differential-tested vs the bridge. Still bridge:
-  `SimplifyTopology` itself = `CollapseColinearEdges` (needs
-  `MarkCoplanar`) on top of the `RemoveDegenerates` steps.
+  `swapDegenerates`) plus `collapseColinearEdges` — the extra pass
+  `SimplifyTopology` runs over `RemoveDegenerates` — are all native and
+  differential-tested (`TestSimplifyTopology_VsCpp`), wired into the Go
+  production path (`manifold.go`). `collapseColinearEdges` audited
+  line-by-line vs `CollapseColinearEdges` (edge_op.cpp:210): faithful.
+  NOTE: there is no `MarkCoplanar` function in this manifold version — the
+  edge_op.cpp:223 reference to it is a stale comment. `SameFace` compares
+  `meshID && coplanarID && faceID`; `coplanarID` is maintained through the
+  create/sort/boolean pipeline, so `collapseColinearEdges` needs no extra
+  marking pass.
 - `CreateTangents` (`CreateTangentsIdx` and
   `CreateTangentsFromSmoothness`) — `src/smoothing.cpp`, depends on
   `GetNormal`, `TangentFromNormal`, `CircularTangent`,
