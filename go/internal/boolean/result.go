@@ -1,9 +1,11 @@
 package boolean
 
 import (
+	"math"
 	"sort"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
 // Halfedge mirrors the C++ Halfedge (shared.h:174): a directed half-edge with
@@ -440,6 +442,158 @@ func countVerts(h halfedges, count, inclusion []int, i int) {
 	for j := 0; j < 3; j++ {
 		count[i] += absInt(inclusion[h.Start(3*i+j)])
 	}
+}
+
+// Assembly is the pre-triangulation output of the Boolean assembly — everything
+// Boolean3::Result computes before Face2Tri (boolean_result.cpp:776-919): the
+// output vertices and per-face normals, the per-face halfedge ranges (faceEdge)
+// with the arbitrary-polygon faceHalfedges and their halfedgeRef provenance, the
+// output epsilon/tolerance, the total retained-vert count numVertR, and nPvNQv
+// (nPv+nQv, the original-vertex count SimplifyTopology later needs). The manifold
+// package feeds these into Impl.Face2Tri and the rest of the Impl tail.
+type Assembly struct {
+	VertPos       []geom.Vec3
+	FaceNormal    []geom.Vec3
+	FaceEdge      []int
+	FaceHalfedges []Halfedge
+	HalfedgeRef   []TriRef
+	Epsilon       float64
+	Tolerance     float64
+	NumVertR      int
+	NPvNQv        int
+}
+
+// assemble is the pure, pre-triangulation half of Boolean3::Result
+// (boolean_result.cpp:776-919): convert the winding numbers to inclusion values
+// (c1/c2/c3 from the op), number the output verts via exclusive_scan with AbsSum,
+// duplicate the retained and new verts, accumulate the new edge verts, size the
+// output, and assemble the polygonal faceHalfedges + halfedgeRef. ok is false when
+// numVertR == 0 (the empty-result early return). The Impl tail (Face2Tri onward) is
+// the caller's job. SEQ path throughout.
+func (b *Boolean3) assemble(c1, c2, c3 int, invertQ bool) (Assembly, bool) {
+	inP, inQ := b.p.mesh(), b.q.mesh()
+
+	// Convert winding numbers to inclusion values based on operation type.
+	i12 := make([]int, len(b.xv12.x12))
+	i21 := make([]int, len(b.xv21.x12))
+	i03 := make([]int, len(b.w03))
+	i30 := make([]int, len(b.w30))
+	for i, v := range b.xv12.x12 {
+		i12[i] = c3 * v
+	}
+	for i, v := range b.xv21.x12 {
+		i21[i] = c3 * v
+	}
+	for i, v := range b.w03 {
+		i03[i] = c1 + c3*v
+	}
+	for i, v := range b.w30 {
+		i30[i] = c2 + c3*v
+	}
+
+	absSum := func(a, b int) int { return absInt(a) + absInt(b) }
+
+	vP2R := make([]int, len(inP.vertPos))
+	parallel.ExclusiveScanFunc(parallel.Seq, i03, vP2R, 0, absSum)
+	numVertR := absSum(vP2R[len(vP2R)-1], i03[len(i03)-1])
+	nPv := numVertR
+
+	vQ2R := make([]int, len(inQ.vertPos))
+	parallel.ExclusiveScanFunc(parallel.Seq, i30, vQ2R, numVertR, absSum)
+	numVertR = absSum(vQ2R[len(vQ2R)-1], i30[len(i30)-1])
+	nQv := numVertR - nPv
+
+	v12R := make([]int, len(b.xv12.v12))
+	if len(b.xv12.v12) > 0 {
+		parallel.ExclusiveScanFunc(parallel.Seq, i12, v12R, numVertR, absSum)
+		numVertR = absSum(v12R[len(v12R)-1], i12[len(i12)-1])
+	}
+
+	v21R := make([]int, len(b.xv21.v12))
+	if len(b.xv21.v12) > 0 {
+		parallel.ExclusiveScanFunc(parallel.Seq, i21, v21R, numVertR, absSum)
+		numVertR = absSum(v21R[len(v21R)-1], i21[len(i21)-1])
+	}
+
+	// Create the output Manifold
+	outR := &outImpl{}
+
+	if numVertR == 0 {
+		return Assembly{}, false
+	}
+
+	outR.epsilon = math.Max(b.p.Epsilon, b.q.Epsilon)
+	outR.tolerance = math.Max(b.p.Tolerance, b.q.Tolerance)
+
+	outR.vertPos = make([]geom.Vec3, numVertR)
+	// Add vertices, duplicating for inclusion numbers not in [-1, 1].
+	// Retained vertices from P and Q:
+	for v := range inP.vertPos {
+		duplicateVerts(outR.vertPos, i03, vP2R, inP.vertPos, v)
+	}
+	for v := range inQ.vertPos {
+		duplicateVerts(outR.vertPos, i30, vQ2R, inQ.vertPos, v)
+	}
+	// New vertices created from intersections:
+	for v := range i12 {
+		duplicateVerts(outR.vertPos, i12, v12R, b.xv12.v12, v)
+	}
+	for v := range i21 {
+		duplicateVerts(outR.vertPos, i21, v21R, b.xv21.v12, v)
+	}
+
+	// Level 3
+	// edgesP/edgesQ key on the forward halfedge index of P or Q; edgesNew keys on
+	// the <P, Q> face pair.
+	edgesP := map[int][]edgePos{}
+	edgesQ := map[int][]edgePos{}
+	edgesNew := map[[2]int][]edgePos{}
+
+	addNewEdgeVerts(edgesP, edgesNew, b.xv12.p1q2, i12, v12R, inP.halfedge, true, 0)
+	addNewEdgeVerts(edgesQ, edgesNew, b.xv21.p1q2, i21, v21R, inQ.halfedge, false, len(b.xv12.p1q2))
+
+	// Level 4
+	faceEdge, facePQ2R := sizeOutput(outR, inP, inQ, i03, i30, i12, i21, b.xv12.p1q2, b.xv21.p1q2, invertQ)
+
+	numTriP := len(inP.halfedge.starts) / 3
+	numTriQ := len(inQ.halfedge.starts) / 3
+
+	// facePtrR is incremented for each halfedge added to a face so the next one
+	// knows where to slot in (a copy of faceEdge; faceEdge is kept for Face2Tri).
+	facePtrR := append([]int(nil), faceEdge...)
+	// Intersected halfedges are marked false.
+	wholeHalfedgeP := make([]bool, len(inP.halfedge.starts))
+	wholeHalfedgeQ := make([]bool, len(inQ.halfedge.starts))
+	for i := range wholeHalfedgeP {
+		wholeHalfedgeP[i] = true
+	}
+	for i := range wholeHalfedgeQ {
+		wholeHalfedgeQ[i] = true
+	}
+	// halfedgeRef becomes triRef once the faces are triangulated; faceHalfedges
+	// holds arbitrary polygons before the triangulator.
+	halfedgeRef := make([]TriRef, faceEdge[len(faceEdge)-1])
+	faceHalfedges := make([]Halfedge, faceEdge[len(faceEdge)-1])
+
+	appendPartialEdges(outR, faceHalfedges, wholeHalfedgeP, facePtrR, edgesP, halfedgeRef, inP, i03, vP2R, facePQ2R, true)
+	appendPartialEdges(outR, faceHalfedges, wholeHalfedgeQ, facePtrR, edgesQ, halfedgeRef, inQ, i30, vQ2R, facePQ2R[numTriP:], false)
+
+	appendNewEdges(outR, faceHalfedges, facePtrR, edgesNew, halfedgeRef, facePQ2R, numTriP)
+
+	appendWholeEdges(facePtrR, faceHalfedges, halfedgeRef, inP, wholeHalfedgeP, i03, vP2R, facePQ2R[:numTriP], true)
+	appendWholeEdges(facePtrR, faceHalfedges, halfedgeRef, inQ, wholeHalfedgeQ, i30, vQ2R, facePQ2R[numTriP:numTriP+numTriQ], false)
+
+	return Assembly{
+		VertPos:       outR.vertPos,
+		FaceNormal:    outR.faceNormal,
+		FaceEdge:      faceEdge,
+		FaceHalfedges: faceHalfedges,
+		HalfedgeRef:   halfedgeRef,
+		Epsilon:       outR.epsilon,
+		Tolerance:     outR.tolerance,
+		NumVertR:      numVertR,
+		NPvNQv:        nPv + nQv,
+	}, true
 }
 
 // countNewVerts is the Go port of the CountNewVerts functor

@@ -21,6 +21,8 @@ type Operand struct {
 	PropVert   []int32
 	BBox       geom.Box
 	Collider   *collider.Collider
+	Epsilon    float64
+	Tolerance  float64
 }
 
 func (o Operand) mesh() *mesh {
@@ -37,6 +39,7 @@ func (o Operand) mesh() *mesh {
 // winding numbers w03 (P verts vs Q) and w30 (Q verts vs P). Result (Phase 2)
 // turns these into the output mesh.
 type Boolean3 struct {
+	p, q       Operand // the C++ const Impl& inP_, inQ_ (Result reads them)
 	xv12, xv21 intersections
 	w03, w30   []int
 	expandP    bool
@@ -48,7 +51,7 @@ type Boolean3 struct {
 // contract P, expand Q). It computes the four intersection/winding arrays via
 // Intersect12<true/false> and Winding03<true/false>.
 func NewBoolean3(p, q Operand, expandP bool) *Boolean3 {
-	b := &Boolean3{expandP: expandP, valid: true}
+	b := &Boolean3{p: p, q: q, expandP: expandP, valid: true}
 	pMesh, qMesh := p.mesh(), q.mesh()
 
 	// No overlap (either empty, or disjoint bboxes) -> all windings 0.
