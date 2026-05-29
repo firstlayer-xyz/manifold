@@ -2,6 +2,7 @@ package manifold
 
 import (
 	"math"
+	"sort"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -462,6 +463,278 @@ func (mi *MutableImpl) createTangentsIdx(normalIdx int) {
 	ts.distributeTangents(tangent, fixedHalfedge)
 
 	// halfedgeTangent_ = move(tangent): flatten to the bridge's 4-per layout.
+	flat := make([]float64, 4*numHalfedge)
+	for i, t := range tangent {
+		flat[4*i] = t.X
+		flat[4*i+1] = t.Y
+		flat[4*i+2] = t.Z
+		flat[4*i+3] = t.W
+	}
+	mi.h.SetHalfedgeTangents(flat)
+}
+
+// isForward mirrors Halfedges::IsForward (src/shared.h:204): Start < End.
+func (ts *tangentState) isForward(idx int) bool { return ts.start(idx) < ts.end(idx) }
+
+// flatFaces is the Go port of Impl::FlatFaces (src/smoothing.cpp:362): mark
+// each triangle that has more than one same-face neighbor (and those
+// neighbors) as part of a flat face. Writes are idempotent (all set true), so
+// the sequential form matches the C++ parallel one.
+func (ts *tangentState) flatFaces() []bool {
+	numTri := len(ts.triRefs)
+	triIsFlatFace := make([]bool, numTri)
+	for tri := 0; tri < numTri; tri++ {
+		ref := ts.triRefs[tri]
+		faceNeighbors := 0
+		faceTris := [3]int{-1, -1, -1}
+		for j := 0; j < 3; j++ {
+			neighborTri := int(ts.pairs[3*tri+j]) / 3
+			jRef := ts.triRefs[neighborTri]
+			if triRefSameFace(jRef, ref) {
+				faceNeighbors++
+				faceTris[j] = neighborTri
+			}
+		}
+		if faceNeighbors > 1 {
+			triIsFlatFace[tri] = true
+			for j := 0; j < 3; j++ {
+				if faceTris[j] >= 0 {
+					triIsFlatFace[faceTris[j]] = true
+				}
+			}
+		}
+	}
+	return triIsFlatFace
+}
+
+// vertFlatFace is the Go port of Impl::VertFlatFace (src/smoothing.cpp:393): for
+// each vert, the tri of its neighboring flat face if there is exactly one (-1
+// for none, -2 for more than one). Sequential, matching C++.
+func (ts *tangentState) vertFlatFace(flatFaces []bool) []int {
+	numVert := len(ts.verts)
+	vertFlatFace := make([]int, numVert)
+	vertRef := make([]bridge.TriRef, numVert)
+	for i := 0; i < numVert; i++ {
+		vertFlatFace[i] = -1
+		vertRef[i] = bridge.TriRef{MeshID: -1, OriginalID: -1, FaceID: -1, CoplanarID: -1}
+	}
+	numTri := len(ts.triRefs)
+	for tri := 0; tri < numTri; tri++ {
+		if !flatFaces[tri] {
+			continue
+		}
+		for j := 0; j < 3; j++ {
+			vert := ts.start(3*tri + j)
+			if triRefSameFace(vertRef[vert], ts.triRefs[tri]) {
+				continue
+			}
+			vertRef[vert] = ts.triRefs[tri]
+			if vertFlatFace[vert] == -1 {
+				vertFlatFace[vert] = tri
+			} else {
+				vertFlatFace[vert] = -2
+			}
+		}
+	}
+	return vertFlatFace
+}
+
+// sharpenTangent is the Go port of Impl::SharpenTangent (src/smoothing.cpp:448):
+// scale the tangent toward the vert (shorter Bezier => sharper), operating on
+// the working tangent array.
+func sharpenTangent(tangent []geom.Vec4, halfedge int, smoothness float64) {
+	v := tangent[halfedge].Vec3().Scale(smoothness)
+	w := tangent[halfedge].W
+	if smoothness == 0 {
+		w = 0
+	}
+	tangent[halfedge] = geom.Vec4{X: v.X, Y: v.Y, Z: v.Z, W: w}
+}
+
+// linearizeFlatTangents is the Go port of Impl::LinearizeFlatTangents
+// (src/smoothing.cpp:655): where a tangent (or its pair) was zeroed for a flat
+// face, set it to a straight 1/3-edge Bezier control so the flat side stays
+// flat. Component divides match C++ (vec3 / scalar), not reciprocal multiplies.
+func (ts *tangentState) linearizeFlatTangents(tangent []geom.Vec4) {
+	for halfedge := 0; halfedge < len(tangent); halfedge++ {
+		pair := int(ts.pairs[halfedge])
+		flat0 := tangent[halfedge].W == 0
+		flat1 := tangent[pair].W == 0
+		if !ts.isForward(halfedge) || (!flat0 && !flat1) {
+			continue
+		}
+		edgeVec := ts.verts[ts.end(halfedge)].Sub(ts.verts[ts.start(halfedge)])
+		switch {
+		case flat0 && flat1:
+			tangent[halfedge] = geom.Vec4{X: edgeVec.X / 3.0, Y: edgeVec.Y / 3.0, Z: edgeVec.Z / 3.0, W: 1}
+			tangent[pair] = geom.Vec4{X: -edgeVec.X / 3.0, Y: -edgeVec.Y / 3.0, Z: -edgeVec.Z / 3.0, W: 1}
+		case flat0:
+			ot := tangent[pair].Vec3()
+			tangent[halfedge] = geom.Vec4{X: (edgeVec.X + ot.X) / 2.0, Y: (edgeVec.Y + ot.Y) / 2.0, Z: (edgeVec.Z + ot.Z) / 2.0, W: 1}
+		default:
+			th := tangent[halfedge].Vec3()
+			tangent[pair] = geom.Vec4{X: (-edgeVec.X + th.X) / 2.0, Y: (-edgeVec.Y + th.Y) / 2.0, Z: (-edgeVec.Z + th.Z) / 2.0, W: 1}
+		}
+	}
+}
+
+// createTangentsFromSmoothness is the Go port of
+// Impl::CreateTangents(vector<Smoothness>) (src/smoothing.cpp:936): build
+// tangents from the flat-face-aware vert normals, then sharpen the edges
+// flagged in sharpenedEdges (smoothness < 1), making sharp-edge tangents
+// continuous and shrinking the crossing tangents toward the sharp edge.
+func (mi *MutableImpl) createTangentsFromSmoothness(sharpenedEdges []bridge.Smoothness) {
+	ts := newTangentState(mi)
+	ts.halfedgeTangent = nil // C++ halfedgeTangent_.clear() (line 939)
+	numHalfedge := len(ts.starts)
+	numVert := len(ts.verts)
+	numTri := len(ts.triRefs)
+	tangent := make([]geom.Vec4, numHalfedge)
+	fixedHalfedge := make([]bool, numHalfedge)
+
+	vertHalfedge := ts.vertHalfedge()
+	triIsFlatFace := ts.flatFaces()
+	vertFlatFace := ts.vertFlatFace(triIsFlatFace)
+	vertNormal := append([]geom.Vec3(nil), ts.vertNormals...)
+	for v := 0; v < numVert; v++ {
+		if vertFlatFace[v] >= 0 {
+			vertNormal[v] = ts.faceNormals[vertFlatFace[v]]
+		}
+	}
+
+	for edgeIdx := 0; edgeIdx < numHalfedge; edgeIdx++ {
+		if ts.isInsideQuad(edgeIdx) {
+			tangent[edgeIdx] = geom.Vec4{W: -1}
+		} else {
+			tangent[edgeIdx] = ts.tangentFromNormal(vertNormal[ts.start(edgeIdx)], edgeIdx)
+		}
+	}
+	// halfedgeTangent_ = tangent: from here, IsMarkedInsideQuad reads `tangent`.
+
+	// Add sharpened edges around flat faces, just on the face side. Copy first
+	// so the caller's slice is not mutated.
+	sharpenedEdges = append([]bridge.Smoothness(nil), sharpenedEdges...)
+	for tri := 0; tri < numTri; tri++ {
+		if !triIsFlatFace[tri] {
+			continue
+		}
+		for j := 0; j < 3; j++ {
+			tri2 := int(ts.pairs[3*tri+j]) / 3
+			if !triIsFlatFace[tri2] || !triRefSameFace(ts.triRefs[tri], ts.triRefs[tri2]) {
+				sharpenedEdges = append(sharpenedEdges, bridge.Smoothness{Halfedge: uint64(3*tri + j), Smoothness: 0})
+			}
+		}
+	}
+
+	type pair struct{ first, second bridge.Smoothness }
+	// Fill in missing pairs with default smoothness = 1. C++ uses std::map<int>;
+	// iterate by sorted key below to match its order.
+	edges := map[int]pair{}
+	for _, edge := range sharpenedEdges {
+		if edge.Smoothness >= 1 {
+			continue
+		}
+		forward := ts.isForward(int(edge.Halfedge))
+		pr := int(ts.pairs[edge.Halfedge])
+		idx := int(edge.Halfedge)
+		if !forward {
+			idx = pr
+		}
+		if e, ok := edges[idx]; !ok {
+			ed := pair{first: edge, second: bridge.Smoothness{Halfedge: uint64(pr), Smoothness: 1}}
+			if !forward {
+				ed.first, ed.second = ed.second, ed.first
+			}
+			edges[idx] = ed
+		} else {
+			if forward {
+				if edge.Smoothness < e.first.Smoothness {
+					e.first.Smoothness = edge.Smoothness
+				}
+			} else {
+				if edge.Smoothness < e.second.Smoothness {
+					e.second.Smoothness = edge.Smoothness
+				}
+			}
+			edges[idx] = e
+		}
+	}
+
+	edgeKeys := make([]int, 0, len(edges))
+	for k := range edges {
+		edgeKeys = append(edgeKeys, k)
+	}
+	sort.Ints(edgeKeys)
+
+	vertTangents := map[int][]pair{}
+	for _, k := range edgeKeys {
+		edge := edges[k]
+		s0 := ts.start(int(edge.first.Halfedge))
+		vertTangents[s0] = append(vertTangents[s0], edge)
+		s1 := ts.start(int(edge.second.Halfedge))
+		vertTangents[s1] = append(vertTangents[s1], pair{first: edge.second, second: edge.first})
+	}
+
+	for v := 0; v < numVert; v++ {
+		vert, ok := vertTangents[v]
+		if !ok {
+			fixedHalfedge[vertHalfedge[v]] = true
+			continue
+		}
+		// Sharp edges that end are smooth at their terminal vert.
+		if len(vert) == 1 {
+			continue
+		}
+		if len(vert) == 2 { // Make continuous edge
+			first := int(vert[0].first.Halfedge)
+			second := int(vert[1].first.Halfedge)
+			fixedHalfedge[first] = true
+			fixedHalfedge[second] = true
+			newTangent := tangent[first].Vec3().Sub(tangent[second].Vec3()).Normalize()
+
+			pos := ts.verts[ts.start(first)]
+			tangent[first] = circularTangent(newTangent, ts.verts[ts.end(first)].Sub(pos))
+			tangent[second] = circularTangent(newTangent.Scale(-1), ts.verts[ts.end(second)].Sub(pos))
+
+			smoothness := (vert[0].second.Smoothness + vert[1].first.Smoothness) / 2
+			forVert(first, ts.pairs, func(current int) {
+				if current == second {
+					smoothness = (vert[1].second.Smoothness + vert[0].first.Smoothness) / 2
+				} else if current != first && !isMarkedInsideQuad(tangent, current) {
+					sharpenTangent(tangent, current, smoothness)
+				}
+			})
+		} else { // Sharpen vertex uniformly
+			smoothness := 0.0
+			denom := 0.0
+			for _, p := range vert {
+				smoothness += p.first.Smoothness
+				smoothness += p.second.Smoothness
+				if p.first.Smoothness != 0 {
+					denom++
+				}
+				if p.second.Smoothness != 0 {
+					denom++
+				}
+			}
+			smoothness /= denom
+
+			forVert(int(vert[0].first.Halfedge), ts.pairs, func(current int) {
+				if !isMarkedInsideQuad(tangent, current) {
+					pr := int(ts.pairs[current])
+					s := smoothness
+					if triIsFlatFace[current/3] || triIsFlatFace[pr/3] {
+						s = 0
+					}
+					sharpenTangent(tangent, current, s)
+				}
+			})
+		}
+	}
+
+	ts.linearizeFlatTangents(tangent)
+	ts.distributeTangents(tangent, fixedHalfedge)
+
 	flat := make([]float64, 4*numHalfedge)
 	for i, t := range tangent {
 		flat[4*i] = t.X

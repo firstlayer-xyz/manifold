@@ -83,11 +83,76 @@ func TestCreateTangentsIdx_VsCpp(t *testing.T) {
 			if len(got) != len(want) {
 				t.Fatalf("tangent count: native %d != bridge %d", len(got), len(want))
 			}
+			maxDiff := 0.0
+			maxAt := 0
 			for i := range got {
-				if math.Abs(got[i]-want[i]) > 1e-9 {
-					t.Fatalf("tangent[%d] (halfedge %d, comp %d): native %v != bridge %v",
-						i, i/4, i%4, got[i], want[i])
+				d := math.Abs(got[i] - want[i])
+				if d > maxDiff {
+					maxDiff, maxAt = d, i
 				}
+			}
+			t.Logf("max abs tangent diff = %g at index %d (native %v, bridge %v)",
+				maxDiff, maxAt, got[maxAt], want[maxAt])
+			// Tangents use acos/sin/cos (Go stdlib vs C++ musl); near-zero
+			// components accumulate ~1e-9 noise. A structural divergence would
+			// be orders larger, so 1e-7 cleanly separates noise from bugs.
+			if maxDiff > 1e-7 {
+				t.Fatalf("max tangent diff %g exceeds tolerance (index %d)", maxDiff, maxAt)
+			}
+		})
+	}
+}
+
+// TestCreateTangentsFromSmoothness_VsCpp differential-tests the native
+// createTangentsFromSmoothness against the bridge, feeding both the same
+// sharpened-edge list (from SharpenEdges). Compared semantically (acos/sin/cos
+// stdlib vs musl). Cube exercises many sharp edges (size-2 continuous + uniform
+// vert cases); sphere exercises mostly-smooth with a few sharpened edges.
+func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
+	cases := []struct {
+		name  string
+		mk    func() *Manifold
+		angle float64
+	}{
+		{"cube", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, true) }, 60},
+		{"sphere", func() *Manifold { return Sphere(1, 16) }, 70},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.mk()
+			defer runtime.KeepAlive(m)
+			view := getImpl(m)
+			defer view.Delete()
+			sharp := view.SharpenEdges(tc.angle, 0)
+
+			a := view.Copy()
+			defer a.Delete()
+			a.createTangentsFromSmoothness(sharp)
+			got := append([]float64(nil), a.HalfedgeTangents()...)
+
+			b := view.Copy()
+			defer b.Delete()
+			b.h.CreateTangentsFromSmoothness(sharp)
+			want := append([]float64(nil), b.HalfedgeTangents()...)
+
+			if len(got) != len(want) {
+				t.Fatalf("tangent count: native %d != bridge %d", len(got), len(want))
+			}
+			maxDiff := 0.0
+			maxAt := 0
+			for i := range got {
+				d := math.Abs(got[i] - want[i])
+				if d > maxDiff {
+					maxDiff, maxAt = d, i
+				}
+			}
+			t.Logf("max abs tangent diff = %g at index %d (native %v, bridge %v)",
+				maxDiff, maxAt, got[maxAt], want[maxAt])
+			// Tangents use acos/sin/cos (Go stdlib vs C++ musl); near-zero
+			// components accumulate ~1e-9 noise. A structural divergence would
+			// be orders larger, so 1e-7 cleanly separates noise from bugs.
+			if maxDiff > 1e-7 {
+				t.Fatalf("max tangent diff %g exceeds tolerance (index %d)", maxDiff, maxAt)
 			}
 		})
 	}

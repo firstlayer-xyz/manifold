@@ -212,27 +212,33 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `meshID && coplanarID && faceID`; `coplanarID` is maintained through the
   create/sort/boolean pipeline, so `collapseColinearEdges` needs no extra
   marking pass.
-- `CreateTangents` — `src/smoothing.cpp`. PARTIALLY drilled
-  (`impl_smoothing_tangents.go`):
-  - `CreateTangents(int)` (the normalIdx form) is native: `createTangentsIdx`
-    + `distributeTangents` (the quaternion angular-redistribution pass) + the
-    read helpers `getNormal`/`tangentFromNormal`/`circularTangent`/
-    `isInsideQuad`/`equalNormals`/`vertHalfedge` (on a `tangentState`
-    snapshot). Differential-tested vs the bridge (`TestCreateTangentsIdx_VsCpp`,
-    smooth sphere + sharp cube) within 1e-9 — semantic, not bit-exact, because
-    tangents use acos/sin/cos (Go stdlib vs C++ musl). NOT yet wired into the
-    production `MutableImpl.CreateTangents` (still bridge) — that flip + the
-    Smooth* wiring is the next increment.
+- `CreateTangents` — `src/smoothing.cpp`. BOTH forms drilled
+  (`impl_smoothing_tangents.go`), not yet wired into production:
+  - `CreateTangents(int)` — `createTangentsIdx` + `distributeTangents` (the
+    quaternion angular-redistribution pass) + read helpers `getNormal`/
+    `tangentFromNormal`/`circularTangent`/`isInsideQuad`/`equalNormals`/
+    `vertHalfedge` (on a `tangentState` snapshot).
+  - `CreateTangents([]Smoothness)` — `createTangentsFromSmoothness` + the
+    `flatFaces`/`vertFlatFace`/`sharpenTangent`/`linearizeFlatTangents`/
+    `isForward` helpers. The C++ `std::map<int>` ordering is replicated by
+    iterating the Go map over sorted keys (so the `vertTangents` push order —
+    used positionally as vert[0]/vert[1] — matches).
+  - Differential-tested vs the bridge (`TestCreateTangentsIdx_VsCpp`,
+    `TestCreateTangentsFromSmoothness_VsCpp`; smooth sphere + sharp cube)
+    within 1e-7 — semantic, not bit-exact: cube cases are bit-identical / 1
+    ULP, the sphere-with-sharpening max is ~3.8e-9 from acos amplification near
+    aligned tangents in DistributeTangents (Go stdlib vs C++ musl acos/sin/cos).
   - Added `geom.Vec4` (+ linalg-faithful `Lerp`), `geom.Mat3.MulScalar`, and
     `geom.RotationQuat`/`Qrot` (quaternion rotation, unit-tested). `prevHalfedge`
     added next to `nextHalfedge`. Reuses the existing `forVert`/`forVertTransform`.
   - `tangentState` is a read-side bridge artifact (like `dedupeState`): a
     snapshot of the Impl arrays because the Impl lives behind cgo today.
     Collapses to direct field access when the persistent Go Impl lands.
-  - STILL BRIDGE: `CreateTangents(vector<Smoothness>)` (the sharpened-edge form,
-    smoothing.cpp:936) + `UpdateSharpenedEdges`, and `SmoothImpl` (the
-    Smooth(MeshGL) constructor). No `MarkCoplanar`-style prerequisites; the
-    InterpTri Bezier machinery is only needed by Refine, not CreateTangents.
+  - STILL BRIDGE: the production facades `MutableImpl.CreateTangents{,FromSmoothness}`
+    (impl.go) still call the bridge — the flip to native + the `SmoothByNormals`/
+    `SmoothOut` / `Smooth(MeshGL)` (`SmoothImpl` + `UpdateSharpenedEdges`)
+    call-site wiring is the next increment. (InterpTri's Bezier machinery is
+    only needed by Refine, not CreateTangents.)
 - `RayCast`, `Minkowski` — still C++; use the bridge Collider.
   When drilled, can use the Go `internal/collider` package directly.
   (`MinGap` is now drilled — native Go via `internal/collider` +
