@@ -444,6 +444,53 @@ func countVerts(h halfedges, count, inclusion []int, i int) {
 	}
 }
 
+// reorderHalfedges is the Go port of Manifold::Impl::ReorderHalfedges
+// (sort.cpp:517). The Append* helpers add a face's halfedges in a
+// non-deterministic order, so step 1 rotates each face to start at its smallest
+// start vert, and step 2 re-resolves every paired halfedge against the reordered
+// neighbours. Its only C++ call site is Boolean3::Result. SEQ path; the two steps
+// are separated by a full barrier (step 2 reads step 1's reordered starts).
+func reorderHalfedges(h halfedges) {
+	numTri := len(h.starts) / 3
+
+	// step 1: rotate within each face so the smallest start vert is first.
+	for tri := 0; tri < numTri; tri++ {
+		face := [3]Halfedge{h.Get(tri * 3), h.Get(tri*3 + 1), h.Get(tri*3 + 2)}
+		if face[0].StartVert < 0 {
+			continue
+		}
+		index := 0
+		for _, i := range []int{1, 2} {
+			if face[i].StartVert < face[index].StartVert {
+				index = i
+			}
+		}
+		for _, i := range []int{0, 1, 2} {
+			f := face[(index+i)%3]
+			h.Set(tri*3+i, f.StartVert, f.PairedHalfedge, f.PropVert)
+		}
+	}
+
+	// step 2: fix paired halfedges.
+	for tri := 0; tri < numTri; tri++ {
+		for _, i := range []int{0, 1, 2} {
+			currIdx := tri*3 + i
+			startVert := h.Start(currIdx)
+			if startVert < 0 {
+				break
+			}
+			oppositeFace := h.Pair(currIdx) / 3
+			index := -1
+			for _, j := range []int{0, 1, 2} {
+				if startVert == h.End(oppositeFace*3+j) {
+					index = j
+				}
+			}
+			h.SetPair(currIdx, oppositeFace*3+index)
+		}
+	}
+}
+
 // Assembly is the pre-triangulation output of the Boolean assembly — everything
 // Boolean3::Result computes before Face2Tri (boolean_result.cpp:776-919): the
 // output vertices and per-face normals, the per-face halfedge ranges (faceEdge)

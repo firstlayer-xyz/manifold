@@ -86,6 +86,17 @@ func (h halfedges) SetStart(e, v int) { h.starts[e] = int32(v) }
 func (h halfedges) SetPair(e, v int)  { h.pairs[e] = int32(v) }
 func (h halfedges) SetProp(e, v int)  { h.propVert[e] = int32(v) }
 
+// Get / Set mirror Halfedges::Get (shared.h:206) and Set (shared.h:210): a
+// whole-halfedge snapshot (End derived) and a start/pair/prop write.
+func (h halfedges) Get(e int) Halfedge {
+	return Halfedge{StartVert: h.Start(e), EndVert: h.End(e), PairedHalfedge: h.Pair(e), PropVert: h.Prop(e)}
+}
+func (h halfedges) Set(e, startVert, pairedHalfedge, propVert int) {
+	h.SetStart(e, startVert)
+	h.SetPair(e, pairedHalfedge)
+	h.SetProp(e, propVert)
+}
+
 // nextHalfedge is the Go port of NextHalfedge (src/shared.h): the next halfedge
 // within the same triangle, via Next3 ((e/3)*3 + Next3(e%3)).
 func nextHalfedge(e int) int { return e - e%3 + Next3(e%3) }

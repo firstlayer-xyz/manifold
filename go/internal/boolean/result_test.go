@@ -92,6 +92,37 @@ func TestSizeOutput(t *testing.T) {
 	}
 }
 
+// TestReorderHalfedges builds a valid tetrahedron with one face stored
+// off-canonical (not starting at its smallest vert) and asserts that after
+// reorderHalfedges every face starts at its smallest vert and the pairing is
+// consistent (Start(Pair(e)) == End(e), Pair(Pair(e)) == e).
+func TestReorderHalfedges(t *testing.T) {
+	// Canonical tetra faces (0,1,2)(0,3,1)(0,2,3)(1,3,2), but face 0 rotated to
+	// start at vert 1, with the pairs into face 0 fixed up accordingly.
+	starts := []int32{1, 2, 0, 0, 3, 1, 0, 2, 3, 1, 3, 2}
+	pairs := []int32{11, 6, 5, 8, 9, 2, 1, 10, 3, 4, 7, 0}
+	props := append([]int32(nil), starts...)
+	h := halfedges{starts: starts, pairs: pairs, propVert: props}
+
+	reorderHalfedges(h)
+
+	numTri := len(h.starts) / 3
+	for tri := 0; tri < numTri; tri++ {
+		s0, s1, s2 := h.Start(tri*3), h.Start(tri*3+1), h.Start(tri*3+2)
+		if s0 > s1 || s0 > s2 {
+			t.Errorf("face %d starts %d,%d,%d not smallest-first", tri, s0, s1, s2)
+		}
+	}
+	for e := 0; e < len(h.starts); e++ {
+		if h.Start(h.Pair(e)) != h.End(e) {
+			t.Errorf("edge %d: Start(Pair)=%d != End=%d", e, h.Start(h.Pair(e)), h.End(e))
+		}
+		if h.Pair(h.Pair(e)) != e {
+			t.Errorf("edge %d: Pair(Pair)=%d != %d", e, h.Pair(h.Pair(e)), e)
+		}
+	}
+}
+
 // TestPairUp covers the partition + per-half stable-sort + pairing: starts and
 // ends interleaved with out-of-order pos, so the sort must reorder each half
 // before pairing edgePos[i] with edgePos[i+nEdges].
