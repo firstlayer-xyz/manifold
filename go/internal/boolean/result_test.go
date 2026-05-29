@@ -91,3 +91,30 @@ func TestSizeOutput(t *testing.T) {
 		t.Errorf("faceEdge = %v, want [0 3 6]", faceEdge)
 	}
 }
+
+// TestAddNewEdgeVerts covers one forward crossing: vert lands on P's edge and
+// the two new edges (left/right faces of edgeP x faceQ), with isStart per the
+// XOR rule and the right keys.
+func TestAddNewEdgeVerts(t *testing.T) {
+	// edgeP=0 (tri0), Pair(0)=4 (tri1); faceQ=7. inclusion=1 -> direction=false.
+	h := halfedges{starts: []int32{0, 1, 2, 3, 4, 5}, pairs: []int32{4, 1, 2, 3, 0, 5}}
+	edgesP := map[int][]edgePos{}
+	edgesNew := map[[2]int][]edgePos{}
+	p1q2 := [][2]int{{0, 7}}
+	i12 := []int{1}
+	v12R := []int{42}
+	addNewEdgeVerts(edgesP, edgesNew, p1q2, i12, v12R, h, true, 0)
+
+	// edgesP[0]: one entry, vert 42, collisionID 0, isStart=direction=false.
+	if got := edgesP[0]; len(got) != 1 || got[0].vert != 42 || got[0].collisionID != 0 || got[0].isStart {
+		t.Errorf("edgesP[0] = %+v", got)
+	}
+	// keyLeft = {edgeP/3, faceQ} = {0, 7}; isStart = direction!=forward = false!=true = true.
+	if got := edgesNew[[2]int{0, 7}]; len(got) != 1 || got[0].vert != 42 || !got[0].isStart {
+		t.Errorf("edgesNew[{0,7}] = %+v", got)
+	}
+	// keyRight = {Pair(0)/3, faceQ} = {4/3=1, 7} = {1, 7}; isStart = direction!=!forward = false!=false = false.
+	if got := edgesNew[[2]int{1, 7}]; len(got) != 1 || got[0].vert != 42 || got[0].isStart {
+		t.Errorf("edgesNew[{1,7}] = %+v", got)
+	}
+}

@@ -10,6 +10,61 @@ func absInt(x int) int {
 	return x
 }
 
+// edgePos is the Go port of the EdgePos struct (boolean_result.cpp:191): a new
+// vertex along a retained edge, with its position along the edge (pos, filled
+// later in AppendPartialEdges), output vert index, originating crossing id
+// (for deterministic tie-break), and whether it starts a span. Its ordering is
+// (pos, then collisionID) — applied in PairUp.
+type edgePos struct {
+	pos         float64
+	vert        int
+	collisionID int
+	isStart     bool
+}
+
+// addNewEdgeVerts is the Go port of AddNewEdgeVerts (boolean_result.cpp:204):
+// for each edge(P)/face(Q) crossing, record the new vertex on P's edge
+// (edgesP[edgeP]) and on the two new edges where Q's face meets the two P-faces
+// sharing edgeP (edgesNew[keyLeft/keyRight]); the span direction comes from the
+// crossing inclusion sign, duplicated |inclusion| times, with v12R remapping to
+// the output vert index. forward=false mirrors P<->Q. SEQ path: the C++
+// per-key mutex locking and its hashes are parallel-only, so they're dropped;
+// &edgesP[k] (addressable map value) becomes append-to-map.
+func addNewEdgeVerts(edgesP map[int][]edgePos, edgesNew map[[2]int][]edgePos,
+	p1q2 [][2]int, i12, v12R []int, halfedgeP halfedges, forward bool, offset int) {
+	for i := range p1q2 {
+		edgeSlot, faceSlot := 0, 1
+		if !forward {
+			edgeSlot, faceSlot = 1, 0
+		}
+		edgeP := p1q2[i][edgeSlot]
+		faceQ := p1q2[i][faceSlot]
+		vert := v12R[i]
+		inclusion := i12[i]
+
+		keyRight := [2]int{halfedgeP.Pair(edgeP) / 3, faceQ}
+		keyLeft := [2]int{edgeP / 3, faceQ}
+		if !forward {
+			keyRight[0], keyRight[1] = keyRight[1], keyRight[0]
+			keyLeft[0], keyLeft[1] = keyLeft[1], keyLeft[0]
+		}
+
+		direction := inclusion < 0
+		// isStart per target (C++ uses bool XOR ^; Go uses !=). The dead
+		// `direction = !direction` loop tail is omitted (the targets capture
+		// isStart by value).
+		push := func(vec []edgePos, isStart bool) []edgePos {
+			for j := 0; j < absInt(inclusion); j++ {
+				vec = append(vec, edgePos{pos: 0.0, vert: vert + j, collisionID: i + offset, isStart: isStart})
+			}
+			return vec
+		}
+		edgesP[edgeP] = push(edgesP[edgeP], direction)
+		edgesNew[keyRight] = push(edgesNew[keyRight], direction != !forward)
+		edgesNew[keyLeft] = push(edgesNew[keyLeft], direction != forward)
+	}
+}
+
 // outImpl is the output Manifold::Impl being assembled by Boolean3::Result.
 // Fields are filled as the assembly progresses; more are added as later helpers
 // land (halfedge, triRef, properties).
