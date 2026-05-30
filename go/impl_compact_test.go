@@ -30,7 +30,7 @@ func TestRemoveUnreferencedVerts_MarksTail(t *testing.T) {
 	origVerts := append([]geom.Vec3(nil), mi.Verts()...)
 
 	// Append two extra verts that no halfedge references.
-	mi.h.ResizeVerts(origNumVert + 2)
+	mi.ResizeVerts(origNumVert + 2)
 	verts := mi.Verts()
 	verts[origNumVert] = geom.Vec3{X: 99, Y: 99, Z: 99}
 	verts[origNumVert+1] = geom.Vec3{X: -7, Y: -7, Z: -7}

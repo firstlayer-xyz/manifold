@@ -18,9 +18,11 @@ func TestImplStorageRoundTrip(t *testing.T) {
 	defer v.Delete()
 	s := marshalImplStorageFromBridge(v.h)
 
+	// Adopt s as the mutable impl's native storage; ToManifold marshals it back
+	// into the bridge handle (exercising marshalImplStorageToBridge) and seals.
 	mi := newImpl()
 	defer mi.Delete()
-	marshalImplStorageToBridge(s, mi.h)
+	mi.s = s
 	m2 := mi.ToManifold()
 
 	approx := func(a, b float64) bool { return math.Abs(a-b) <= 1e-9*(1+math.Abs(b)) }

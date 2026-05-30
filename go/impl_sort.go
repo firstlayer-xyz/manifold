@@ -327,5 +327,10 @@ func (mi *MutableImpl) SortGeometry() {
 		flat[6*i+5] = b.Max.Z
 	})
 	mi.h.BuildCollider(flat, morton)
+	// BuildCollider refreshed the bridge bBox_ from the new collider's bounding
+	// box (C++ SortGeometry: bBox_ = collider_.GetBoundingBox()); SortVerts may
+	// have trimmed NaN verts, so pull the refreshed box back into native storage.
+	minB, maxB := mi.h.GetBBox()
+	mi.SetBBox(minB, maxB)
 	mi.CompactProps()
 }

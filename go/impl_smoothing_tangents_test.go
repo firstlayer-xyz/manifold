@@ -77,7 +77,9 @@ func TestCreateTangentsIdx_VsCpp(t *testing.T) {
 
 			b := view.Copy()
 			defer b.Delete()
-			b.h.CreateTangentsIdx(0)
+			// Bridge reference reads/writes the bridge handle; marshal around it so
+			// the tangents reload into native storage for HalfedgeTangents().
+			b.runBridgeAlgo(func() { b.h.CreateTangentsIdx(0) })
 			want := append([]float64(nil), b.HalfedgeTangents()...)
 
 			if len(got) != len(want) {
@@ -132,7 +134,7 @@ func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
 
 			b := view.Copy()
 			defer b.Delete()
-			b.h.CreateTangentsFromSmoothness(sharp)
+			b.runBridgeAlgo(func() { b.h.CreateTangentsFromSmoothness(sharp) })
 			want := append([]float64(nil), b.HalfedgeTangents()...)
 
 			if len(got) != len(want) {

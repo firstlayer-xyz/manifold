@@ -18,7 +18,10 @@ func removeDegenResult(t *testing.T, m *Manifold, eps float64, useBridge bool) *
 	impl.SetEpsilonValue(eps)
 	impl.SetToleranceValue(eps)
 	if useBridge {
-		impl.h.RemoveDegenerates(0)
+		// The bridge reference reads its storage from the bridge handle, so
+		// marshal the native storage in (incl. the eps/tol set above), run the
+		// C++ pass, and reload — the same seam production Refine/Subdivide use.
+		impl.runBridgeAlgo(func() { impl.h.RemoveDegenerates(0) })
 	} else {
 		impl.RemoveDegenerates(0)
 	}
@@ -88,7 +91,7 @@ func simplifyTopoResult(t *testing.T, m *Manifold, eps float64, useBridge bool) 
 	impl.SetEpsilonValue(eps)
 	impl.SetToleranceValue(eps)
 	if useBridge {
-		impl.h.SimplifyTopology()
+		impl.runBridgeAlgo(func() { impl.h.SimplifyTopology() })
 	} else {
 		impl.SimplifyTopology(0)
 	}

@@ -52,6 +52,12 @@ func (h *Halfedges) Raw() (starts, paired, propVert []int32) {
 	return h.starts, h.paired, h.propVert
 }
 
+// Starts / Paired / PropVert expose the individual backing arrays (read-write
+// aliases) — the SoA columns halfedge_.start_ / .paired_ / .propVert_.
+func (h *Halfedges) Starts() []int32   { return h.starts }
+func (h *Halfedges) Paired() []int32   { return h.paired }
+func (h *Halfedges) PropVert() []int32 { return h.propVert }
+
 func (h *Halfedges) Size() int   { return len(h.starts) }
 func (h *Halfedges) Empty() bool { return len(h.starts) == 0 }
 

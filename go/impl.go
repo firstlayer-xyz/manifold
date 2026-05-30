@@ -15,6 +15,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 	"github.com/firstlayer-xyz/manifold/go/internal/quickhull"
 )
@@ -29,16 +30,15 @@ import (
 // Manifold).
 type Impl struct {
 	h *bridge.Impl
-	// s holds the native Go storage being migrated off the bridge (native-Impl-
-	// storage Phase 2b). Dormant in Step A (accessors still forward to h); Step B
-	// flips the accessor bodies to read/write s, with getImpl marshalling in and
-	// ToManifold marshalling out.
-	s *implStorage
 	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
 	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
 	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
 	// builds it from the Morton-sorted faces on demand. Mirrors C++ Impl::collider_.
 	coll *collider.Collider
+	// NOTE: the const Impl view reads its storage straight from the pristine
+	// bridge handle h (getImpl never mutates it), so it needs no native
+	// implStorage of its own — only MutableImpl owns one (native-Impl-storage
+	// Phase 2b). When the const side migrates (Phase 3+) it will gain an s too.
 }
 
 // MutableImpl is the mutable counterpart of Impl — mirrors C++
@@ -60,7 +60,7 @@ type MutableImpl struct {
 // Impl (releases the shared_ptr reference held by this view). The native
 // collider, if the Manifold carries one, comes along (set by Transform/ToManifold).
 func getImpl(m *Manifold) *Impl {
-	return &Impl{h: bridge.GetImpl(m.h), s: newImplStorage(), coll: m.coll}
+	return &Impl{h: bridge.GetImpl(m.h), coll: m.coll}
 }
 
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
@@ -79,7 +79,10 @@ func (mi *MutableImpl) Delete() { mi.h.Delete() }
 // Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
 // of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	mi := &MutableImpl{h: i.h.Copy(), s: newImplStorage()}
+	// The const source's bridge handle is pristine (getImpl never mutates it),
+	// so marshal the native storage straight out of it. i.h.Copy() gives the
+	// mutable bridge handle that ToManifold will later marshal s back into.
+	mi := &MutableImpl{h: i.h.Copy(), s: marshalImplStorageFromBridge(i.h)}
 	if i.coll != nil {
 		mi.coll = i.coll.Copy()
 	}
@@ -88,8 +91,11 @@ func (i *Impl) Copy() *MutableImpl {
 
 // ToManifold seals this MutableImpl into a published Manifold,
 // mirroring C++ `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native
-// collider travels with the published Manifold so a later getImpl recovers it.
+// storage is marshalled back into the bridge handle first (the transitional
+// seam), then sealed. The native collider travels with the published Manifold
+// so a later getImpl recovers it.
 func (mi *MutableImpl) ToManifold() *Manifold {
+	marshalImplStorageToBridge(mi.s, mi.h)
 	m := wrap(mi.h.ToManifold())
 	m.coll = mi.coll
 	return m
@@ -235,58 +241,58 @@ func newBoolean3(a, b *Impl, op int) *bridge.Boolean3 {
 // --- MutableImpl: read accessors (mirror non-const member methods
 // that also read state; Go has no const so we just expose both)
 
-// Verts returns vertPos_ as a writable Go slice aliasing C++ memory.
-// Mutations via the slice are visible to the underlying Impl.
-func (mi *MutableImpl) Verts() []geom.Vec3 { return mi.h.Verts() }
+// Verts returns vertPos_ as a writable Go slice. Mutations via the
+// slice are visible to the underlying storage.
+func (mi *MutableImpl) Verts() []geom.Vec3 { return mi.s.vertPos }
 
 // VertNormals returns vertNormal_ as a writable Go slice.
-func (mi *MutableImpl) VertNormals() []geom.Vec3 { return mi.h.VertNormals() }
+func (mi *MutableImpl) VertNormals() []geom.Vec3 { return mi.s.vertNormal }
 
 // FaceNormals returns faceNormal_ as a writable Go slice.
-func (mi *MutableImpl) FaceNormals() []geom.Vec3 { return mi.h.FaceNormalsMut() }
+func (mi *MutableImpl) FaceNormals() []geom.Vec3 { return mi.s.faceNormal }
 
-// HalfedgeStarts is the read-only halfedge_.start_ view on a
-// mutable Impl. Use SetHalfedges (or a Go-side rebuild) to mutate.
-func (mi *MutableImpl) HalfedgeStarts() []int32 { return mi.h.HalfedgeStartsRO() }
+// HalfedgeStarts is the halfedge_.start_ column (read-write alias).
+func (mi *MutableImpl) HalfedgeStarts() []int32 { return mi.s.halfedge.Starts() }
 
-// HalfedgePairs is the read-only halfedge_.paired_ view.
-func (mi *MutableImpl) HalfedgePairs() []int32 { return mi.h.HalfedgePairsRO() }
+// HalfedgePairs is the halfedge_.paired_ column.
+func (mi *MutableImpl) HalfedgePairs() []int32 { return mi.s.halfedge.Paired() }
 
-// HalfedgeProps is the read-only halfedge_.propVert_ view.
-func (mi *MutableImpl) HalfedgeProps() []int32 { return mi.h.HalfedgePropsRO() }
+// HalfedgeProps is the halfedge_.propVert_ column.
+func (mi *MutableImpl) HalfedgeProps() []int32 { return mi.s.halfedge.PropVert() }
 
-// HalfedgeTangents is the read-only halfedgeTangent_ view (4 doubles
-// per element).
-func (mi *MutableImpl) HalfedgeTangents() []float64 { return mi.h.HalfedgeTangents() }
+// HalfedgeTangents returns halfedgeTangent_ as a flat 4-per-element slice
+// (a fresh copy of the native Vec4 storage).
+func (mi *MutableImpl) HalfedgeTangents() []float64 { return tangentsToFlat(mi.s.halfedgeTangent) }
 
-// Properties is the read-only properties_ view.
-func (mi *MutableImpl) Properties() []float64 { return mi.h.Properties() }
+// Properties is the read-write properties_ slice.
+func (mi *MutableImpl) Properties() []float64 { return mi.s.properties }
 
-// TriRefs returns the meshRelation_.triRef array as a copied Go slice.
-func (mi *MutableImpl) TriRefs() []bridge.TriRef { return mi.h.TriRefs() }
+// TriRefs returns the meshRelation_.triRef array as a copied bridge-shaped slice.
+func (mi *MutableImpl) TriRefs() []bridge.TriRef { return triRefsToBridge(mi.s.meshRelation.TriRef) }
 
-// MeshIDTransforms returns the meshIDtransform map entries.
+// MeshIDTransforms returns the meshIDtransform map entries in ascending
+// meshID order (mirroring std::map iteration).
 func (mi *MutableImpl) MeshIDTransforms() []bridge.MeshIDRelation {
-	return mi.h.MeshIDTransforms()
+	return meshIDTransformsToBridge(&mi.s.meshRelation)
 }
 
 // BBox returns bBox_'s corners.
-func (mi *MutableImpl) BBox() (min, max geom.Vec3) { return mi.h.GetBBox() }
+func (mi *MutableImpl) BBox() (min, max geom.Vec3) { return mi.s.bBox.Min, mi.s.bBox.Max }
 
 // HalfedgeCount returns halfedge_.size().
-func (mi *MutableImpl) HalfedgeCount() int { return len(mi.h.HalfedgeStartsRO()) }
+func (mi *MutableImpl) HalfedgeCount() int { return mi.s.halfedge.Size() }
 
 // NumTri returns NumTri().
 func (mi *MutableImpl) NumTri() int { return mi.HalfedgeCount() / 3 }
 
 // NumVert returns NumVert() = vertPos_.size().
-func (mi *MutableImpl) NumVert() int { return len(mi.h.Verts()) }
+func (mi *MutableImpl) NumVert() int { return len(mi.s.vertPos) }
 
 // NumProp returns numProp_.
-func (mi *MutableImpl) NumProp() int { return mi.h.NumProp() }
+func (mi *MutableImpl) NumProp() int { return mi.s.numProp }
 
 // Tolerance returns tolerance_.
-func (mi *MutableImpl) Tolerance() float64 { return mi.h.GetTolerance() }
+func (mi *MutableImpl) Tolerance() float64 { return mi.s.tolerance }
 
 // AllHaveNormals mirrors Impl::AllHaveNormals on a mutable Impl:
 // true iff every entry of meshRelation_.meshIDtransform has
@@ -317,77 +323,131 @@ func (mi *MutableImpl) IsFinite() bool {
 }
 
 // SetToleranceValue assigns tolerance_ directly.
-func (mi *MutableImpl) SetToleranceValue(tol float64) { mi.h.SetToleranceValue(tol) }
+func (mi *MutableImpl) SetToleranceValue(tol float64) { mi.s.tolerance = tol }
 
 // SetEpsilonValue assigns epsilon_ directly.
-func (mi *MutableImpl) SetEpsilonValue(eps float64) { mi.h.SetEpsilonValue(eps) }
+func (mi *MutableImpl) SetEpsilonValue(eps float64) { mi.s.epsilon = eps }
 
-// MakeEmpty wraps Impl::MakeEmpty(Error).
-func (mi *MutableImpl) MakeEmpty(status int) { mi.h.MakeEmpty(status) }
+// MakeEmpty is the Go port of Manifold::Impl::MakeEmpty (src/impl.cpp:577):
+// clear the geometry/relation/collider and set status_. Matches C++ exactly —
+// properties_, numProp_, epsilon_ and tolerance_ are NOT cleared.
+func (mi *MutableImpl) MakeEmpty(status int) {
+	mi.s.bBox = geom.EmptyBox()
+	mi.s.vertPos = nil
+	mi.s.halfedge = mesh.NewHalfedges(nil, nil, nil)
+	mi.s.vertNormal = nil
+	mi.s.faceNormal = nil
+	mi.s.halfedgeTangent = nil
+	mi.s.meshRelation = mesh.NewMeshRelationD()
+	mi.coll = nil
+	mi.s.status = Error(status)
+}
 
 // ResizeVerts resizes vertPos_ to n elements.
-func (mi *MutableImpl) ResizeVerts(n int) { mi.h.ResizeVerts(n) }
+func (mi *MutableImpl) ResizeVerts(n int) { mi.s.vertPos = resizeVec3(mi.s.vertPos, n) }
 
 // ResizeVertNormals resizes vertNormal_ to n elements.
-func (mi *MutableImpl) ResizeVertNormals(n int) { mi.h.ResizeVertNormals(n) }
+func (mi *MutableImpl) ResizeVertNormals(n int) { mi.s.vertNormal = resizeVec3(mi.s.vertNormal, n) }
 
 // ResizeFaceNormals resizes faceNormal_ to n elements.
-func (mi *MutableImpl) ResizeFaceNormals(n int) { mi.h.ResizeFaceNormals(n) }
+func (mi *MutableImpl) ResizeFaceNormals(n int) { mi.s.faceNormal = resizeVec3(mi.s.faceNormal, n) }
 
 // Epsilon returns epsilon_.
-func (mi *MutableImpl) Epsilon() float64 { return mi.h.GetEpsilon() }
+func (mi *MutableImpl) Epsilon() float64 { return mi.s.epsilon }
 
 // SetHalfedgesRaw bulk-assigns halfedge_ from parallel start/prop/paired arrays.
+// (Bridge arg order is starts, props, paireds — native column order is
+// starts, paired, propVert.)
 func (mi *MutableImpl) SetHalfedgesRaw(starts, props, paireds []int32) {
-	mi.h.SetHalfedgesRaw(starts, props, paireds)
+	mi.s.halfedge = mesh.NewHalfedges(starts, paireds, props)
 }
 
 // SetProperties bulk-assigns properties_.
-func (mi *MutableImpl) SetProperties(data []float64) { mi.h.SetProperties(data) }
+func (mi *MutableImpl) SetProperties(data []float64) { mi.s.properties = data }
 
 // SetNumProp assigns numProp_.
-func (mi *MutableImpl) SetNumProp(n int) { mi.h.SetNumProp(n) }
+func (mi *MutableImpl) SetNumProp(n int) { mi.s.numProp = n }
 
 // SetHalfedgeTangents bulk-assigns halfedgeTangent_ (flat 4-per-element).
-func (mi *MutableImpl) SetHalfedgeTangents(data []float64) { mi.h.SetHalfedgeTangents(data) }
+func (mi *MutableImpl) SetHalfedgeTangents(data []float64) {
+	mi.s.halfedgeTangent = tangentsFromFlat(data)
+}
 
 // SetTriRefs bulk-assigns meshRelation_.triRef from parallel id arrays.
 func (mi *MutableImpl) SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs []int32) {
-	mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	refs := make([]mesh.TriRef, len(meshIDs))
+	for i := range meshIDs {
+		refs[i] = mesh.TriRef{
+			MeshID: int(meshIDs[i]), OriginalID: int(originalIDs[i]),
+			FaceID: int(faceIDs[i]), CoplanarID: int(coplanarIDs[i]),
+		}
+	}
+	mi.s.meshRelation.TriRef = refs
 }
 
 // SetCoplanarIDs rewrites only the coplanarID column of meshRelation_.triRef.
-func (mi *MutableImpl) SetCoplanarIDs(ids []int32) { mi.h.SetCoplanarIDs(ids) }
+func (mi *MutableImpl) SetCoplanarIDs(ids []int32) {
+	for i := range ids {
+		mi.s.meshRelation.TriRef[i].CoplanarID = int(ids[i])
+	}
+}
 
 // SetBBox assigns bBox_.
-func (mi *MutableImpl) SetBBox(min, max geom.Vec3) { mi.h.SetBBox(min, max) }
+func (mi *MutableImpl) SetBBox(min, max geom.Vec3) { mi.s.bBox = geom.Box{Min: min, Max: max} }
 
 // SetMeshRelationOriginalID assigns meshRelation_.originalID.
-func (mi *MutableImpl) SetMeshRelationOriginalID(id int) { mi.h.SetMeshRelationOriginalID(id) }
+func (mi *MutableImpl) SetMeshRelationOriginalID(id int) { mi.s.meshRelation.OriginalID = id }
 
 // ClearMeshIDTransforms empties meshRelation_.meshIDtransform.
-func (mi *MutableImpl) ClearMeshIDTransforms() { mi.h.ClearMeshIDTransforms() }
+func (mi *MutableImpl) ClearMeshIDTransforms() { mi.s.meshRelation.MeshIDTransform.Clear() }
 
 // AddMeshIDTransform inserts one meshRelation_.meshIDtransform entry.
 func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform [4][3]float64, backSide, hasNormals bool) {
-	mi.h.AddMeshIDTransform(meshID, originalID, transform, backSide, hasNormals)
+	mi.s.meshRelation.MeshIDTransform.Set(meshID, mesh.Relation{
+		OriginalID: originalID, Transform: geom.Mat3x4(transform),
+		BackSide: backSide, HasNormals: hasNormals,
+	})
 }
 
 // --- Bridge-only mutators (still C++ algorithms) ---
-
-// SimplifyTopology is native Go — see impl_simplify.go.
+//
+// Subdivide / Refine are the last storage-mutating algorithms still running in
+// C++. Each is bracketed by marshalRoundTrip: push the native storage into the
+// bridge handle, run the C++ pass, then re-read the mutated storage back. The
+// native side stays the source of truth so the surrounding native code (e.g.
+// Sphere reading Verts() after SubdivideN, ToManifold) sees the result.
+//
+// SimplifyTopology / RemoveDegenerates / CreateTangents are native Go — see
+// impl_simplify.go / impl_smoothing_tangents.go.
 
 // Subdivide calls C++ Impl::Subdivide with the constant-n splits lambda.
-func (mi *MutableImpl) SubdivideN(n int) { mi.h.SubdivideN(n) }
+func (mi *MutableImpl) SubdivideN(n int) { mi.runBridgeAlgo(func() { mi.h.SubdivideN(n) }) }
 
 // RefineN calls C++ Impl::Refine with constant n-1 splits.
-func (mi *MutableImpl) RefineN(n int) { mi.h.RefineN(n) }
+func (mi *MutableImpl) RefineN(n int) { mi.runBridgeAlgo(func() { mi.h.RefineN(n) }) }
 
 // RefineToLength calls C++ Impl::Refine with edge-length-based splits.
-func (mi *MutableImpl) RefineToLength(length float64) { mi.h.RefineToLength(length) }
+func (mi *MutableImpl) RefineToLength(length float64) {
+	mi.runBridgeAlgo(func() { mi.h.RefineToLength(length) })
+}
 
 // RefineToTolerance calls C++ Impl::Refine with tolerance-based splits.
-func (mi *MutableImpl) RefineToTolerance(tol float64) { mi.h.RefineToTolerance(tol) }
+func (mi *MutableImpl) RefineToTolerance(tol float64) {
+	mi.runBridgeAlgo(func() { mi.h.RefineToTolerance(tol) })
+}
+
+// runBridgeAlgo runs a still-C++ storage-mutating algorithm against the bridge
+// handle while keeping the native implStorage as the source of truth: marshal
+// s -> h, run the C++ pass (which mutates h), then reload h -> s.
+func (mi *MutableImpl) runBridgeAlgo(algo func()) {
+	marshalImplStorageToBridge(mi.s, mi.h)
+	algo()
+	mi.reloadFromBridge()
+	// Refine/Subdivide change the geometry, so any collider cloned from the
+	// source (Copy) is now stale. C++ rebuilds collider_ inside Refine; the Go
+	// side invalidates it here so ensureCollider rebuilds from the new geometry.
+	mi.coll = nil
+}
 
 // Hull is the Go port of C++ Manifold::Impl::Hull (src/quickhull.cpp:834).
 // Runs QuickHull3D on the input vertex cloud, writes the resulting
@@ -401,8 +461,8 @@ func (mi *MutableImpl) Hull(vertPos []geom.Vec3) {
 	qh := quickhull.NewQuickHull(vertPos)
 	hes, verts := qh.BuildMesh(quickhull.DefaultEpsilon)
 
-	// Materialize verts into the bridge Impl.
-	mi.h.ResizeVerts(len(verts))
+	// Materialize verts into the impl storage.
+	mi.ResizeVerts(len(verts))
 	copy(mi.Verts(), verts)
 
 	// Translate quickhull.Halfedge → impl halfedge_ arrays.
@@ -417,7 +477,7 @@ func (mi *MutableImpl) Hull(vertPos []geom.Vec3) {
 		props[i] = int32(hes[i].StartVert)
 		paireds[i] = int32(hes[i].PairedHalfedge)
 	}
-	mi.h.SetHalfedgesRaw(starts, props, paireds)
+	mi.SetHalfedgesRaw(starts, props, paireds)
 
 	mi.CalculateBBox()
 	mi.SetEpsilon(-1, false)

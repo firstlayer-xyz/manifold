@@ -1,6 +1,8 @@
 package manifold
 
 import (
+	"sort"
+
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
@@ -117,6 +119,85 @@ func marshalImplStorageToBridge(s *implStorage, mi *bridge.MutableImpl) {
 	for k, r := range s.meshRelation.MeshIDTransform.All() {
 		mi.AddMeshIDTransform(k, r.OriginalID, [4][3]float64(r.Transform), r.BackSide, r.HasNormals)
 	}
+}
+
+// reloadFromBridge re-reads the storage a still-C++ algorithm (Refine/Subdivide)
+// just mutated on the bridge handle back into the native implStorage, so the
+// native side stays the source of truth. originalID and status are preserved
+// from s — Refine/Subdivide refine geometry but never change the mesh's identity
+// or error state, and the bridge MutableImpl exposes no getters for them.
+func (mi *MutableImpl) reloadFromBridge() {
+	h := mi.h
+	keepOriginalID := mi.s.meshRelation.OriginalID
+	keepStatus := mi.s.status
+
+	mi.s.vertPos = append([]geom.Vec3(nil), h.Verts()...)
+	mi.s.vertNormal = append([]geom.Vec3(nil), h.VertNormals()...)
+	mi.s.faceNormal = append([]geom.Vec3(nil), h.FaceNormalsMut()...)
+	mi.s.properties = append([]float64(nil), h.Properties()...)
+	mi.s.halfedge = mesh.NewHalfedges(
+		append([]int32(nil), h.HalfedgeStartsRO()...),
+		append([]int32(nil), h.HalfedgePairsRO()...),
+		append([]int32(nil), h.HalfedgePropsRO()...),
+	)
+	mi.s.halfedgeTangent = tangentsFromFlat(h.HalfedgeTangents())
+	minB, maxB := h.GetBBox()
+	mi.s.bBox = geom.Box{Min: minB, Max: maxB}
+	mi.s.numProp = h.NumProp()
+	mi.s.epsilon = h.GetEpsilon()
+	mi.s.tolerance = h.GetTolerance()
+
+	mi.s.meshRelation.TriRef = mi.s.meshRelation.TriRef[:0]
+	for _, r := range h.TriRefs() {
+		mi.s.meshRelation.TriRef = append(mi.s.meshRelation.TriRef,
+			mesh.TriRef{MeshID: int(r.MeshID), OriginalID: int(r.OriginalID), FaceID: int(r.FaceID), CoplanarID: int(r.CoplanarID)})
+	}
+	mi.s.meshRelation.MeshIDTransform.Clear()
+	for _, r := range h.MeshIDTransforms() { // ascending-key (std::map) order
+		mi.s.meshRelation.MeshIDTransform.Set(int(r.MeshID), mesh.Relation{
+			OriginalID: int(r.OriginalID), Transform: geom.Mat3x4(r.Transform),
+			BackSide: r.BackSide, HasNormals: r.HasNormals,
+		})
+	}
+	mi.s.meshRelation.OriginalID = keepOriginalID
+	mi.s.status = keepStatus
+}
+
+// resizeVec3 grows/shrinks a []geom.Vec3 to length n (new slots zero-valued),
+// reusing the backing array on shrink — the Vec semantics MutableImpl's
+// Resize{Verts,VertNormals,FaceNormals} accessors need.
+func resizeVec3(s []geom.Vec3, n int) []geom.Vec3 {
+	if n <= len(s) {
+		return s[:n]
+	}
+	return append(s, make([]geom.Vec3, n-len(s))...)
+}
+
+// triRefsToBridge converts the native triRef array to the bridge-shaped slice
+// the (transitional) accessor callers expect.
+func triRefsToBridge(refs []mesh.TriRef) []bridge.TriRef {
+	out := make([]bridge.TriRef, len(refs))
+	for i, r := range refs {
+		out[i] = bridge.TriRef{MeshID: int32(r.MeshID), OriginalID: int32(r.OriginalID), FaceID: int32(r.FaceID), CoplanarID: int32(r.CoplanarID)}
+	}
+	return out
+}
+
+// meshIDTransformsToBridge returns the meshIDtransform entries in ascending
+// meshID order — the native map is insertion-ordered, but C++ iterates the
+// std::map by key, so callers must see key order.
+func meshIDTransformsToBridge(mr *mesh.MeshRelationD) []bridge.MeshIDRelation {
+	keys := append([]int(nil), mr.MeshIDTransform.Keys()...)
+	sort.Ints(keys)
+	out := make([]bridge.MeshIDRelation, 0, len(keys))
+	for _, k := range keys {
+		r, _ := mr.MeshIDTransform.Get(k)
+		out = append(out, bridge.MeshIDRelation{
+			MeshID: int32(k), OriginalID: int32(r.OriginalID),
+			Transform: [4][3]float64(r.Transform), BackSide: r.BackSide, HasNormals: r.HasNormals,
+		})
+	}
+	return out
 }
 
 // tangentsFromFlat unpacks the bridge's flat 4-per-element tangent buffer into
