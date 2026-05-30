@@ -6,29 +6,20 @@ import (
 	"testing"
 )
 
-// TestNativeBoolean_VsBridge is the differential test: the native Boolean
-// (nativeBoolean3.Result -- assemble/face2Tri/reorder + the Impl finalize tail)
-// vs the bridge Boolean (the unmodified C++ oracle), for two overlapping cubes
-// across all three ops. Geometry must match the bridge AND the analytic volumes
-// (union=15, subtract=7, intersect=1 for [-1,1]^3 vs [0,2]^3).
-func TestNativeBoolean_VsBridge(t *testing.T) {
-	ma := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)  // [-1,1]^3, vol 8
-	mb := Cube(Vec3{X: 2, Y: 2, Z: 2}, false) // [0,2]^3, vol 8, overlap [0,1]^3 vol 1
+// compareBooleanVsBridge runs all three ops on (ma, mb) through both the native
+// Boolean (nativeBoolean3.Result) and the bridge Boolean (the C++ oracle) and
+// asserts the geometry matches: Volume/SurfaceArea (relative tol), Genus, and the
+// exact vert/tri counts.
+func compareBooleanVsBridge(t *testing.T, name string, ma, mb *Manifold) {
+	t.Helper()
 	defer runtime.KeepAlive(ma)
 	defer runtime.KeepAlive(mb)
+	approx := func(a, b float64) bool { return math.Abs(a-b) <= 1e-8*(1+math.Abs(b)) }
 
-	cases := []struct {
-		name   string
-		op     OpType
-		volume float64
-	}{
-		{"Add", OpAdd, 15},
-		{"Subtract", OpSubtract, 7},
-		{"Intersect", OpIntersect, 1},
-	}
-	approx := func(a, b float64) bool { return math.Abs(a-b) <= 1e-9*(1+math.Abs(b)) }
-
-	for _, tc := range cases {
+	for _, tc := range []struct {
+		op   OpType
+		name string
+	}{{OpAdd, "Add"}, {OpSubtract, "Subtract"}, {OpIntersect, "Intersect"}} {
 		bridgeRes := ma.Boolean(mb, tc.op)
 
 		va := getImpl(ma)
@@ -38,25 +29,49 @@ func TestNativeBoolean_VsBridge(t *testing.T) {
 		va.Delete()
 		vb.Delete()
 
-		// Analytic volume.
-		if v := nativeRes.Volume(); !approx(v, tc.volume) {
-			t.Errorf("%s: native Volume=%.12g, want %.0f", tc.name, v, tc.volume)
-		}
-		// Match the bridge oracle.
+		tag := name + "/" + tc.name
 		if got, want := nativeRes.Volume(), bridgeRes.Volume(); !approx(got, want) {
-			t.Errorf("%s: Volume native=%.12g bridge=%.12g", tc.name, got, want)
+			t.Errorf("%s: Volume native=%.12g bridge=%.12g", tag, got, want)
 		}
 		if got, want := nativeRes.SurfaceArea(), bridgeRes.SurfaceArea(); !approx(got, want) {
-			t.Errorf("%s: SurfaceArea native=%.12g bridge=%.12g", tc.name, got, want)
+			t.Errorf("%s: SurfaceArea native=%.12g bridge=%.12g", tag, got, want)
 		}
 		if got, want := nativeRes.Genus(), bridgeRes.Genus(); got != want {
-			t.Errorf("%s: Genus native=%d bridge=%d", tc.name, got, want)
+			t.Errorf("%s: Genus native=%d bridge=%d", tag, got, want)
 		}
 		if got, want := nativeRes.NumVert(), bridgeRes.NumVert(); got != want {
-			t.Errorf("%s: NumVert native=%d bridge=%d", tc.name, got, want)
+			t.Errorf("%s: NumVert native=%d bridge=%d", tag, got, want)
 		}
 		if got, want := nativeRes.NumTri(), bridgeRes.NumTri(); got != want {
-			t.Errorf("%s: NumTri native=%d bridge=%d", tc.name, got, want)
+			t.Errorf("%s: NumTri native=%d bridge=%d", tag, got, want)
 		}
 	}
+}
+
+// TestNativeBoolean_VsBridge validates the native Boolean against the C++ bridge
+// oracle across diverse shape pairs (axis-aligned, curved, rotated, offset),
+// exercising the simple-face and general-triangulation paths and non-axis-aligned
+// crossings.
+func TestNativeBoolean_VsBridge(t *testing.T) {
+	// Axis-aligned cubes overlapping in [0,1]^3.
+	compareBooleanVsBridge(t, "cube-cube",
+		Cube(Vec3{X: 2, Y: 2, Z: 2}, true), Cube(Vec3{X: 2, Y: 2, Z: 2}, false))
+
+	// Sphere vs offset cube: curved surface + general (>4-edge) faces.
+	compareBooleanVsBridge(t, "sphere-cube",
+		Sphere(1.0, 32),
+		Cube(Vec3{X: 1.5, Y: 1.5, Z: 1.5}, true).Translate(Vec3{X: 0.5, Y: 0.5, Z: 0.5}))
+
+	// Two offset spheres.
+	compareBooleanVsBridge(t, "sphere-sphere",
+		Sphere(1.0, 24), Sphere(1.0, 24).Translate(Vec3{X: 0.7, Y: 0.3, Z: 0.2}))
+
+	// Rotated cube vs axis-aligned cube: non-axis-aligned crossings.
+	compareBooleanVsBridge(t, "rotcube-cube",
+		Cube(Vec3{X: 1.6, Y: 1.6, Z: 1.6}, true).Rotate(20, 35, 10),
+		Cube(Vec3{X: 2, Y: 2, Z: 2}, true))
+
+	// Cylinder vs cube.
+	compareBooleanVsBridge(t, "cylinder-cube",
+		Cylinder(2.0, 0.8, 0.8, 32, true), Cube(Vec3{X: 1.5, Y: 1.5, Z: 1.5}, true))
 }

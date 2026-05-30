@@ -22,6 +22,7 @@ package collider
 import (
 	"math"
 	"math/bits"
+	"sort"
 	"sync/atomic"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -59,12 +60,29 @@ type Collider struct {
 	nodeBBox         []geom.Box
 	nodeParent       []int32
 	internalChildren [][2]int32
+	// leafToOriginal maps a (Morton-sorted) tree leaf index to the original
+	// caller leaf index. nil when the input was already sorted (the identity).
+	// The C++ Collider requires pre-sorted leaves because its caller (SortFaces)
+	// reorders the whole mesh so leaf==face; the Go boolean path cannot reorder
+	// the bridge-owned mesh, so New sorts the leaves internally and presents all
+	// queries / UpdateBoxes in the original leaf-index space via this map.
+	leafToOriginal []int
 }
 
-// New is the Go port of C++ Collider::Collider(leafBB, leafMorton).
-// leafMorton must already be sorted ascending — the same precondition
-// as C++. The Collider doesn't sort it (callers run a stable_sort
-// over (Box, morton) pairs and pass the result here).
+// origLeaf maps a tree (sorted) leaf index back to the original caller index.
+func (c *Collider) origLeaf(leaf int) int {
+	if c.leafToOriginal == nil {
+		return leaf
+	}
+	return c.leafToOriginal[leaf]
+}
+
+// New is the Go port of C++ Collider::Collider(leafBB, leafMorton). The C++
+// requires leafMorton pre-sorted (its caller stable-sorts the mesh by Morton);
+// New instead stable-sorts internally by Morton and remaps queries/UpdateBoxes to
+// the original leaf order, so callers need not (and cannot, for a bridge-owned
+// mesh) reorder their leaves. For already-sorted input the permutation is the
+// identity and behavior is unchanged.
 func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	if len(leafBB) != len(leafMorton) {
 		panic("collider: leafBB and leafMorton must have equal length")
@@ -73,6 +91,26 @@ func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	if len(leafBB) == 0 {
 		return c
 	}
+
+	// Stable-sort the leaf order by Morton code (ties keep original order,
+	// matching SortFaces). Only retain the permutation if it is non-identity.
+	perm := make([]int, len(leafMorton))
+	for i := range perm {
+		perm[i] = i
+	}
+	sort.SliceStable(perm, func(a, b int) bool { return leafMorton[perm[a]] < leafMorton[perm[b]] })
+	sortedMorton := make([]uint32, len(leafMorton))
+	identity := true
+	for i, p := range perm {
+		sortedMorton[i] = leafMorton[p]
+		if p != i {
+			identity = false
+		}
+	}
+	if !identity {
+		c.leafToOriginal = perm
+	}
+
 	numNodes := 2*len(leafBB) - 1
 	c.nodeBBox = make([]geom.Box, numNodes)
 	c.nodeParent = make([]int32, numNodes)
@@ -83,10 +121,10 @@ func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	for i := range c.internalChildren {
 		c.internalChildren[i] = [2]int32{-1, -1}
 	}
-	// Radix tree build — parallel across internal nodes.
+	// Radix tree build over the sorted Morton order — parallel across internals.
 	parallel.ForEachN(parallel.AutoPolicy(c.numInternal(), 10000), c.numInternal(),
 		func(internal int) {
-			c.createRadixTreeStep(internal, leafMorton)
+			c.createRadixTreeStep(internal, sortedMorton)
 		})
 	c.UpdateBoxes(leafBB)
 	return c
@@ -119,9 +157,10 @@ func (c *Collider) UpdateBoxes(leafBB []geom.Box) {
 	// unconditional error: NumLeaves() is 0 for a single-leaf collider (the
 	// internalChildren_-empty quirk), so the valid single-triangle case has
 	// len(leafBB)==1 != numLeaves()==0, and C++ release simply proceeds.
-	// Copy leaf boxes into the even-index slots.
+	// Copy leaf boxes into the even-index slots. leafBB is in the original
+	// (caller) order; tree slot i holds the box of original leaf origLeaf(i).
 	parallel.ForEachN(parallel.AutoPolicy(len(leafBB), 1000), len(leafBB), func(i int) {
-		c.nodeBBox[Leaf2Node(i)] = leafBB[i]
+		c.nodeBBox[Leaf2Node(i)] = leafBB[c.origLeaf(i)]
 	})
 	// Per-internal counter: each leaf walks up and the FIRST child to
 	// arrive at an internal returns; the SECOND combines child boxes
@@ -257,7 +296,8 @@ func (c *Collider) recordCollision(queryIdx int, node int32, selfCollision bool,
 		return false
 	}
 	if IsLeaf(int(node)) {
-		leafIdx := Node2Leaf(int(node))
+		// Map the tree (sorted) leaf back to the caller's original leaf index.
+		leafIdx := c.origLeaf(Node2Leaf(int(node)))
 		if !selfCollision || leafIdx != queryIdx {
 			record(queryIdx, leafIdx)
 		}
