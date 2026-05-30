@@ -269,9 +269,13 @@ memory model. The C++ relies on word-sized non-atomic reads being
   the manifold facade `impl_boolean.go` (`nativeBoolean3`): UpdateReference,
   IncrementMeshIDs, CreateProperties (numProp==0 only so far), then the existing
   native SimplifyTopology/RemoveUnreferencedVerts/CalculateBBox/SortGeometry.
-  `TestNativeBoolean_VsBridge` matches the C++ bridge oracle
-  (Volume/SurfaceArea/Genus/NumVert/NumTri) across cube/sphere/cylinder pairs,
-  translated + rotated, all three ops.
+  CreateProperties is now FULLY ported (numProp>0 barycentric interpolation +
+  propVert dedup, GetBarycentric in geom). `TestNativeBoolean_VsBridge` matches
+  the C++ bridge oracle (Volume/SurfaceArea/Genus/NumVert/NumTri) across
+  cube/sphere/cylinder pairs, translated + rotated, all three ops;
+  `TestNativeBoolean_Properties` matches NumProp/NumPropVert + the interpolated
+  property values on normal-carrying meshes. The native Boolean Result is COMPLETE
+  (geometry + properties) and differentially validated.
   Bugs found + fixed along the way (all from faithfulness diffs / the diverse
   differential test): the collider point-query was 3D `Contains` not the
   XY-projected `Box::DoesOverlap(vec3)` (→ all-zero windings); 7 geom/collider
