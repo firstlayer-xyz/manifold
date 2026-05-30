@@ -356,10 +356,26 @@ memory model. The C++ relies on word-sized non-atomic reads being
   (cube ∩ sphere). Invisible to geometry-only tests (they never read triRef);
   caught by TestMatchesTriNormals once live. Fixed to the conditional;
   CreateProperties' P/Q selection was audited and already correct.
-  STILL BRIDGE: BatchBoolean (n-ary CSG fusion) + the CSG tree (LoadPNode/
-  NewCsgOpNode) — the big remaining bridge shrink.
+  CSG TREE DONE (native, csg_tree.go): the n-ary evaluator behind the static
+  Manifold.BatchBoolean (hence Compose = BatchBoolean(Add)) is native — compose
+  (CsgLeafNode::Compose, disjoint-union concat), batchBoolean (the (NumVert,serial)
+  total-order heap reduction, 4 pairs/round, via linear max-select), batchUnion
+  (greedy disjoint-set partition + Compose + batchBoolean), and the flat-op-node
+  finalize (Add/Intersect/Subtract positive-negative split). Production no longer
+  calls bridge.LoadPNode / NewCsgOpNode. simpleBoolean == native Manifold.Boolean;
+  intermediates stay *Manifold (bridge-backed leaf storage) until the storage
+  endgame. The LAZY tree (nested CsgOpNode, recursive ToLeafNode DFS, deferred-
+  transform branches in Compose) is UNREACHABLE in Go's eager model (Manifold.
+  Transform materializes immediately; every Boolean is eager) and intentionally
+  not ported. Differentially green: TestCompose_VsBridge, TestBatchBoolean_Native_
+  VsReference (mixed union of 5, 3-way intersect, a-b-c subtract).
   The kernel inlines aren't individually bridge-shimmable, so they were
   validated collectively at RayCast and now at the full Boolean differential.
+  STILL BRIDGE in production: Decompose (connected-components split — separate
+  from the CSG tree), Minkowski (now UNBLOCKED — it needs native BatchBoolean,
+  which exists), Refine/Subdivide. The bridge collider_ (BuildCollider) now has
+  only ONE production reader left: Minkowski; porting Minkowski lets SortGeometry
+  drop BuildCollider and go fully native.
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
   algorithms above.
