@@ -62,10 +62,16 @@ type Collider struct {
 	internalChildren [][2]int32
 	// leafToOriginal maps a (Morton-sorted) tree leaf index to the original
 	// caller leaf index. nil when the input was already sorted (the identity).
-	// The C++ Collider requires pre-sorted leaves because its caller (SortFaces)
-	// reorders the whole mesh so leaf==face; the Go boolean path cannot reorder
-	// the bridge-owned mesh, so New sorts the leaves internally and presents all
-	// queries / UpdateBoxes in the original leaf-index space via this map.
+	//
+	// TEMPORARY SCAFFOLDING (not faithful to collider.h): the C++ Collider does
+	// NOT sort — it requires pre-sorted input, and the C++ Boolean never rebuilds
+	// a collider (it reuses the operand's persistent Impl::collider_, built once at
+	// finalization and refitted on transform). The Go boolean currently rebuilds
+	// the collider from GetFaceBoxMorton, which is unsorted for a lazily-transformed
+	// operand, so New sorts internally + remaps. The faithful fix is the
+	// native-Impl-storage milestone: persist a Go collider on the Impl (built at
+	// finalization, refitted on transform), after which this internal sort + the
+	// leafToOriginal map are removed and New reverts to a pure pre-sorted port.
 	leafToOriginal []int
 }
 
