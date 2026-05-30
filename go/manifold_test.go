@@ -1232,6 +1232,63 @@ func TestMinkowski_Differential(t *testing.T) {
 	}
 }
 
+// TestMinkowski_Native_VsReference exercises the non-convex paths of the native
+// Minkowski (impl_minkowski.go) against the C++ bridge on identical inputs. The
+// convex×non-convex and non-convex×non-convex branches build per-feature hulls
+// and union them via the native BatchBoolean; the inset case drives the
+// difference (erosion) path. Non-convex operands are L-shapes (a cube unioned
+// with an offset cube — one connected, non-convex manifold).
+func TestMinkowski_Native_VsReference(t *testing.T) {
+	smallCube := func() *Manifold { return Cube(Vec3{X: 0.4, Y: 0.4, Z: 0.4}, true) }
+	lShape := func() *Manifold {
+		return Cube(Vec3{X: 1, Y: 1, Z: 1}, true).
+			Union(Cube(Vec3{X: 1, Y: 1, Z: 1}, true).Translate(Vec3{X: 0.8, Y: 0.8}))
+	}
+	cases := []struct {
+		name  string
+		a, b  func() *Manifold
+		inset bool
+	}{
+		{"convex_nonconvex_sum", smallCube, lShape, false},   // swap -> a=L, b=cube, convex-RHS batch path
+		{"nonconvex_nonconvex_sum", lShape, lShape, false},   // slow per-face-pair path
+		{"inset_difference", lShape, smallCube, true},        // erosion / Subtract finalize
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := tc.a()
+			b := tc.b()
+			defer runtime.KeepAlive(a)
+			defer runtime.KeepAlive(b)
+
+			var got *Manifold
+			var refVol, refArea float64
+			var refGenus int
+			if tc.inset {
+				got = a.MinkowskiDifference(b)
+				r := reference.MinkowskiDifference(a.h, b.h)
+				refVol, refArea, refGenus = reference.Volume(r), reference.SurfaceArea(r), reference.Genus(r)
+				reference.DeleteManifold(r)
+			} else {
+				got = a.MinkowskiSum(b)
+				r := reference.MinkowskiSum(a.h, b.h)
+				refVol, refArea, refGenus = reference.Volume(r), reference.SurfaceArea(r), reference.Genus(r)
+				reference.DeleteManifold(r)
+			}
+			defer runtime.KeepAlive(got)
+
+			if !floatClose(got.Volume(), refVol, 1e-7, 1e-7) {
+				t.Errorf("volume: native=%v ref=%v", got.Volume(), refVol)
+			}
+			if !floatClose(got.SurfaceArea(), refArea, 1e-7, 1e-7) {
+				t.Errorf("surfaceArea: native=%v ref=%v", got.SurfaceArea(), refArea)
+			}
+			if g := got.Genus(); g != refGenus {
+				t.Errorf("genus: native=%d ref=%d", g, refGenus)
+			}
+		})
+	}
+}
+
 // TestTransform_Tetrahedron_Differential exercises the public Transform
 // method by applying a hand-built mat3x4 (here: scale 2x along X, rotate
 // implicitly via off-diagonal entry, translate by (1,0,0)) and comparing

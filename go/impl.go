@@ -228,10 +228,7 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []bridge.RayHit {
 	return out
 }
 
-// Minkowski wraps Impl::Minkowski (still in C++).
-func (i *Impl) Minkowski(other *Impl, inset bool) *Manifold {
-	return wrap(i.h.Minkowski(other.h, inset))
-}
+// Minkowski is native — see impl_minkowski.go.
 
 // --- MutableImpl: read accessors (mirror non-const member methods
 // that also read state; Go has no const so we just expose both)
