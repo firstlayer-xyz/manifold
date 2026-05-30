@@ -137,6 +137,73 @@ func (a Vec3) Cross(b Vec3) Vec3 {
 	}
 }
 
+// Next3 / Prev3 mirror the C++ utils.h cyclic-index helpers (the next/previous
+// vertex index within a triangle).
+func Next3(i int) int { return [3]int{1, 2, 0}[i] }
+func Prev3(i int) int { return [3]int{2, 0, 1}[i] }
+
+// GetBarycentric is the Go port of the C++ inline GetBarycentric (shared.h:123):
+// the barycentric coordinates of point v within the triangle whose three
+// vertices are triPos[0..2], with a tolerance for snapping to a vert/edge and
+// for degenerate (point/line) triangles. Float-expression order is transcribed
+// byte-for-byte (it feeds property interpolation).
+func GetBarycentric(v Vec3, triPos [3]Vec3, tolerance float64) Vec3 {
+	edges := [3]Vec3{
+		triPos[2].Sub(triPos[1]),
+		triPos[0].Sub(triPos[2]),
+		triPos[1].Sub(triPos[0]),
+	}
+	d2 := [3]float64{edges[0].Dot(edges[0]), edges[1].Dot(edges[1]), edges[2].Dot(edges[2])}
+	longSide := 2
+	if d2[0] > d2[1] && d2[0] > d2[2] {
+		longSide = 0
+	} else if d2[1] > d2[2] {
+		longSide = 1
+	}
+	crossP := edges[0].Cross(edges[1])
+	area2 := crossP.Dot(crossP)
+	tol2 := tolerance * tolerance
+
+	var uvw [3]float64
+	for _, i := range []int{0, 1, 2} {
+		dv := v.Sub(triPos[i])
+		if dv.Dot(dv) < tol2 {
+			// Return exactly equal if within tolerance of vert.
+			uvw[i] = 1
+			return Vec3{X: uvw[0], Y: uvw[1], Z: uvw[2]}
+		}
+	}
+
+	if d2[longSide] < tol2 { // point
+		return Vec3{X: 1}
+	} else if area2 > d2[longSide]*tol2 { // triangle
+		for _, i := range []int{0, 1, 2} {
+			j := Next3(i)
+			crossPv := edges[i].Cross(v.Sub(triPos[j]))
+			area2v := crossPv.Dot(crossPv)
+			// Return exactly equal if within tolerance of edge.
+			if area2v < d2[i]*tol2 {
+				uvw[i] = 0
+			} else {
+				uvw[i] = crossPv.Dot(crossP)
+			}
+		}
+		s := uvw[0] + uvw[1] + uvw[2]
+		uvw[0] /= s
+		uvw[1] /= s
+		uvw[2] /= s
+		return Vec3{X: uvw[0], Y: uvw[1], Z: uvw[2]}
+	}
+	// line
+	nextV := Next3(longSide)
+	alpha := v.Sub(triPos[nextV]).Dot(edges[longSide]) / d2[longSide]
+	uvw[longSide] = 0
+	uvw[nextV] = 1 - alpha
+	lastV := Next3(nextV)
+	uvw[lastV] = alpha
+	return Vec3{X: uvw[0], Y: uvw[1], Z: uvw[2]}
+}
+
 // Add returns a + b.
 func (a Vec3) Add(b Vec3) Vec3 { return Vec3{X: a.X + b.X, Y: a.Y + b.Y, Z: a.Z + b.Z} }
 
