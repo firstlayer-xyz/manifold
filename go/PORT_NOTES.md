@@ -372,10 +372,15 @@ memory model. The C++ relies on word-sized non-atomic reads being
   The kernel inlines aren't individually bridge-shimmable, so they were
   validated collectively at RayCast and now at the full Boolean differential.
   STILL BRIDGE in production: Decompose (connected-components split — separate
-  from the CSG tree), Minkowski (now UNBLOCKED — it needs native BatchBoolean,
-  which exists), Refine/Subdivide. The bridge collider_ (BuildCollider) now has
-  only ONE production reader left: Minkowski; porting Minkowski lets SortGeometry
-  drop BuildCollider and go fully native.
+  from the CSG tree), Refine/Subdivide. Minkowski is now NATIVE (impl_minkowski.go).
+  The bridge collider_ (BuildCollider in SortGeometry) is no longer read by any
+  PRODUCTION path — but it CANNOT be dropped yet, because the `reference` test
+  oracle runs C++ booleans / Minkowski on Go-CONSTRUCTED manifolds, and those C++
+  ops read the operand's collider_. Dropping BuildCollider SIGSEGVs the oracle
+  (empty collider tree). So BuildCollider survives as test-oracle scaffolding
+  until the oracle no longer runs C++ ops on Go-built meshes (the bridge ->
+  internal/cppref endgame), even though it's dead-for-production. (Tried dropping
+  it post-Minkowski; reverted — this is the correction.)
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
   algorithms above.
