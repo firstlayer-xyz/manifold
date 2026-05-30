@@ -284,7 +284,21 @@ memory model. The C++ relies on word-sized non-atomic reads being
   `collider.New` now sorts leaves internally + remaps to original index space
   (GetFaceBoxMorton is unsorted after a lazy transform; C++ uses the persistent
   collider_).
-  Remaining: CreateProperties numProp>0 (barycentric interpolation), rewire
+  **Native-Impl-storage milestone (in progress)** — chosen to fix the collider
+  rebuild faithfully (C++ Boolean reuses the operand's persistent Impl::collider_,
+  built at finalization + refitted on transform, never rebuilt). Phase 1 DONE: a
+  native Go collider field (coll) on Impl/MutableImpl/Manifold, threaded through
+  getImpl/ToManifold/Copy and refitted in Impl.Transform (native Collider.Transform
+  /UpdateBoxes + Collider.Copy deep copy), so transformed operands carry a
+  leaf==face collider. boolOperand + Slice/IsSelfIntersecting/MinGap/RayCast now
+  use i.ensureCollider() (= collider_) instead of rebuilding. With that, the
+  collider internal-sort scaffolding was reverted (Phase 1b) — collider.New is
+  again a pure pre-sorted collider.h port. The bridge collider (BuildCollider/
+  ColliderTransform) is kept transitionally for the oracle. Phases 2-6 (the
+  implStorage struct + getImpl/ToManifold marshalling seam, then migrate leaf
+  arrays -> meshRelation -> scalars -> collider-as-field -> retire bridge
+  accessors -> bridge becomes internal/cppref test oracle) are the bulk migration.
+  Remaining (separate): CreateProperties numProp>0 DONE; rewire
   production Manifold.Boolean/Split to the native path (delete bridge
   newBoolean3/Boolean3.Result), then the CSG tree + dispatch (the big bridge
   shrink). The kernel inlines aren't individually bridge-shimmable, so they were
