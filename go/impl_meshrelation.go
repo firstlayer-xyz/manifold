@@ -1,6 +1,8 @@
 package manifold
 
 import (
+	"sort"
+
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -53,6 +55,41 @@ func (mi *MutableImpl) InitializeOriginal() {
 		{0, 0, 0},
 	}
 	mi.h.AddMeshIDTransform(meshID, meshID, identity, false, hadNormals)
+}
+
+// IncrementMeshIDs is the Go port of Manifold::Impl::IncrementMeshIDs
+// (impl.cpp:759): reserve a fresh contiguous block of mesh IDs, remap the
+// meshIDtransform map's keys (in ascending key order, matching std::map's
+// iteration) onto that block, and update every triRef.meshID through the
+// old->new table (UpdateMeshID, impl.cpp:55). SEQ path: the C++ HashTable is the
+// parallel structure; a plain Go map is faithful (iteration order is not observed
+// for the table lookup, and the transform keys are iterated in sorted order).
+func (mi *MutableImpl) IncrementMeshIDs() {
+	old := mi.MeshIDTransforms()
+	// std::map iterates ascending by key; sort the (unordered) bridge readout.
+	sort.Slice(old, func(i, j int) bool { return old[i].MeshID < old[j].MeshID })
+	nextMeshID := int32(bridge.ImplReserveIDs(uint32(len(old))))
+
+	old2new := make(map[int32]int32, len(old))
+	mi.h.ClearMeshIDTransforms()
+	for _, r := range old {
+		old2new[r.MeshID] = nextMeshID
+		mi.h.AddMeshIDTransform(int(nextMeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
+		nextMeshID++
+	}
+
+	refs := mi.TriRefs()
+	meshIDs := make([]int32, len(refs))
+	originalIDs := make([]int32, len(refs))
+	faceIDs := make([]int32, len(refs))
+	coplanarIDs := make([]int32, len(refs))
+	for i, r := range refs {
+		meshIDs[i] = old2new[r.MeshID] // UpdateMeshID: only meshID is remapped
+		originalIDs[i] = r.OriginalID
+		faceIDs[i] = r.FaceID
+		coplanarIDs[i] = r.CoplanarID
+	}
+	mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
 
 // MarkAllMeshIDHasNormals is the Go port of the per-meshID
