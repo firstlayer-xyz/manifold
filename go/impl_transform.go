@@ -155,10 +155,17 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	// via Collider::UpdateBoxes. The radix tree topology (leaf == face)
 	// is preserved because Transform keeps the source's face order.
 	if result.HalfedgeCount() > 0 {
+		// Native collider refit (native-Impl-storage Phase 1): result carries a
+		// deep copy of the source's persistent collider, refitted WITHOUT
+		// reordering the mesh (leaf==face preserved since Transform keeps the
+		// source face order) — faithful to C++ Impl::Transform (impl.cpp:672-685).
+		result.coll = i.ensureCollider().Copy()
 		if collider.IsAxisAligned(t) {
-			result.h.ColliderTransform([4][3]float64(t))
+			result.coll.Transform(t)
+			result.h.ColliderTransform([4][3]float64(t)) // bridge oracle (transitional)
 		} else {
 			faceBox, _ := result.GetFaceBoxMorton()
+			result.coll.UpdateBoxes(faceBox)
 			flat := make([]float64, 6*len(faceBox))
 			parallel.ForEachN(policy, len(faceBox), func(idx int) {
 				b := faceBox[idx]
@@ -169,7 +176,7 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 				flat[6*idx+4] = b.Max.Y
 				flat[6*idx+5] = b.Max.Z
 			})
-			result.h.ColliderUpdateBoxes(flat)
+			result.h.ColliderUpdateBoxes(flat) // bridge oracle (transitional)
 		}
 	}
 	return result

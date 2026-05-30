@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/disjointsets"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
@@ -50,6 +51,13 @@ type Box = geom.Box
 // Manifold is a watertight 3D mesh with manifold topology.
 type Manifold struct {
 	h *handle.Manifold
+	// coll is the native Go collider that travels with this Manifold
+	// (native-Impl-storage Phase 1). Set when a Manifold is produced by a native
+	// path that built/refitted one (Transform via ToManifold); nil otherwise, in
+	// which case getImpl's Impl lazily rebuilds from the Morton-sorted faces.
+	// Transitional until the Impl owns its storage outright (then it lives on the
+	// Impl struct, impl.h:89).
+	coll *collider.Collider
 }
 
 // Mat3x4 is a 3-row, 4-column affine transform in column-major order.

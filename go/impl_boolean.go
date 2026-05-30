@@ -3,7 +3,6 @@ package manifold
 import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
-	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -12,7 +11,6 @@ import (
 // Boolean3), the bbox, a fresh face collider, and epsilon/tolerance.
 func boolOperand(v *Impl) boolean.Operand {
 	min, max := v.BBox()
-	fb, fm := v.GetFaceBoxMorton()
 	s := v.Scalars()
 	return boolean.Operand{
 		VertPos:    v.Verts(),
@@ -22,9 +20,12 @@ func boolOperand(v *Impl) boolean.Operand {
 		Pairs:      v.HalfedgePairs(),
 		PropVert:   v.HalfedgeProps(),
 		BBox:       geom.Box{Min: min, Max: max},
-		Collider:   collider.New(fb, fm),
-		Epsilon:    s.Epsilon,
-		Tolerance:  s.Tolerance,
+		// Persistent native collider (native-Impl-storage Phase 1): C++ reuses
+		// the operand's Impl::collider_; a transformed operand carries a refitted
+		// one, a finalized operand lazily builds from its (sorted) faces.
+		Collider:  v.ensureCollider(),
+		Epsilon:   s.Epsilon,
+		Tolerance: s.Tolerance,
 	}
 }
 

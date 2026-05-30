@@ -27,7 +27,14 @@ import (
 // GetCsgLeafNode().GetImpl() chain. Pair with Delete (it releases
 // the shared_ptr reference; the underlying Impl lives on inside the
 // Manifold).
-type Impl struct{ h *bridge.Impl }
+type Impl struct {
+	h *bridge.Impl
+	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
+	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
+	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
+	// builds it from the Morton-sorted faces on demand. Mirrors C++ Impl::collider_.
+	coll *collider.Collider
+}
 
 // MutableImpl is the mutable counterpart of Impl — mirrors C++
 // shared_ptr<Manifold::Impl>. Carries both the mutating method set
@@ -37,13 +44,17 @@ type Impl struct{ h *bridge.Impl }
 //
 // Construct via newImpl() (fresh empty) or via (*Impl).Copy() (deep
 // copy of a const view). Pair with Delete.
-type MutableImpl struct{ h *bridge.MutableImpl }
+type MutableImpl struct {
+	h    *bridge.MutableImpl
+	coll *collider.Collider // native collider (see Impl.coll)
+}
 
 // getImpl returns a const view of m's underlying Impl, mirroring
 // C++ `m.GetCsgLeafNode().GetImpl()`. Caller must Delete the returned
-// Impl (releases the shared_ptr reference held by this view).
+// Impl (releases the shared_ptr reference held by this view). The native
+// collider, if the Manifold carries one, comes along (set by Transform/ToManifold).
 func getImpl(m *Manifold) *Impl {
-	return &Impl{h: bridge.GetImpl(m.h)}
+	return &Impl{h: bridge.GetImpl(m.h), coll: m.coll}
 }
 
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
@@ -59,15 +70,35 @@ func (i *Impl) Delete() { i.h.Delete() }
 func (mi *MutableImpl) Delete() { mi.h.Delete() }
 
 // Copy returns a fresh mutable Impl initialized from this const view.
-// Mirrors C++ `std::make_shared<Manifold::Impl>(*src)`.
+// Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
+// of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	return &MutableImpl{h: i.h.Copy()}
+	mi := &MutableImpl{h: i.h.Copy()}
+	if i.coll != nil {
+		mi.coll = i.coll.Copy()
+	}
+	return mi
 }
 
 // ToManifold seals this MutableImpl into a published Manifold,
-// mirroring C++ `Manifold(std::make_shared<CsgLeafNode>(impl))`.
+// mirroring C++ `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native
+// collider travels with the published Manifold so a later getImpl recovers it.
 func (mi *MutableImpl) ToManifold() *Manifold {
-	return wrap(mi.h.ToManifold())
+	m := wrap(mi.h.ToManifold())
+	m.coll = mi.coll
+	return m
+}
+
+// ensureCollider returns the native collider, lazily building it from the
+// Morton-sorted face boxes when absent. Lazy build is only reached for finalized
+// meshes (faces in Morton order, so collider.New's leaf==face holds); transformed
+// meshes always carry a refitted collider via Transform, so they never rebuild.
+func (i *Impl) ensureCollider() *collider.Collider {
+	if i.coll == nil {
+		fb, fm := i.GetFaceBoxMorton()
+		i.coll = collider.New(fb, fm)
+	}
+	return i.coll
 }
 
 // --- Read-only methods (mirror const members of C++ Manifold::Impl)
