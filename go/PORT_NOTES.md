@@ -51,11 +51,13 @@ the modern `iter.Seq2[K, V]` range-over-func.
 
 Audit of currently drilled code: clean.
 
-- `meshIDtransform` is the only `std::map` exposed to drilled code;
-  the bridge `MeshIDTransforms()` accessor flattens it to a sorted
-  slice before crossing into Go (so iterating the returned slice is
-  already in sorted order). When the bridge goes away, the Go-side
-  storage becomes an `orderedmap.OrderedMap[int32, MeshIDRelation]`.
+- `meshIDtransform` is the only `std::map` exposed to drilled code.
+  For `MutableImpl` it is now the native `orderedmap.OrderedMap[int,
+  mesh.Relation]` (native-storage Phase 2b); the orderedmap is
+  insertion-ordered, so `MeshIDTransforms()` sorts by key before
+  returning (faithful to `std::map` iteration). The const `Impl`
+  view still flattens the bridge `std::map` via the bridge accessor
+  (already sorted). Both paths yield ascending-key order.
 - `Project`'s `AssembleHalfedges` (src/face_op.cpp:41-67) uses a
   `std::multimap<int,int>` keyed on startVert. The Go port mirrors
   it with `orderedmap.OrderedMap[int32, []int]` (the value slice is
@@ -197,7 +199,13 @@ memory model. The C++ relies on word-sized non-atomic reads being
 ## Algorithms still in C++ (bridge passes through)
 
 - `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance`
-  — `src/subdivision.cpp` (~800 lines).
+  — `src/subdivision.cpp` (~800 lines). These are the ONLY storage-mutating
+  algorithms still in C++. Each runs inside `MutableImpl.runBridgeAlgo`
+  (native-storage Phase 2b): marshal the native implStorage into the bridge
+  handle, run the C++ pass, reload the mutated storage back, invalidate the
+  cloned collider. So they compose with native storage transparently until
+  ported. Differential-tested (`TestRefine_Differential`; Sphere ctor exercises
+  SubdivideN via `TestSphere_*_Differential`).
 - `SimplifyTopology` — `src/edge_op.cpp`. FULLY DRILLED (native Go,
   `impl_simplify.go`). `RemoveDegenerates` and the whole collapse/swap
   core (`flagStore`, `collapseEdge`+`collapseTri`/`removeIfFolded`/
@@ -294,10 +302,30 @@ memory model. The C++ relies on word-sized non-atomic reads being
   use i.ensureCollider() (= collider_) instead of rebuilding. With that, the
   collider internal-sort scaffolding was reverted (Phase 1b) — collider.New is
   again a pure pre-sorted collider.h port. The bridge collider (BuildCollider/
-  ColliderTransform) is kept transitionally for the oracle. Phases 2-6 (the
-  implStorage struct + getImpl/ToManifold marshalling seam, then migrate leaf
-  arrays -> meshRelation -> scalars -> collider-as-field -> retire bridge
-  accessors -> bridge becomes internal/cppref test oracle) are the bulk migration.
+  ColliderTransform) is kept transitionally for the oracle.
+  Phase 2a DONE: native storage types (internal/mesh: Halfedge/Halfedges/TriRef/
+  Relation/MeshRelationD) + implStorage struct + marshalImplStorageFrom/ToBridge
+  field-copy seam (impl_storage.go), round-trip validated.
+  Phase 2b DONE (the flip), two green commits:
+  - Step A: every direct mi.h.FIELD / i.h.FIELD call across impl_*.go routed
+    through an Impl/MutableImpl accessor method (missing setters added) — a
+    pure no-op refactor that localizes the bridge dependency to impl.go.
+  - Step B: MutableImpl now OWNS its leaf storage natively — every MutableImpl
+    accessor reads/writes the implStorage s. getImpl/Copy marshal the pristine
+    bridge handle into s; ToManifold marshals s back before sealing. The const
+    Impl view still reads its pristine handle directly (getImpl never mutates it),
+    so it needs no native storage yet (Phase 3). MakeEmpty is a native port of
+    Impl::MakeEmpty (impl.cpp:577). meshIDtransform is the native orderedmap, read
+    back ascending-key (std::map order). The only storage-mutating algos still in
+    C++ — Refine/Subdivide — run inside runBridgeAlgo (marshal s->h, run C++ pass,
+    reload h->s, invalidate coll); SortGeometry's BuildCollider pulls the refreshed
+    bBox back into s. Full differential suite green: native RemoveDegenerates/
+    SimplifyTopology/CreateTangents (now on native storage) stay bit-equal to the
+    bridge oracle.
+  Phases 3-6 (migrate the const Impl view to native s -> collider-as-field ->
+  retire bridge field accessors -> bridge becomes internal/cppref test oracle)
+  remain, gated on the CSG tree (Manifold still holds a bridge-backed CSG node,
+  so getImpl crosses cgo).
   Remaining (separate): CreateProperties numProp>0 DONE; rewire
   production Manifold.Boolean/Split to the native path (delete bridge
   newBoolean3/Boolean3.Result), then the CSG tree + dispatch (the big bridge
