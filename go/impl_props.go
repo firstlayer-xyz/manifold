@@ -4,7 +4,6 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -102,14 +101,11 @@ func (i *Impl) IsSelfIntersecting() bool {
 	ep := 2 * scalars.Epsilon
 	epsilonSq := ep * ep
 
-	// Stand in for the persistent C++ collider_: rebuild it from the
-	// per-face boxes/Morton codes. The faces are already Morton-sorted
-	// (the SortGeometry invariant that makes collider_ valid), so the
-	// Collider's leaf index equals the face index and the recorder uses
-	// tri indices directly — exactly as C++ does. See the PORT_NOTES note
-	// on ephemerally rebuilt Colliders.
-	faceBox, faceMorton := i.GetFaceBoxMorton()
-	c := collider.New(faceBox, faceMorton)
+	// The Impl's persistent native collider (leaf index == face index), faithful
+	// to C++ IsSelfIntersecting using collider_ (properties.cpp:188). faceBox is
+	// the self-collision query argument (Collisions(recorder, faceBox.cview())).
+	faceBox, _ := i.GetFaceBoxMorton()
+	c := i.ensureCollider()
 
 	// Recorder: invoked once per (tri0, tri1) box overlap. selfCollision
 	// skips tri0 == tri1. C++ does NOT short-circuit on first hit — every
@@ -192,8 +188,10 @@ func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
 			return geom.Box{Min: box.Min.Sub(expand), Max: box.Max.Add(expand)}
 		})
 
-	faceBox, faceMorton := i.GetFaceBoxMorton()
-	c := collider.New(faceBox, faceMorton)
+	// The Impl's persistent native collider (this Impl's faces), faithful to C++
+	// MinGap using collider_ (properties.cpp:457); the query is the expanded
+	// faceBoxOther.
+	c := i.ensureCollider()
 
 	verts := i.Verts()
 	starts := i.HalfedgeStarts()

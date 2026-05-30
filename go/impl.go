@@ -206,8 +206,7 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []bridge.RayHit {
 	if i.NumTri() == 0 {
 		return nil
 	}
-	faceBox, faceMorton := i.GetFaceBoxMorton()
-	col := collider.New(faceBox, faceMorton)
+	col := i.ensureCollider()
 	hits := boolean.RayCast(i.Verts(), i.VertNormals(), i.FaceNormals(),
 		i.HalfedgeStarts(), i.HalfedgePairs(), col, origin, endpoint)
 	out := make([]bridge.RayHit, len(hits))

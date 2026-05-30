@@ -1,7 +1,6 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -26,13 +25,9 @@ func (i *Impl) Slice(height float64) Polygons {
 		return nil
 	}
 
-	// Stand in for the persistent C++ collider_: rebuild it from the
-	// per-face boxes/Morton codes. The faces are already Morton-sorted
-	// (the SortGeometry invariant that makes collider_ valid), so the
-	// Collider's leaf index equals the face index. See the PORT_NOTES
-	// note on ephemerally rebuilt Colliders.
-	faceBox, faceMorton := i.GetFaceBoxMorton()
-	c := collider.New(faceBox, faceMorton)
+	// The Impl's persistent native collider (leaf index == face index), faithful
+	// to C++ using Impl::collider_.
+	c := i.ensureCollider()
 
 	// Single query: the bBox flattened to the slice plane.
 	minB, maxB := i.BBox()
