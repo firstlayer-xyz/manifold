@@ -22,7 +22,6 @@ package collider
 import (
 	"math"
 	"math/bits"
-	"sort"
 	"sync/atomic"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -60,27 +59,6 @@ type Collider struct {
 	nodeBBox         []geom.Box
 	nodeParent       []int32
 	internalChildren [][2]int32
-	// leafToOriginal maps a (Morton-sorted) tree leaf index to the original
-	// caller leaf index. nil when the input was already sorted (the identity).
-	//
-	// TEMPORARY SCAFFOLDING (not faithful to collider.h): the C++ Collider does
-	// NOT sort — it requires pre-sorted input, and the C++ Boolean never rebuilds
-	// a collider (it reuses the operand's persistent Impl::collider_, built once at
-	// finalization and refitted on transform). The Go boolean currently rebuilds
-	// the collider from GetFaceBoxMorton, which is unsorted for a lazily-transformed
-	// operand, so New sorts internally + remaps. The faithful fix is the
-	// native-Impl-storage milestone: persist a Go collider on the Impl (built at
-	// finalization, refitted on transform), after which this internal sort + the
-	// leafToOriginal map are removed and New reverts to a pure pre-sorted port.
-	leafToOriginal []int
-}
-
-// origLeaf maps a tree (sorted) leaf index back to the original caller index.
-func (c *Collider) origLeaf(leaf int) int {
-	if c.leafToOriginal == nil {
-		return leaf
-	}
-	return c.leafToOriginal[leaf]
 }
 
 // Copy returns a deep copy with independent backing arrays, so a refit
@@ -88,23 +66,17 @@ func (c *Collider) origLeaf(leaf int) int {
 // copies collider_ wholesale (impl.cpp:675); Impl::Transform relies on this to
 // carry a refittable collider into the transformed result.
 func (c *Collider) Copy() *Collider {
-	cp := &Collider{
+	return &Collider{
 		nodeBBox:         append([]geom.Box(nil), c.nodeBBox...),
 		nodeParent:       append([]int32(nil), c.nodeParent...),
 		internalChildren: append([][2]int32(nil), c.internalChildren...),
 	}
-	if c.leafToOriginal != nil {
-		cp.leafToOriginal = append([]int(nil), c.leafToOriginal...)
-	}
-	return cp
 }
 
-// New is the Go port of C++ Collider::Collider(leafBB, leafMorton). The C++
-// requires leafMorton pre-sorted (its caller stable-sorts the mesh by Morton);
-// New instead stable-sorts internally by Morton and remaps queries/UpdateBoxes to
-// the original leaf order, so callers need not (and cannot, for a bridge-owned
-// mesh) reorder their leaves. For already-sorted input the permutation is the
-// identity and behavior is unchanged.
+// New is the Go port of C++ Collider::Collider(leafBB, leafMorton) (collider.h:267).
+// leafMorton must already be sorted ascending — the same precondition as C++,
+// whose caller (Impl::Collider via SortFaces) reorders the mesh so leaf == face.
+// The Collider does not sort.
 func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	if len(leafBB) != len(leafMorton) {
 		panic("collider: leafBB and leafMorton must have equal length")
@@ -113,26 +85,6 @@ func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	if len(leafBB) == 0 {
 		return c
 	}
-
-	// Stable-sort the leaf order by Morton code (ties keep original order,
-	// matching SortFaces). Only retain the permutation if it is non-identity.
-	perm := make([]int, len(leafMorton))
-	for i := range perm {
-		perm[i] = i
-	}
-	sort.SliceStable(perm, func(a, b int) bool { return leafMorton[perm[a]] < leafMorton[perm[b]] })
-	sortedMorton := make([]uint32, len(leafMorton))
-	identity := true
-	for i, p := range perm {
-		sortedMorton[i] = leafMorton[p]
-		if p != i {
-			identity = false
-		}
-	}
-	if !identity {
-		c.leafToOriginal = perm
-	}
-
 	numNodes := 2*len(leafBB) - 1
 	c.nodeBBox = make([]geom.Box, numNodes)
 	c.nodeParent = make([]int32, numNodes)
@@ -143,10 +95,10 @@ func New(leafBB []geom.Box, leafMorton []uint32) *Collider {
 	for i := range c.internalChildren {
 		c.internalChildren[i] = [2]int32{-1, -1}
 	}
-	// Radix tree build over the sorted Morton order — parallel across internals.
+	// Radix tree build — parallel across internal nodes.
 	parallel.ForEachN(parallel.AutoPolicy(c.numInternal(), 10000), c.numInternal(),
 		func(internal int) {
-			c.createRadixTreeStep(internal, sortedMorton)
+			c.createRadixTreeStep(internal, leafMorton)
 		})
 	c.UpdateBoxes(leafBB)
 	return c
@@ -179,10 +131,9 @@ func (c *Collider) UpdateBoxes(leafBB []geom.Box) {
 	// unconditional error: NumLeaves() is 0 for a single-leaf collider (the
 	// internalChildren_-empty quirk), so the valid single-triangle case has
 	// len(leafBB)==1 != numLeaves()==0, and C++ release simply proceeds.
-	// Copy leaf boxes into the even-index slots. leafBB is in the original
-	// (caller) order; tree slot i holds the box of original leaf origLeaf(i).
+	// Copy leaf boxes into the even-index slots.
 	parallel.ForEachN(parallel.AutoPolicy(len(leafBB), 1000), len(leafBB), func(i int) {
-		c.nodeBBox[Leaf2Node(i)] = leafBB[c.origLeaf(i)]
+		c.nodeBBox[Leaf2Node(i)] = leafBB[i]
 	})
 	// Per-internal counter: each leaf walks up and the FIRST child to
 	// arrive at an internal returns; the SECOND combines child boxes
@@ -318,8 +269,7 @@ func (c *Collider) recordCollision(queryIdx int, node int32, selfCollision bool,
 		return false
 	}
 	if IsLeaf(int(node)) {
-		// Map the tree (sorted) leaf back to the caller's original leaf index.
-		leafIdx := c.origLeaf(Node2Leaf(int(node)))
+		leafIdx := Node2Leaf(int(node))
 		if !selfCollision || leafIdx != queryIdx {
 			record(queryIdx, leafIdx)
 		}
