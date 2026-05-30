@@ -10,6 +10,23 @@ the **algorithm / call-site / threshold / atomic semantics** level.
 `sync/atomic` instead of `std::atomic`) are NOT deviations as long
 as the algorithmic call-site shape matches.
 
+### Faithful-form pitfall: conditional C++ expressions must stay conditional
+
+A C++ ternary that SELECTS one of two array accesses must be ported as a
+conditional, NOT as "compute the first eagerly, then maybe overwrite." The two
+forms are equivalent ONLY when both indices are in range — but C++ relies on the
+ternary to avoid evaluating the not-taken branch when its index is out of range.
+
+- **Concrete bite (fixed):** `UpdateReference`/`MapTriRef` (boolean_result.cpp:510)
+  is `triRef = PQ ? triRefP[tri] : triRefQ[tri]`. An early Go port wrote
+  `src := triRefP[tri]; if !PQ { src = triRefQ[tri] }` — `triRefP[tri]` is
+  evaluated even for Q tris, and a Q tri's faceID is a Q-local index that can
+  exceed NumTriP, so it indexed out of range (caught only when the native Boolean
+  went live in production + a triRef-consuming test ran). The geometry-only
+  differential tests never exposed it.
+- **Rule:** when the C++ is `cond ? a[i] : b[j]`, port it as an `if cond { a[i] }
+  else { b[j] }`. Never hoist one side out of the conditional.
+
 ### Algorithmic deviations (results may differ in edge cases)
 
 - **`SpectralNorm` uses closed-form symmetric-3x3 eigenvalue formula
@@ -326,10 +343,22 @@ memory model. The C++ relies on word-sized non-atomic reads being
   retire bridge field accessors -> bridge becomes internal/cppref test oracle)
   remain, gated on the CSG tree (Manifold still holds a bridge-backed CSG node,
   so getImpl crosses cgo).
-  Remaining (separate): CreateProperties numProp>0 DONE; rewire
-  production Manifold.Boolean/Split to the native path (delete bridge
-  newBoolean3/Boolean3.Result), then the CSG tree + dispatch (the big bridge
-  shrink). The kernel inlines aren't individually bridge-shimmable, so they were
+  PRODUCTION REWIRE DONE: Manifold.Boolean (Union/Difference/Intersection) and
+  Split now evaluate through nativeBoolean3, NOT the bridge CSG path; the dead
+  bridge newBoolean3 wrapper was removed. The two-operand op == one
+  Boolean3(*a,*b,op).Result(op); the Go bridge already materialized eagerly so
+  laziness is unchanged. Differentially green (TestBoolean_DirectAPI_Differential,
+  TestBooleanOps_Differential, pairwise TestBatchBoolean_Compose_Differential,
+  TestSplit_TwoCubes_Differential). Wiring it live surfaced a latent faithfulness
+  bug — UpdateReference's MapTriRef indexed `triRefP[tri]` UNCONDITIONALLY then
+  overwrote for Q, but C++ is the ternary `PQ ? triRefP[tri] : triRefQ[tri]`; a Q
+  tri's faceID is Q-local and can exceed NumTriP, so the eager P-index went OOB
+  (cube ∩ sphere). Invisible to geometry-only tests (they never read triRef);
+  caught by TestMatchesTriNormals once live. Fixed to the conditional;
+  CreateProperties' P/Q selection was audited and already correct.
+  STILL BRIDGE: BatchBoolean (n-ary CSG fusion) + the CSG tree (LoadPNode/
+  NewCsgOpNode) — the big remaining bridge shrink.
+  The kernel inlines aren't individually bridge-shimmable, so they were
   validated collectively at RayCast and now at the full Boolean differential.
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
