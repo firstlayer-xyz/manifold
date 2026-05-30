@@ -105,7 +105,7 @@ func (c *Collider) numLeaves() int {
 // the Collider is empty. Mirrors C++ Collider::GetBoundingBox.
 func (c *Collider) GetBoundingBox() geom.Box {
 	if len(c.nodeBBox) == 0 {
-		return geom.Box{}
+		return geom.EmptyBox() // C++ returns Box() = {+inf,-inf}, not the origin
 	}
 	return c.nodeBBox[Internal2Node(0)]
 }

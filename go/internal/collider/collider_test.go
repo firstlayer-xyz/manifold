@@ -51,9 +51,11 @@ func TestCollider_Empty(t *testing.T) {
 	if c.numLeaves() != 0 {
 		t.Errorf("empty Collider numLeaves = %d", c.numLeaves())
 	}
+	// C++ Collider::GetBoundingBox returns Box() = {+inf,-inf} (the empty box)
+	// for an empty collider, NOT the origin box.
 	b := c.GetBoundingBox()
-	if b != (geom.Box{}) {
-		t.Errorf("empty Collider GetBoundingBox = %+v", b)
+	if b != geom.EmptyBox() {
+		t.Errorf("empty Collider GetBoundingBox = %+v, want EmptyBox", b)
 	}
 	called := false
 	c.CollisionsBox([]geom.Box{{Min: geom.Vec3{}, Max: geom.Vec3{X: 1, Y: 1, Z: 1}}},

@@ -28,11 +28,12 @@ func (a Vec2) Add(b Vec2) Vec2 { return Vec2{X: a.X + b.X, Y: a.Y + b.Y} }
 // Scale returns a scaled by s.
 func (a Vec2) Scale(s float64) Vec2 { return Vec2{X: a.X * s, Y: a.Y * s} }
 
-// Min returns the component-wise minimum. Mirrors la::min(vec2, vec2).
-func (a Vec2) Min(b Vec2) Vec2 { return Vec2{X: math.Min(a.X, b.X), Y: math.Min(a.Y, b.Y)} }
+// Min returns the component-wise minimum. Mirrors la::min(vec2, vec2) (the
+// non-NaN-propagating select, via laMin).
+func (a Vec2) Min(b Vec2) Vec2 { return Vec2{X: laMin(a.X, b.X), Y: laMin(a.Y, b.Y)} }
 
-// Max returns the component-wise maximum. Mirrors la::max(vec2, vec2).
-func (a Vec2) Max(b Vec2) Vec2 { return Vec2{X: math.Max(a.X, b.X), Y: math.Max(a.Y, b.Y)} }
+// Max returns the component-wise maximum. Mirrors la::max(vec2, vec2) (via laMax).
+func (a Vec2) Max(b Vec2) Vec2 { return Vec2{X: laMax(a.X, b.X), Y: laMax(a.Y, b.Y)} }
 
 // Abs returns the component-wise absolute value. Mirrors la::abs(vec2).
 func (a Vec2) Abs() Vec2 { return Vec2{X: math.Abs(a.X), Y: math.Abs(a.Y)} }
@@ -150,9 +151,11 @@ func (a Vec3) Abs() Vec3 {
 	return Vec3{X: math.Abs(a.X), Y: math.Abs(a.Y), Z: math.Abs(a.Z)}
 }
 
-// MaxComponent returns the largest component of a.
+// MaxComponent returns the largest component of a. Mirrors la::maxelem
+// (linalg.h:1272 = fold(max, a.x, a)): a left fold max(max(a.x, a.y), a.z) via
+// the non-NaN-propagating laMax.
 func (a Vec3) MaxComponent() float64 {
-	return math.Max(a.X, math.Max(a.Y, a.Z))
+	return laMax(laMax(a.X, a.Y), a.Z)
 }
 
 // Length returns the Euclidean magnitude of a.
@@ -174,15 +177,15 @@ func Degrees(rad float64) float64 { return rad * (180.0 / math.Pi) }
 // Radians converts degrees to radians. Mirrors C++ manifold::radians.
 func Radians(deg float64) float64 { return deg * (math.Pi / 180.0) }
 
-// SafeNormalize is the Go port of C++ SafeNormalize from src/shared.h:
-// normalize, but if the result is non-finite (zero-vector or NaN
-// input), return the zero vector instead.
+// SafeNormalize is the Go port of C++ SafeNormalize (src/shared.h:23-26):
+// normalize, then `std::isfinite(v.x) ? v : vec3(0.0)` — the guard tests ONLY
+// the x component (matching the Vec2 sibling and the C++), NOT all three axes.
 func (a Vec3) SafeNormalize() Vec3 {
 	n := a.Normalize()
-	if !n.IsFinite() {
-		return Vec3{}
+	if !math.IsNaN(n.X) && !math.IsInf(n.X, 0) {
+		return n
 	}
-	return n
+	return Vec3{}
 }
 
 // AngleBetween is the Go port of C++ AngleBetween from
@@ -207,12 +210,41 @@ func (a Vec3) IsFinite() bool {
 		!math.IsNaN(a.Z) && !math.IsInf(a.Z, 0)
 }
 
+// laMin / laMax transcribe la::min / la::max (linalg.h:437-449): the scalar
+// selects `a < b ? a : b` and `a < b ? b : a`. Unlike math.Min / math.Max these
+// do NOT propagate NaN (a NaN second operand is discarded, since the comparison
+// is false) and differ on signed zero — matching the C++ exactly, which the box
+// accumulators (la::max(runningBox, newPoint)) rely on to discard NaN verts.
+func laMin(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func laMax(a, b float64) float64 {
+	if a < b {
+		return b
+	}
+	return a
+}
+
 func minVec(a, b Vec3) Vec3 {
-	return Vec3{X: math.Min(a.X, b.X), Y: math.Min(a.Y, b.Y), Z: math.Min(a.Z, b.Z)}
+	return Vec3{X: laMin(a.X, b.X), Y: laMin(a.Y, b.Y), Z: laMin(a.Z, b.Z)}
 }
 
 func maxVec(a, b Vec3) Vec3 {
-	return Vec3{X: math.Max(a.X, b.X), Y: math.Max(a.Y, b.Y), Z: math.Max(a.Z, b.Z)}
+	return Vec3{X: laMax(a.X, b.X), Y: laMax(a.Y, b.Y), Z: laMax(a.Z, b.Z)}
+}
+
+// EmptyBox mirrors the C++ default-constructed Box() (common.h:281-287): the
+// empty box with min = +inf, max = -inf ("an infinite box that contains all
+// space"). It is the identity element for Union and the empty/sentinel bound.
+// The Go zero value (Box{}) is a degenerate box AT THE ORIGIN, not empty, so
+// code needing the C++ default must call EmptyBox() explicitly.
+func EmptyBox() Box {
+	inf := math.Inf(1)
+	return Box{Min: Vec3{X: inf, Y: inf, Z: inf}, Max: Vec3{X: -inf, Y: -inf, Z: -inf}}
 }
 
 // NewBox returns the smallest Box containing both p1 and p2.
@@ -405,34 +437,37 @@ func (a Mat3) Transpose() Mat3 {
 	}
 }
 
-// Determinant returns det(a).
+// Determinant returns det(a). Literal transcription of la::determinant(mat3)
+// (linalg.h:2067): first-ROW cofactor expansion, all terms added, with the exact
+// operand grouping (column-major: a.x=a[0], a.x.x=a[0][0], a.y.*=a[1][*], etc.).
 func (a Mat3) Determinant() float64 {
-	return a[0][0]*(a[1][1]*a[2][2]-a[2][1]*a[1][2]) -
-		a[1][0]*(a[0][1]*a[2][2]-a[2][1]*a[0][2]) +
-		a[2][0]*(a[0][1]*a[1][2]-a[1][1]*a[0][2])
+	return a[0][0]*(a[1][1]*a[2][2]-a[2][1]*a[1][2]) +
+		a[0][1]*(a[1][2]*a[2][0]-a[2][2]*a[1][0]) +
+		a[0][2]*(a[1][0]*a[2][1]-a[2][0]*a[1][1])
 }
 
-// Inverse returns a⁻¹. Behavior on singular matrices follows IEEE 754:
-// division by zero yields ±Inf or NaN components rather than an error.
-// Ported from la::inverse via the adjugate / determinant formula.
+// Inverse returns a⁻¹. Literal transcription of la::inverse = adjugate(a) /
+// determinant(a) (linalg.h:2075): the adjugate term order is exactly
+// la::adjugate(mat3) (linalg.h:2327) and each entry is DIVIDED by det
+// element-wise (not multiplied by 1/det — x/det differs from x*(1/det) in IEEE).
+// Behavior on singular matrices follows IEEE 754 (±Inf / NaN components).
 func (a Mat3) Inverse() Mat3 {
 	det := a.Determinant()
-	invDet := 1.0 / det
 	return Mat3{
 		{
-			(a[1][1]*a[2][2] - a[2][1]*a[1][2]) * invDet,
-			-(a[0][1]*a[2][2] - a[2][1]*a[0][2]) * invDet,
-			(a[0][1]*a[1][2] - a[1][1]*a[0][2]) * invDet,
+			(a[1][1]*a[2][2] - a[2][1]*a[1][2]) / det,
+			(a[2][1]*a[0][2] - a[0][1]*a[2][2]) / det,
+			(a[0][1]*a[1][2] - a[1][1]*a[0][2]) / det,
 		},
 		{
-			-(a[1][0]*a[2][2] - a[2][0]*a[1][2]) * invDet,
-			(a[0][0]*a[2][2] - a[2][0]*a[0][2]) * invDet,
-			-(a[0][0]*a[1][2] - a[1][0]*a[0][2]) * invDet,
+			(a[1][2]*a[2][0] - a[2][2]*a[1][0]) / det,
+			(a[2][2]*a[0][0] - a[0][2]*a[2][0]) / det,
+			(a[0][2]*a[1][0] - a[1][2]*a[0][0]) / det,
 		},
 		{
-			(a[1][0]*a[2][1] - a[2][0]*a[1][1]) * invDet,
-			-(a[0][0]*a[2][1] - a[2][0]*a[0][1]) * invDet,
-			(a[0][0]*a[1][1] - a[1][0]*a[0][1]) * invDet,
+			(a[1][0]*a[2][1] - a[2][0]*a[1][1]) / det,
+			(a[2][0]*a[0][1] - a[0][0]*a[2][1]) / det,
+			(a[0][0]*a[1][1] - a[1][0]*a[0][1]) / det,
 		},
 	}
 }
