@@ -233,11 +233,6 @@ func (i *Impl) Minkowski(other *Impl, inset bool) *Manifold {
 	return wrap(i.h.Minkowski(other.h, inset))
 }
 
-// newBoolean3 wraps the C++ Boolean3(a, b, op) ctor for Split etc.
-func newBoolean3(a, b *Impl, op int) *bridge.Boolean3 {
-	return bridge.NewBoolean3(a.h, b.h, op)
-}
-
 // --- MutableImpl: read accessors (mirror non-const member methods
 // that also read state; Go has no const so we just expose both)
 

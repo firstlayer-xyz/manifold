@@ -348,8 +348,14 @@ func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 	for i, ref := range refs {
 		tri := int(ref.FaceID)
 		pq := ref.MeshID == 0
-		src := triRefP[tri]
-		if !pq {
+		// C++ MapTriRef (boolean_result.cpp:510): triRef = PQ ? triRefP[tri] :
+		// triRefQ[tri]. The branch must be conditional, not "index P then maybe
+		// overwrite" — a Q tri's faceID is a Q-local index that can legally exceed
+		// NumTriP, so eagerly evaluating triRefP[tri] would index out of range.
+		var src bridge.TriRef
+		if pq {
+			src = triRefP[tri]
+		} else {
 			src = triRefQ[tri]
 			src.MeshID += offsetQ
 		}

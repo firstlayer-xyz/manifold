@@ -443,14 +443,18 @@ const (
 //	Manifold Manifold::Boolean(const Manifold& second, OpType op) const {
 //	  return Manifold(LoadPNode()->Boolean(second.LoadPNode(), op));
 //	}
+//
+// The two-operand Boolean is the native Boolean3(*a, *b, op).Result(op) — the
+// same computation the C++ CsgOpNode evaluates for two leaves (BatchBoolean
+// reduces to one Boolean3 for a 2-child node). The Go bridge already materialized
+// the op node eagerly via ToManifold, so this introduces no behavioural change in
+// laziness; n-ary fusion still lives in BatchBoolean (the CSG-tree drill).
 func (m *Manifold) Boolean(other *Manifold, op OpType) *Manifold {
-	a := bridge.LoadPNode(m.h)
-	defer a.Delete()
-	b := bridge.LoadPNode(other.h)
-	defer b.Delete()
-	result := a.Boolean(b, int(op))
-	defer result.Delete()
-	return wrap(result.ToManifold())
+	impl1 := getImpl(m)
+	defer impl1.Delete()
+	impl2 := getImpl(other)
+	defer impl2.Delete()
+	return newNativeBoolean3(impl1, impl2, op).Result(op)
 }
 
 // Union returns the boolean union of m and other. Ported from C++
@@ -489,11 +493,10 @@ func (m *Manifold) Split(cutter *Manifold) (*Manifold, *Manifold) {
 	defer impl1.Delete()
 	impl2 := getImpl(cutter)
 	defer impl2.Delete()
-	boolean := newBoolean3(impl1, impl2, int(OpSubtract))
-	defer boolean.Delete()
-	result1 := boolean.Result(int(OpIntersect))
-	result2 := boolean.Result(int(OpSubtract))
-	return wrap(result1), wrap(result2)
+	boolean := newNativeBoolean3(impl1, impl2, OpSubtract)
+	result1 := boolean.Result(OpIntersect)
+	result2 := boolean.Result(OpSubtract)
+	return result1, result2
 }
 
 // SplitByPlane is a half-space-cut convenience over Split: the first
