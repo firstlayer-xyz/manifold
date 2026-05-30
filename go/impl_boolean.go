@@ -125,20 +125,208 @@ func setBoolTriRefs(outR *MutableImpl, refs []boolean.TriRef) {
 	outR.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
 
-// createProperties is the Go port of CreateProperties (boolean_result.cpp:571).
-// Only the numProp==0 fast path is ported (set numProp_, return); the numProp>0
-// barycentric interpolation is not yet ported and panics rather than silently
-// emitting wrong properties.
+// propEntry is one std::pair<ivec3,int> in the propIdx dedup bins: the (PQ,
+// minProp, maxProp) provenance key and the assigned output property index.
+type propEntry struct {
+	key [3]int
+	idx int
+}
+
+// implNumPropVert mirrors Impl::NumPropVert: NumProp==0 ? NumVert : len/NumProp.
+func implNumPropVert(v *Impl, numProp int) int {
+	if numProp == 0 {
+		return v.NumVert()
+	}
+	return len(v.Properties()) / numProp
+}
+
+// baryComp indexes a barycentric vec3 by component (the C++ uvw[j]).
+func baryComp(v geom.Vec3, j int) float64 {
+	switch j {
+	case 0:
+		return v.X
+	case 1:
+		return v.Y
+	default:
+		return v.Z
+	}
+}
+
+// createProperties is the Go port of CreateProperties (boolean_result.cpp:571):
+// interpolate per-vertex properties at the output verts via barycentric
+// coordinates within the originating input triangle, deduplicating output
+// property verts by provenance. numProp = max(numPropP, numPropQ); the
+// numProp==0 case is a no-op after setting numProp_.
 func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
-	numProp := inP.Scalars().NumProp
-	if q := inQ.Scalars().NumProp; q > numProp {
-		numProp = q
+	numPropP := inP.Scalars().NumProp
+	numPropQ := inQ.Scalars().NumProp
+	numProp := numPropP
+	if numPropQ > numProp {
+		numProp = numPropQ
 	}
 	outR.h.SetNumProp(numProp)
 	if numProp == 0 {
 		return
 	}
-	panic("createProperties: numProp>0 barycentric interpolation not yet ported")
+
+	// Output mesh arrays (copies — propVert is mutated, then written back).
+	starts := append([]int32(nil), outR.h.HalfedgeStartsRO()...)
+	pairs := append([]int32(nil), outR.h.HalfedgePairsRO()...)
+	propVert := append([]int32(nil), outR.h.HalfedgePropsRO()...)
+	vertPosR := outR.Verts()
+	triRefR := outR.TriRefs()
+	epsilon := outR.h.GetEpsilon()
+	numTri := len(starts) / 3
+	numVertR := len(vertPosR)
+
+	// Inputs.
+	vertPosP, vertPosQ := inP.Verts(), inQ.Verts()
+	startsP, startsQ := inP.HalfedgeStarts(), inQ.HalfedgeStarts()
+	propsP, propsQ := inP.Properties(), inQ.Properties()
+	hPropsP, hPropsQ := inP.HalfedgeProps(), inQ.HalfedgeProps()
+
+	// inQ TriHasNormals lookup (impl.h:77): triRef[tri].meshID -> hasNormals.
+	qHasNormals := map[int32]bool{}
+	for _, r := range inQ.MeshIDTransforms() {
+		qHasNormals[r.MeshID] = r.HasNormals
+	}
+	qTriRef := inQ.TriRefs()
+	triHasNormalsQ := func(tri int) bool { return qHasNormals[qTriRef[tri].MeshID] }
+
+	// Barycentric pass (boolean_result.cpp:584-588): uvw per output halfedge.
+	bary := make([]geom.Vec3, len(starts))
+	for tri := 0; tri < numTri; tri++ {
+		if starts[3*tri] < 0 {
+			continue
+		}
+		refPQ := triRefR[tri]
+		triPQ := int(refPQ.FaceID)
+		pq := refPQ.MeshID == 0
+		vertPos, hStarts := vertPosQ, startsQ
+		if pq {
+			vertPos, hStarts = vertPosP, startsP
+		}
+		var triPos [3]geom.Vec3
+		for _, j := range []int{0, 1, 2} {
+			triPos[j] = vertPos[hStarts[3*triPQ+j]]
+		}
+		for _, i := range []int{0, 1, 2} {
+			vert := int(starts[3*tri+i])
+			bary[3*tri+i] = geom.GetBarycentric(vertPosR[vert], triPos, epsilon)
+		}
+	}
+
+	// Dedup state.
+	idMissProp := numVertR
+	propIdx := make([][]propEntry, numVertR+1)
+	propMissIdx := [2][]int{
+		make([]int, implNumPropVert(inQ, numPropQ)),
+		make([]int, implNumPropVert(inP, numPropP)),
+	}
+	for k := range propMissIdx {
+		for i := range propMissIdx[k] {
+			propMissIdx[k][i] = -1
+		}
+	}
+
+	propsOut := make([]float64, 0, numVertR*numProp)
+	idx := 0
+
+	for tri := 0; tri < numTri; tri++ {
+		if starts[3*tri] < 0 { // skip collapsed triangles
+			continue
+		}
+		ref := triRefR[tri]
+		pq := ref.MeshID == 0
+		oldNumProp := numPropQ
+		props, hProps := propsQ, hPropsQ
+		if pq {
+			oldNumProp, props, hProps = numPropP, propsP, hPropsP
+		}
+		// For Subtract, Q's tris are flipped, so Q's world-frame normals (slots
+		// 0..2) flip sign. Per-source-tri (inQ may be a mixed Boolean result).
+		negateNormals := !pq && invertQ && oldNumProp >= 3 && triHasNormalsQ(int(ref.FaceID))
+
+		for _, i := range []int{0, 1, 2} {
+			vert := int(starts[3*tri+i])
+			uvw := bary[3*tri+i]
+
+			key := [4]int{0, idMissProp, -1, -1}
+			if pq {
+				key[0] = 1
+			}
+			if oldNumProp > 0 {
+				edge := -2
+				for _, j := range []int{0, 1, 2} {
+					if baryComp(uvw, j) == 1 {
+						// On a retained vert; the propVert must also match.
+						key[2] = int(hProps[3*int(ref.FaceID)+j])
+						edge = -1
+						break
+					}
+					if baryComp(uvw, j) == 0 {
+						edge = j
+					}
+				}
+				if edge >= 0 {
+					// On an edge; both propVerts must match.
+					p0 := int(hProps[3*int(ref.FaceID)+geom.Next3(edge)])
+					p1 := int(hProps[3*int(ref.FaceID)+geom.Prev3(edge)])
+					key[1] = vert
+					key[2], key[3] = p0, p1
+					if p1 < p0 {
+						key[2], key[3] = p1, p0
+					}
+				} else if edge == -2 {
+					key[1] = vert
+				}
+			}
+
+			if key[1] == idMissProp && key[2] >= 0 {
+				// only key.x/key.z matters
+				if entry := propMissIdx[key[0]][key[2]]; entry >= 0 {
+					propVert[3*tri+i] = int32(entry)
+					continue
+				}
+				propMissIdx[key[0]][key[2]] = idx
+			} else {
+				bin := propIdx[key[1]]
+				found := false
+				for _, b := range bin {
+					if b.key == [3]int{key[0], key[2], key[3]} {
+						found = true
+						propVert[3*tri+i] = int32(b.idx)
+						break
+					}
+				}
+				if found {
+					continue
+				}
+				propIdx[key[1]] = append(propIdx[key[1]], propEntry{key: [3]int{key[0], key[2], key[3]}, idx: idx})
+			}
+
+			propVert[3*tri+i] = int32(idx)
+			idx++
+			for p := 0; p < numProp; p++ {
+				if p < oldNumProp {
+					op := [3]float64{}
+					for _, j := range []int{0, 1, 2} {
+						op[j] = props[oldNumProp*int(hProps[3*int(ref.FaceID)+j])+p]
+					}
+					val := uvw.Dot(geom.Vec3{X: op[0], Y: op[1], Z: op[2]})
+					if negateNormals && p < 3 {
+						val = -val
+					}
+					propsOut = append(propsOut, val)
+				} else {
+					propsOut = append(propsOut, 0)
+				}
+			}
+		}
+	}
+
+	outR.h.SetHalfedgesRaw(starts, propVert, pairs)
+	outR.h.SetProperties(propsOut)
 }
 
 // updateReference is the Go port of UpdateReference (boolean_result.cpp:518) and
