@@ -296,3 +296,29 @@ func TestCollider_SingleLeaf(t *testing.T) {
 		t.Fatal("New returned nil for single-leaf collider")
 	}
 }
+
+// TestCollider_Copy verifies Copy is a deep copy: refitting the copy (UpdateBoxes
+// with translated leaves) must not mutate the source's boxes.
+func TestCollider_Copy(t *testing.T) {
+	leaves := []geom.Box{
+		{Min: geom.Vec3{X: 0, Y: 0, Z: 0}, Max: geom.Vec3{X: 1, Y: 1, Z: 1}},
+		{Min: geom.Vec3{X: 2, Y: 2, Z: 2}, Max: geom.Vec3{X: 3, Y: 3, Z: 3}},
+	}
+	c, order := buildFrom(leaves)
+	srcBox := c.GetBoundingBox()
+
+	cp := c.Copy()
+	// Refit the copy with translated leaves (in the collider's leaf order).
+	moved := make([]geom.Box, len(leaves))
+	for i, oldIdx := range order {
+		moved[i] = leaves[oldIdx].Translate(geom.Vec3{X: 100})
+	}
+	cp.UpdateBoxes(moved)
+
+	if c.GetBoundingBox() != srcBox {
+		t.Errorf("source bbox mutated by copy refit: %+v != %+v", c.GetBoundingBox(), srcBox)
+	}
+	if cp.GetBoundingBox() == srcBox {
+		t.Errorf("copy bbox not updated by refit: %+v", cp.GetBoundingBox())
+	}
+}

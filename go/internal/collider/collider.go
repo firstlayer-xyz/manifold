@@ -83,6 +83,22 @@ func (c *Collider) origLeaf(leaf int) int {
 	return c.leafToOriginal[leaf]
 }
 
+// Copy returns a deep copy with independent backing arrays, so a refit
+// (UpdateBoxes) on the copy never mutates the source. The C++ copy constructor
+// copies collider_ wholesale (impl.cpp:675); Impl::Transform relies on this to
+// carry a refittable collider into the transformed result.
+func (c *Collider) Copy() *Collider {
+	cp := &Collider{
+		nodeBBox:         append([]geom.Box(nil), c.nodeBBox...),
+		nodeParent:       append([]int32(nil), c.nodeParent...),
+		internalChildren: append([][2]int32(nil), c.internalChildren...),
+	}
+	if c.leafToOriginal != nil {
+		cp.leafToOriginal = append([]int(nil), c.leafToOriginal...)
+	}
+	return cp
+}
+
 // New is the Go port of C++ Collider::Collider(leafBB, leafMorton). The C++
 // requires leafMorton pre-sorted (its caller stable-sorts the mesh by Morton);
 // New instead stable-sorts internally by Morton and remaps queries/UpdateBoxes to
