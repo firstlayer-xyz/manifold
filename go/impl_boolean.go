@@ -51,6 +51,15 @@ func newNativeBoolean3(inP, inQ *Impl, op OpType) *nativeBoolean3 {
 // tail (CreateProperties, UpdateReference, SimplifyTopology, RemoveUnreferenced-
 // Verts, CalculateBBox, SortGeometry, IncrementMeshIDs).
 func (nb *nativeBoolean3) Result(op OpType) *Manifold {
+	// Input-status propagation (boolean_result.cpp:732-741): a non-NoError input
+	// short-circuits with that status before the empty-input exits.
+	if status := nb.inP.Scalars().Status; Error(status) != NoError {
+		return propagateStatus(Error(status))
+	}
+	if status := nb.inQ.Scalars().Status; Error(status) != NoError {
+		return propagateStatus(Error(status))
+	}
+
 	// Empty-input early exits (boolean_result.cpp:743-753).
 	pEmpty := nb.inP.NumTri() == 0
 	qEmpty := nb.inQ.NumTri() == 0
