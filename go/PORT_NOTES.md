@@ -261,11 +261,30 @@ memory model. The C++ relies on word-sized non-atomic reads being
   (Shadows/withSign/Interpolate), Intersect, LoadFaceEdges, and the full kernel
   cascade Shadow01/Kernel02/Kernel11/Kernel12 — validated end-to-end via
   RayCast. C++ const-Impl& members lift to `*mesh` read-views; template bools
-  to runtime struct fields; operator() to `call`. Next: Intersect12 + Winding03
-  (the collider-driven drivers + DisjointSets flood-fill) + the Boolean3 ctor,
-  then Boolean3::Result, then the CSG tree + dispatch rewire (the big bridge
-  shrink). The kernel inlines aren't individually bridge-shimmable, so they're
-  validated collectively at RayCast (and later at the Boolean3-ctor shims).
+  to runtime struct fields; operator() to `call`.
+  **Boolean3 ctor + Result now DRILLED + DIFFERENTIALLY VALIDATED** (native
+  `internal/boolean`: Intersect12 + Winding03 + the ctor; SizeOutput,
+  AddNewEdgeVerts, PairUp, Append{Partial,New,Whole}Edges, Face2Tri,
+  ReorderHalfedges, the `assemble`+`Result` pipeline). The Impl tail lives in
+  the manifold facade `impl_boolean.go` (`nativeBoolean3`): UpdateReference,
+  IncrementMeshIDs, CreateProperties (numProp==0 only so far), then the existing
+  native SimplifyTopology/RemoveUnreferencedVerts/CalculateBBox/SortGeometry.
+  `TestNativeBoolean_VsBridge` matches the C++ bridge oracle
+  (Volume/SurfaceArea/Genus/NumVert/NumTri) across cube/sphere/cylinder pairs,
+  translated + rotated, all three ops.
+  Bugs found + fixed along the way (all from faithfulness diffs / the diverse
+  differential test): the collider point-query was 3D `Contains` not the
+  XY-projected `Box::DoesOverlap(vec3)` (→ all-zero windings); 7 geom/collider
+  paraphrase deviations (SafeNormalize x-only, la::min/max NaN-select, Mat3
+  determinant/inverse float order, EmptyBox, UpdateBoxes debug-only); and
+  `collider.New` now sorts leaves internally + remaps to original index space
+  (GetFaceBoxMorton is unsorted after a lazy transform; C++ uses the persistent
+  collider_).
+  Remaining: CreateProperties numProp>0 (barycentric interpolation), rewire
+  production Manifold.Boolean/Split to the native path (delete bridge
+  newBoolean3/Boolean3.Result), then the CSG tree + dispatch (the big bridge
+  shrink). The kernel inlines aren't individually bridge-shimmable, so they were
+  validated collectively at RayCast and now at the full Boolean differential.
 - `BuildCollider` (the bridge call that keeps the C++ Impl's
   `collider_` populated) survives only for the unported C++-side
   algorithms above.
