@@ -131,7 +131,7 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 		numPropVert = len(oldProperties) / oldNumProp
 	}
 	newProperties := make([]float64, numProp*numPropVert)
-	mi.h.SetNumProp(numProp)
+	mi.SetNumProp(numProp)
 
 	// Pass 3: claim each propVert via atomic-exchange counter.
 	counters := make([]uint32, numPropVert)
@@ -155,5 +155,5 @@ func (mi *MutableImpl) CalculateCurvature(gaussianIdx, meanIdx int) {
 			}
 		}
 	})
-	mi.h.SetProperties(newProperties)
+	mi.SetProperties(newProperties)
 }

@@ -345,5 +345,5 @@ func (mi *MutableImpl) CreateHalfedges(triProp []int32, triVert []int32) {
 			paireds[pair1] = -1
 		}
 	})
-	mi.h.SetHalfedgesRaw(starts, props, paireds)
+	mi.SetHalfedgesRaw(starts, props, paireds)
 }

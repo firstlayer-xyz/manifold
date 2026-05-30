@@ -28,14 +28,14 @@ import (
 // numTri) — no-threshold form, defaults to kSeqThreshold (1e4).
 // Steps 2 and 3 stay serial as in C++.
 func (mi *MutableImpl) SetNormalsAndCoplanar() {
-	verts := mi.h.Verts()
-	starts := mi.h.HalfedgeStartsRO()
-	pairs := mi.h.HalfedgePairsRO()
+	verts := mi.Verts()
+	starts := mi.HalfedgeStarts()
+	pairs := mi.HalfedgePairs()
 	numTri := len(starts) / 3
-	tolerance := mi.h.GetTolerance()
+	tolerance := mi.Tolerance()
 
-	mi.h.ResizeFaceNormals(numTri)
-	faceNormals := mi.h.FaceNormalsMut()
+	mi.ResizeFaceNormals(numTri)
+	faceNormals := mi.FaceNormals()
 
 	type triPriority struct {
 		area2 float64
@@ -110,7 +110,7 @@ func (mi *MutableImpl) SetNormalsAndCoplanar() {
 		}
 	}
 
-	mi.h.SetCoplanarIDs(coplanarID)
+	mi.SetCoplanarIDs(coplanarID)
 	mi.CalculateVertNormals()
 }
 
@@ -128,16 +128,16 @@ func (mi *MutableImpl) SetNormalsAndCoplanar() {
 // C++ uses policy = autoPolicy(NumTri()) — no-threshold form,
 // defaults to 1e4.
 func (mi *MutableImpl) CalculateVertNormals() {
-	verts := mi.h.Verts()
-	starts := mi.h.HalfedgeStartsRO()
-	pairs := mi.h.HalfedgePairsRO()
-	faceNormals := mi.h.FaceNormalsMut()
+	verts := mi.Verts()
+	starts := mi.HalfedgeStarts()
+	pairs := mi.HalfedgePairs()
+	faceNormals := mi.FaceNormals()
 	numVert := len(verts)
 	numHalfedge := len(starts)
 	policy := parallel.AutoPolicy(len(starts) / 3)
 
-	mi.h.ResizeVertNormals(numVert)
-	vertNormals := mi.h.VertNormals()
+	mi.ResizeVertNormals(numVert)
+	vertNormals := mi.VertNormals()
 
 	const sentinel int32 = math.MaxInt32
 	vertHalfedgeMap := make([]int32, numVert)

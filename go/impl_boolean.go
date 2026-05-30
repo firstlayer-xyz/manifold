@@ -89,14 +89,14 @@ func (nb *nativeBoolean3) Result(op OpType) *Manifold {
 
 	// Build the output Impl from the triangulated ResultMesh.
 	mi := newImpl()
-	mi.h.ResizeVerts(len(rm.VertPos))
+	mi.ResizeVerts(len(rm.VertPos))
 	copy(mi.Verts(), rm.VertPos)
-	mi.h.SetHalfedgesRaw(rm.Starts, rm.PropVert, rm.Pairs)
-	mi.h.ResizeFaceNormals(len(rm.TriNormal))
-	copy(mi.h.FaceNormalsMut(), rm.TriNormal)
+	mi.SetHalfedgesRaw(rm.Starts, rm.PropVert, rm.Pairs)
+	mi.ResizeFaceNormals(len(rm.TriNormal))
+	copy(mi.FaceNormals(), rm.TriNormal)
 	setBoolTriRefs(mi, rm.TriRef)
-	mi.h.SetEpsilonValue(rm.Epsilon)
-	mi.h.SetToleranceValue(rm.Tolerance)
+	mi.SetEpsilonValue(rm.Epsilon)
+	mi.SetToleranceValue(rm.Tolerance)
 
 	// Finalize tail (boolean_result.cpp:951-972).
 	createProperties(mi, nb.inP, nb.inQ, invertQ)
@@ -123,7 +123,7 @@ func setBoolTriRefs(outR *MutableImpl, refs []boolean.TriRef) {
 		faceIDs[i] = int32(r.FaceID)
 		coplanarIDs[i] = int32(r.CoplanarID)
 	}
-	outR.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	outR.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
 
 // propEntry is one std::pair<ivec3,int> in the propIdx dedup bins: the (PQ,
@@ -165,18 +165,18 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 	if numPropQ > numProp {
 		numProp = numPropQ
 	}
-	outR.h.SetNumProp(numProp)
+	outR.SetNumProp(numProp)
 	if numProp == 0 {
 		return
 	}
 
 	// Output mesh arrays (copies — propVert is mutated, then written back).
-	starts := append([]int32(nil), outR.h.HalfedgeStartsRO()...)
-	pairs := append([]int32(nil), outR.h.HalfedgePairsRO()...)
-	propVert := append([]int32(nil), outR.h.HalfedgePropsRO()...)
+	starts := append([]int32(nil), outR.HalfedgeStarts()...)
+	pairs := append([]int32(nil), outR.HalfedgePairs()...)
+	propVert := append([]int32(nil), outR.HalfedgeProps()...)
 	vertPosR := outR.Verts()
 	triRefR := outR.TriRefs()
-	epsilon := outR.h.GetEpsilon()
+	epsilon := outR.Epsilon()
 	numTri := len(starts) / 3
 	numVertR := len(vertPosR)
 
@@ -326,8 +326,8 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 		}
 	}
 
-	outR.h.SetHalfedgesRaw(starts, propVert, pairs)
-	outR.h.SetProperties(propsOut)
+	outR.SetHalfedgesRaw(starts, propVert, pairs)
+	outR.SetProperties(propsOut)
 }
 
 // updateReference is the Go port of UpdateReference (boolean_result.cpp:518) and
@@ -358,13 +358,13 @@ func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 		faceIDs[i] = src.FaceID
 		coplanarIDs[i] = src.CoplanarID
 	}
-	outR.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	outR.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 
 	for _, r := range inP.MeshIDTransforms() {
-		outR.h.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
+		outR.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
 	}
 	for _, r := range inQ.MeshIDTransforms() {
 		// meshIDtransform[pair.first + offsetQ] = pair.second; backSide ^= invertQ.
-		outR.h.AddMeshIDTransform(int(r.MeshID)+int(offsetQ), int(r.OriginalID), r.Transform, r.BackSide != invertQ, r.HasNormals)
+		outR.AddMeshIDTransform(int(r.MeshID)+int(offsetQ), int(r.OriginalID), r.Transform, r.BackSide != invertQ, r.HasNormals)
 	}
 }

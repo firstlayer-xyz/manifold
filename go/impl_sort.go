@@ -61,7 +61,7 @@ func (mi *MutableImpl) SortVerts() {
 	// parallel.Permute and copy back.
 	newVerts := parallel.Permute(policy, verts, vertNew2Old[:newNumVert])
 	if newNumVert != numVert {
-		mi.h.ResizeVerts(newNumVert)
+		mi.ResizeVerts(newNumVert)
 	}
 	copy(mi.Verts(), newVerts)
 
@@ -69,7 +69,7 @@ func (mi *MutableImpl) SortVerts() {
 	if len(vertNormals) == numVert {
 		newVN := parallel.Permute(policy, vertNormals, vertNew2Old[:newNumVert])
 		if newNumVert != numVert {
-			mi.h.ResizeVertNormals(newNumVert)
+			mi.ResizeVertNormals(newNumVert)
 		}
 		copy(mi.VertNormals(), newVN)
 	}
@@ -107,7 +107,7 @@ func (mi *MutableImpl) ReindexVerts(vertNew2Old []int32, oldNumVert int) {
 			props[i] = newStart
 		}
 	})
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 }
 
 // faceBoxMortonOf is the body of Impl::GetFaceBoxMorton (src/sort.cpp),
@@ -197,15 +197,15 @@ func (mi *MutableImpl) GatherFacesInPlace(faceNew2Old []int32) {
 			faceIDs[i] = r.FaceID
 			coplanarIDs[i] = r.CoplanarID
 		})
-		mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
 
 	// Permute faceNormal_.
 	oldFaceNormals := append([]geom.Vec3(nil), mi.FaceNormals()...)
 	if len(oldFaceNormals) == oldNumTri && oldNumTri > 0 {
 		newFN := parallel.Permute(policy, oldFaceNormals, faceNew2Old)
-		mi.h.ResizeFaceNormals(numTri)
-		dstFN := mi.h.FaceNormalsMut()
+		mi.ResizeFaceNormals(numTri)
+		dstFN := mi.FaceNormals()
 		copy(dstFN, newFN)
 	}
 
@@ -248,9 +248,9 @@ func (mi *MutableImpl) GatherFacesInPlace(faceNew2Old []int32) {
 			}
 		}
 	})
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 	if tangents != nil {
-		mi.h.SetHalfedgeTangents(tangents)
+		mi.SetHalfedgeTangents(tangents)
 	}
 }
 

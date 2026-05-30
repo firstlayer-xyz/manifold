@@ -148,7 +148,7 @@ func extrude(crossSection Polygons, height float64,
 	// Step 6: write to a fresh MutableImpl and finalize.
 	mi := newImpl()
 	defer mi.Delete()
-	mi.h.ResizeVerts(len(verts))
+	mi.ResizeVerts(len(verts))
 	copy(mi.Verts(), verts)
 	mi.CreateHalfedges(tris, nil)
 	mi.InitializeOriginal()

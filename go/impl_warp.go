@@ -33,12 +33,12 @@ func (mi *MutableImpl) WarpBatch(fn func([]geom.Vec3)) {
 	// the ENTIRE bbox is non-finite — i.e. all verts NaN) triggers
 	// NonFiniteVertex here.
 	if !mi.IsFinite() {
-		mi.h.MakeEmpty(int(NonFiniteVertex))
+		mi.MakeEmpty(int(NonFiniteVertex))
 		return
 	}
 	mi.SetEpsilon(-1, false)
 	mi.SortGeometry()
 	mi.SetNormalsAndCoplanar()
 	// Warped manifolds are no longer originals.
-	mi.h.SetMeshRelationOriginalID(-1)
+	mi.SetMeshRelationOriginalID(-1)
 }

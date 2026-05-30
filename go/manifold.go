@@ -1109,8 +1109,8 @@ func (m *Manifold) SetProperties(
 
 	if numProp == 0 {
 		// Clear properties_ entirely. Mirrors C++ Vec::clear.
-		newImpl.h.SetProperties(nil)
-		newImpl.h.SetNumProp(0)
+		newImpl.SetProperties(nil)
+		newImpl.SetNumProp(0)
 		return newImpl.ToManifold()
 	}
 
@@ -1149,8 +1149,8 @@ func (m *Manifold) SetProperties(
 		})
 	}
 
-	newImpl.h.SetNumProp(numProp)
-	newImpl.h.SetProperties(newProperties)
+	newImpl.SetNumProp(numProp)
+	newImpl.SetProperties(newProperties)
 	return newImpl.ToManifold()
 }
 

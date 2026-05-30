@@ -470,7 +470,7 @@ func (mi *MutableImpl) CreateTangents(normalIdx int) {
 		flat[4*i+2] = t.Z
 		flat[4*i+3] = t.W
 	}
-	mi.h.SetHalfedgeTangents(flat)
+	mi.SetHalfedgeTangents(flat)
 }
 
 // isForward mirrors Halfedges::IsForward (src/shared.h:204): Start < End.
@@ -743,5 +743,5 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoo
 		flat[4*i+2] = t.Z
 		flat[4*i+3] = t.W
 	}
-	mi.h.SetHalfedgeTangents(flat)
+	mi.SetHalfedgeTangents(flat)
 }

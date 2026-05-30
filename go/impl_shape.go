@@ -94,7 +94,7 @@ func newImplFromShape(sh shape, m geom.Mat3x4) *MutableImpl {
 	mi := newImpl()
 
 	// vertPos_ = Vec(vertPos); then transform each in place.
-	mi.h.ResizeVerts(len(table.verts))
+	mi.ResizeVerts(len(table.verts))
 	verts := mi.Verts()
 	for i, v := range table.verts {
 		verts[i] = m.ApplyAffine(v)

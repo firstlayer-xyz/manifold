@@ -249,9 +249,9 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 	}
 
 	// Commit.
-	mi.h.SetNumProp(numProp)
-	mi.h.SetProperties(props)
-	mi.h.SetHalfedgesRaw(starts, halfedgeProps, pairs)
+	mi.SetNumProp(numProp)
+	mi.SetProperties(props)
+	mi.SetHalfedgesRaw(starts, halfedgeProps, pairs)
 }
 
 // inverseNormalTransformFor returns Relation.GetInverseNormalTransform()

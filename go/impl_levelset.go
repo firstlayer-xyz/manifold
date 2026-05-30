@@ -152,7 +152,7 @@ func LevelSet(
 	// Build the impl and run the standard finalize tail.
 	impl := newImpl()
 	defer impl.Delete()
-	impl.h.ResizeVerts(len(vertPos))
+	impl.ResizeVerts(len(vertPos))
 	copy(impl.Verts(), vertPos)
 	impl.CreateHalfedges(triVerts, nil)
 	impl.CleanupTopology()

@@ -47,23 +47,23 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	// copy of the source geometry (src/impl.cpp:614-621).
 	if Error(i.Scalars().Status) != NoError {
 		r := newImpl()
-		r.h.MakeEmpty(int(i.Scalars().Status))
+		r.MakeEmpty(int(i.Scalars().Status))
 		return r
 	}
 	if !mat3x4IsFinite(t) {
 		r := newImpl()
-		r.h.MakeEmpty(int(NonFiniteVertex))
+		r.MakeEmpty(int(NonFiniteVertex))
 		return r
 	}
 	result := i.Copy()
 
 	// Mark not-original; compose meshIDtransform.transform with t.
-	result.h.SetMeshRelationOriginalID(-1)
+	result.SetMeshRelationOriginalID(-1)
 	rels := result.MeshIDTransforms()
-	result.h.ClearMeshIDTransforms()
+	result.ClearMeshIDTransforms()
 	for _, r := range rels {
 		composed := composeMat3x4(t, geom.Mat3x4(r.Transform))
-		result.h.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
+		result.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
 			[4][3]float64(composed), r.BackSide, r.HasNormals)
 	}
 
@@ -137,7 +137,7 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 			dstTangents[4*edgeOut+2] = out.Z
 			dstTangents[4*edgeOut+3] = srcTangents[4*edgeIn+3]
 		})
-		result.h.SetHalfedgeTangents(dstTangents)
+		result.SetHalfedgeTangents(dstTangents)
 	}
 
 	// Recompute bBox and epsilon-scaling. Use the SOURCE epsilon (the
@@ -234,7 +234,7 @@ func eagerTransformPropNormals(mi *MutableImpl, normalTransform geom.Mat3) {
 		props[prop*numProp+1] = n.Y
 		props[prop*numProp+2] = n.Z
 	}
-	mi.h.SetProperties(props)
+	mi.SetProperties(props)
 }
 
 // flipTris is the Go port of FlipTris functor (src/mesh_fixes.h).
@@ -265,7 +265,7 @@ func flipTris(mi *MutableImpl) {
 			props[3*tri+i] = oldProps[srcEdge]
 		}
 	})
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 }
 
 // isIdentityMat3x4 reports whether m is the identity 3x4 affine.

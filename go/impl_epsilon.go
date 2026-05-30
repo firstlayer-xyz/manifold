@@ -34,7 +34,7 @@ func (mi *MutableImpl) SetEpsilon(minEpsilon float64, useSingle bool) {
 	minV, maxV := mi.BBox()
 	bBox := geom.Box{Min: minV, Max: maxV}
 	eps := maxEpsilon(minEpsilon, bBox)
-	mi.h.SetEpsilonValue(eps)
+	mi.SetEpsilonValue(eps)
 	minTol := eps
 	if useSingle {
 		minTol = math.Max(minTol, fltEpsilon*bBox.Scale())
@@ -42,5 +42,5 @@ func (mi *MutableImpl) SetEpsilon(minEpsilon float64, useSingle bool) {
 	if cur := mi.Tolerance(); cur > minTol {
 		minTol = cur
 	}
-	mi.h.SetToleranceValue(minTol)
+	mi.SetToleranceValue(minTol)
 }

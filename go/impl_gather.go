@@ -42,20 +42,20 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 			faceIDs[i] = r.FaceID
 			coplanarIDs[i] = r.CoplanarID
 		})
-		mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
 
 	// meshIDtransform copy — serial in C++, std::map iteration.
-	mi.h.ClearMeshIDTransforms()
+	mi.ClearMeshIDTransforms()
 	for _, rel := range old.MeshIDTransforms() {
-		mi.h.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
+		mi.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
 			rel.Transform, rel.BackSide, rel.HasNormals)
 	}
 
 	oldScalars := old.Scalars()
 	if oldScalars.NumProp > 0 {
-		mi.h.SetNumProp(oldScalars.NumProp)
-		mi.h.SetProperties(append([]float64(nil), old.Properties()...))
+		mi.SetNumProp(oldScalars.NumProp)
+		mi.SetProperties(append([]float64(nil), old.Properties()...))
 	}
 
 	// faceNormal_ gather.
@@ -63,8 +63,8 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 	oldNumTri := old.HalfedgeCount() / 3
 	if len(oldFaceNormals) == oldNumTri && oldNumTri > 0 {
 		newFN := parallel.Permute(policy, []geom.Vec3(oldFaceNormals), faceNew2Old)
-		mi.h.ResizeFaceNormals(numTri)
-		dstFN := mi.h.FaceNormalsMut()
+		mi.ResizeFaceNormals(numTri)
+		dstFN := mi.FaceNormals()
 		copy(dstFN, newFN)
 	}
 
@@ -105,8 +105,8 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 			}
 		}
 	})
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 	if tangents != nil {
-		mi.h.SetHalfedgeTangents(tangents)
+		mi.SetHalfedgeTangents(tangents)
 	}
 }

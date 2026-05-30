@@ -69,10 +69,10 @@ func (mi *MutableImpl) splitPinchedVertsSerial() {
 		})
 	}
 	if len(newVerts) > 0 {
-		mi.h.ResizeVerts(numVert + len(newVerts))
+		mi.ResizeVerts(numVert + len(newVerts))
 		copy(mi.Verts()[numVert:], newVerts)
 	}
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 }
 
 // splitPinchedVertsParallel is the C++ MANIFOLD_PAR branch
@@ -216,8 +216,8 @@ func (mi *MutableImpl) splitPinchedVertsParallel() {
 		})
 	}
 	if len(newVerts) > 0 {
-		mi.h.ResizeVerts(numVert + len(newVerts))
+		mi.ResizeVerts(numVert + len(newVerts))
 		copy(mi.Verts()[numVert:], newVerts)
 	}
-	mi.h.SetHalfedgesRaw(starts, props, pairs)
+	mi.SetHalfedgesRaw(starts, props, pairs)
 }

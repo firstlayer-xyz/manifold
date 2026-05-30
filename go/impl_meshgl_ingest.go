@@ -93,7 +93,7 @@ func validateMeshGL[P float32 | float64, I uint32 | uint64](
 func emptyManifold(status Error) *Manifold {
 	mi := newImpl()
 	defer mi.Delete()
-	mi.h.MakeEmpty(int(status))
+	mi.MakeEmpty(int(status))
 	return mi.ToManifold()
 }
 
@@ -143,9 +143,9 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	defer mi.Delete()
 
 	// numProp_ / properties_ / tolerance_ / vertPos_ (src/impl.h:362-376).
-	mi.h.SetNumProp(extraProp)
+	mi.SetNumProp(extraProp)
 	mi.SetToleranceValue(float64(tolerance))
-	mi.h.ResizeVerts(numVert)
+	mi.ResizeVerts(numVert)
 	verts := mi.Verts()
 	props := make([]float64, numVert*extraProp)
 	for i := 0; i < numVert; i++ {
@@ -160,7 +160,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 		}
 	}
 	if extraProp > 0 {
-		mi.h.SetProperties(props)
+		mi.SetProperties(props)
 	}
 
 	// halfedgeTangent_ (src/impl.h:378-382).
@@ -169,7 +169,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 		for i := range halfedgeTangent {
 			tangents[i] = float64(halfedgeTangent[i])
 		}
-		mi.h.SetHalfedgeTangents(tangents)
+		mi.SetHalfedgeTangents(tangents)
 	}
 
 	// Run handling: temp triRef + meshIDtransform (src/impl.h:384-432).
@@ -205,7 +205,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 			triRefTemp[tri] = triRefData{int32(meshID), int32(originalID), fid, int32(tri)}
 		}
 		if len(runTransform) == 0 {
-			mi.h.AddMeshIDTransform(meshID, originalID, identityMat3x4(), false, runHasN)
+			mi.AddMeshIDTransform(meshID, originalID, identityMat3x4(), false, runHasN)
 		} else {
 			m := runTransform[12*i:]
 			tf := [4][3]float64{
@@ -214,7 +214,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 				{float64(m[6]), float64(m[7]), float64(m[8])},
 				{float64(m[9]), float64(m[10]), float64(m[11])},
 			}
-			mi.h.AddMeshIDTransform(meshID, originalID, tf, backside, runHasN)
+			mi.AddMeshIDTransform(meshID, originalID, tf, backside, runHasN)
 		}
 	}
 
@@ -237,7 +237,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 			// bits; mirror it so a malformed >=2^32 index decides identically.
 			vert := int(uint32(triVerts[3*i+j]))
 			if vert >= numVert {
-				mi.h.MakeEmpty(int(VertexIndexOutOfBounds))
+				mi.MakeEmpty(int(VertexIndexOutOfBounds))
 				return mi.ToManifold()
 			}
 			triP[j] = int32(vert)
@@ -261,11 +261,11 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 			keptCoplanar = append(keptCoplanar, r.coplanarID)
 		}
 	}
-	mi.h.SetTriRefs(keptMeshID, keptOrigID, keptFaceID, keptCoplanar)
+	mi.SetTriRefs(keptMeshID, keptOrigID, keptFaceID, keptCoplanar)
 
 	mi.CreateHalfedges(triProp, triVert)
 	if !mi.IsManifold() {
-		mi.h.MakeEmpty(int(NotManifold))
+		mi.MakeEmpty(int(NotManifold))
 		return mi.ToManifold()
 	}
 
@@ -279,10 +279,10 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	mi.RemoveUnreferencedVerts()
 	mi.SortGeometry()
 	if !mi.IsFinite() {
-		mi.h.MakeEmpty(int(NonFiniteVertex))
+		mi.MakeEmpty(int(NonFiniteVertex))
 		return mi.ToManifold()
 	}
-	mi.h.SetMeshRelationOriginalID(-1)
+	mi.SetMeshRelationOriginalID(-1)
 	return mi.ToManifold()
 }
 

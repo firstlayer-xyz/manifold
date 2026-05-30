@@ -20,7 +20,7 @@ import (
 // NumTri(), ...). We mirror via parallel.ForEachN.
 func (mi *MutableImpl) InitializeOriginal() {
 	meshID := int(bridge.ImplReserveIDs(1))
-	mi.h.SetMeshRelationOriginalID(meshID)
+	mi.SetMeshRelationOriginalID(meshID)
 
 	numTri := mi.NumTri()
 	oldTriRefs := mi.TriRefs() // may be empty if triRef was just resized
@@ -41,20 +41,20 @@ func (mi *MutableImpl) InitializeOriginal() {
 			coplanarIDs[tri] = 0
 		}
 	})
-	mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 
 	// Mirror C++: AllHaveNormals is read BEFORE the meshIDtransform
 	// map is cleared, so that the new single entry can carry the
 	// inherited hasNormals state.
 	hadNormals := mi.AllHaveNormals()
-	mi.h.ClearMeshIDTransforms()
+	mi.ClearMeshIDTransforms()
 	identity := [4][3]float64{
 		{1, 0, 0},
 		{0, 1, 0},
 		{0, 0, 1},
 		{0, 0, 0},
 	}
-	mi.h.AddMeshIDTransform(meshID, meshID, identity, false, hadNormals)
+	mi.AddMeshIDTransform(meshID, meshID, identity, false, hadNormals)
 }
 
 // IncrementMeshIDs is the Go port of Manifold::Impl::IncrementMeshIDs
@@ -71,10 +71,10 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 	nextMeshID := int32(bridge.ImplReserveIDs(uint32(len(old))))
 
 	old2new := make(map[int32]int32, len(old))
-	mi.h.ClearMeshIDTransforms()
+	mi.ClearMeshIDTransforms()
 	for _, r := range old {
 		old2new[r.MeshID] = nextMeshID
-		mi.h.AddMeshIDTransform(int(nextMeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
+		mi.AddMeshIDTransform(int(nextMeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
 		nextMeshID++
 	}
 
@@ -89,7 +89,7 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 		faceIDs[i] = r.FaceID
 		coplanarIDs[i] = r.CoplanarID
 	}
-	mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
 
 // MarkAllMeshIDHasNormals is the Go port of the per-meshID
@@ -101,9 +101,9 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 // We mirror with a serial loop.
 func (mi *MutableImpl) MarkAllMeshIDHasNormals() {
 	rels := mi.MeshIDTransforms()
-	mi.h.ClearMeshIDTransforms()
+	mi.ClearMeshIDTransforms()
 	for _, r := range rels {
-		mi.h.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
+		mi.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
 			r.Transform, r.BackSide, true)
 	}
 }

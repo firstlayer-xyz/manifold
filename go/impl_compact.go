@@ -124,7 +124,7 @@ func (mi *MutableImpl) DedupePropVerts() {
 	})
 	startsCopy := append([]int32(nil), starts...)
 	pairsCopy := append([]int32(nil), pairs...)
-	mi.h.SetHalfedgesRaw(startsCopy, halfedgeProps, pairsCopy)
+	mi.SetHalfedgesRaw(startsCopy, halfedgeProps, pairsCopy)
 }
 
 // CompactProps is the Go port of C++ Manifold::Impl::CompactProps
@@ -177,7 +177,7 @@ func (mi *MutableImpl) CompactProps() {
 			newProps[newIdx*numProp+p] = props[oldIdx*numProp+p]
 		}
 	})
-	mi.h.SetProperties(newProps)
+	mi.SetProperties(newProps)
 
 	// Pass 3b: rewrite halfedge_.propVert_ via propOld2New.
 	parallel.ForEachN(policy, numHalfedge, func(i int) {
@@ -185,5 +185,5 @@ func (mi *MutableImpl) CompactProps() {
 	})
 	starts := append([]int32(nil), mi.HalfedgeStarts()...)
 	pairs := append([]int32(nil), mi.HalfedgePairs()...)
-	mi.h.SetHalfedgesRaw(starts, halfedgeProps, pairs)
+	mi.SetHalfedgesRaw(starts, halfedgeProps, pairs)
 }

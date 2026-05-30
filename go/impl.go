@@ -29,6 +29,11 @@ import (
 // Manifold).
 type Impl struct {
 	h *bridge.Impl
+	// s holds the native Go storage being migrated off the bridge (native-Impl-
+	// storage Phase 2b). Dormant in Step A (accessors still forward to h); Step B
+	// flips the accessor bodies to read/write s, with getImpl marshalling in and
+	// ToManifold marshalling out.
+	s *implStorage
 	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
 	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
 	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
@@ -46,6 +51,7 @@ type Impl struct {
 // copy of a const view). Pair with Delete.
 type MutableImpl struct {
 	h    *bridge.MutableImpl
+	s    *implStorage       // native storage being migrated (see Impl.s)
 	coll *collider.Collider // native collider (see Impl.coll)
 }
 
@@ -54,13 +60,13 @@ type MutableImpl struct {
 // Impl (releases the shared_ptr reference held by this view). The native
 // collider, if the Manifold carries one, comes along (set by Transform/ToManifold).
 func getImpl(m *Manifold) *Impl {
-	return &Impl{h: bridge.GetImpl(m.h), coll: m.coll}
+	return &Impl{h: bridge.GetImpl(m.h), s: newImplStorage(), coll: m.coll}
 }
 
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
 // C++ `std::make_shared<Manifold::Impl>()`.
 func newImpl() *MutableImpl {
-	return &MutableImpl{h: bridge.NewMutableImpl()}
+	return &MutableImpl{h: bridge.NewMutableImpl(), s: newImplStorage()}
 }
 
 // Delete releases this const view's shared_ptr reference.
@@ -73,7 +79,7 @@ func (mi *MutableImpl) Delete() { mi.h.Delete() }
 // Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
 // of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	mi := &MutableImpl{h: i.h.Copy()}
+	mi := &MutableImpl{h: i.h.Copy(), s: newImplStorage()}
 	if i.coll != nil {
 		mi.coll = i.coll.Copy()
 	}
@@ -324,6 +330,48 @@ func (mi *MutableImpl) ResizeVerts(n int) { mi.h.ResizeVerts(n) }
 
 // ResizeVertNormals resizes vertNormal_ to n elements.
 func (mi *MutableImpl) ResizeVertNormals(n int) { mi.h.ResizeVertNormals(n) }
+
+// ResizeFaceNormals resizes faceNormal_ to n elements.
+func (mi *MutableImpl) ResizeFaceNormals(n int) { mi.h.ResizeFaceNormals(n) }
+
+// Epsilon returns epsilon_.
+func (mi *MutableImpl) Epsilon() float64 { return mi.h.GetEpsilon() }
+
+// SetHalfedgesRaw bulk-assigns halfedge_ from parallel start/prop/paired arrays.
+func (mi *MutableImpl) SetHalfedgesRaw(starts, props, paireds []int32) {
+	mi.h.SetHalfedgesRaw(starts, props, paireds)
+}
+
+// SetProperties bulk-assigns properties_.
+func (mi *MutableImpl) SetProperties(data []float64) { mi.h.SetProperties(data) }
+
+// SetNumProp assigns numProp_.
+func (mi *MutableImpl) SetNumProp(n int) { mi.h.SetNumProp(n) }
+
+// SetHalfedgeTangents bulk-assigns halfedgeTangent_ (flat 4-per-element).
+func (mi *MutableImpl) SetHalfedgeTangents(data []float64) { mi.h.SetHalfedgeTangents(data) }
+
+// SetTriRefs bulk-assigns meshRelation_.triRef from parallel id arrays.
+func (mi *MutableImpl) SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs []int32) {
+	mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+}
+
+// SetCoplanarIDs rewrites only the coplanarID column of meshRelation_.triRef.
+func (mi *MutableImpl) SetCoplanarIDs(ids []int32) { mi.h.SetCoplanarIDs(ids) }
+
+// SetBBox assigns bBox_.
+func (mi *MutableImpl) SetBBox(min, max geom.Vec3) { mi.h.SetBBox(min, max) }
+
+// SetMeshRelationOriginalID assigns meshRelation_.originalID.
+func (mi *MutableImpl) SetMeshRelationOriginalID(id int) { mi.h.SetMeshRelationOriginalID(id) }
+
+// ClearMeshIDTransforms empties meshRelation_.meshIDtransform.
+func (mi *MutableImpl) ClearMeshIDTransforms() { mi.h.ClearMeshIDTransforms() }
+
+// AddMeshIDTransform inserts one meshRelation_.meshIDtransform entry.
+func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform [4][3]float64, backSide, hasNormals bool) {
+	mi.h.AddMeshIDTransform(meshID, originalID, transform, backSide, hasNormals)
+}
 
 // --- Bridge-only mutators (still C++ algorithms) ---
 

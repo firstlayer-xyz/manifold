@@ -56,8 +56,8 @@ func (mi *MutableImpl) CalculateBBox() {
 	// planar mesh (e.g. min.z==max.z) is still finite and must be kept.
 	if !(geom.Box{Min: minV, Max: maxV}).IsFinite() {
 		// Decimated out of existence - early out.
-		mi.h.MakeEmpty(0) // Error::NoError
+		mi.MakeEmpty(0) // Error::NoError
 		return
 	}
-	mi.h.SetBBox(minV, maxV)
+	mi.SetBBox(minV, maxV)
 }

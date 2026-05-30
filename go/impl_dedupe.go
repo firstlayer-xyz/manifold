@@ -41,7 +41,7 @@ func newDedupeState(mi *MutableImpl) *dedupeState {
 		faceNormals: append([]geom.Vec3(nil), mi.FaceNormals()...),
 		properties:  append([]float64(nil), mi.Properties()...),
 		numProp:     mi.NumProp(),
-		epsilon:     mi.h.GetEpsilon(),
+		epsilon:     mi.Epsilon(),
 		tolerance:   mi.Tolerance(),
 	}
 }
@@ -391,14 +391,14 @@ func (s *dedupeState) findDuplicatesParallel() []int {
 func (s *dedupeState) commit(mi *MutableImpl) {
 	// Resize vert buffers if grown.
 	if len(s.verts) != mi.NumVert() {
-		mi.h.ResizeVerts(len(s.verts))
+		mi.ResizeVerts(len(s.verts))
 	}
 	copy(mi.Verts(), s.verts)
 	if len(s.vertNormals) > 0 {
-		mi.h.ResizeVertNormals(len(s.vertNormals))
+		mi.ResizeVertNormals(len(s.vertNormals))
 		copy(mi.VertNormals(), s.vertNormals)
 	}
-	mi.h.SetHalfedgesRaw(s.starts, s.props, s.pairs)
+	mi.SetHalfedgesRaw(s.starts, s.props, s.pairs)
 	if len(s.triRefs) > 0 {
 		meshIDs := make([]int32, len(s.triRefs))
 		originalIDs := make([]int32, len(s.triRefs))
@@ -410,16 +410,16 @@ func (s *dedupeState) commit(mi *MutableImpl) {
 			faceIDs[i] = r.FaceID
 			coplanarIDs[i] = r.CoplanarID
 		}
-		mi.h.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
 	if len(s.faceNormals) > 0 {
-		mi.h.ResizeFaceNormals(len(s.faceNormals))
+		mi.ResizeFaceNormals(len(s.faceNormals))
 		copy(mi.FaceNormals(), s.faceNormals)
 	}
 	// properties_ may have grown (RecursiveEdgeSwap interpolates new
 	// property verts); sync the whole buffer back.
 	if len(s.properties) > 0 {
-		mi.h.SetProperties(s.properties)
+		mi.SetProperties(s.properties)
 	}
 }
 
