@@ -114,9 +114,11 @@ func (c *Collider) GetBoundingBox() geom.Box {
 // every leaf box and propagate to internal nodes via atomic-counter
 // bottom-up sweep.
 func (c *Collider) UpdateBoxes(leafBB []geom.Box) {
-	if len(leafBB) != c.numLeaves() {
-		panic("collider.UpdateBoxes: leafBB must match the original leaf count")
-	}
+	// C++ guards with DEBUG_ASSERT(leafBB.size() == NumLeaves()) (collider.h:292)
+	// — debug-only, compiled out in release. We must NOT promote it to an
+	// unconditional error: NumLeaves() is 0 for a single-leaf collider (the
+	// internalChildren_-empty quirk), so the valid single-triangle case has
+	// len(leafBB)==1 != numLeaves()==0, and C++ release simply proceeds.
 	// Copy leaf boxes into the even-index slots.
 	parallel.ForEachN(parallel.AutoPolicy(len(leafBB), 1000), len(leafBB), func(i int) {
 		c.nodeBBox[Leaf2Node(i)] = leafBB[i]

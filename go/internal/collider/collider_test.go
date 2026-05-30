@@ -281,3 +281,18 @@ func TestIsAxisAligned(t *testing.T) {
 		t.Error("axis-swap should be axis-aligned")
 	}
 }
+
+// TestCollider_SingleLeaf guards that constructing a 1-leaf collider does NOT
+// panic. Before the fix, New -> UpdateBoxes panicked because numLeaves() is 0
+// for a single leaf (the C++ NumLeaves internalChildren_-empty quirk) while
+// len(leafBB)==1, and the Go promoted the C++ debug-only size DEBUG_ASSERT to an
+// unconditional panic. C++ release proceeds; so must we. (GetBoundingBox and
+// queries on a single-leaf collider read internal node 0, which does not exist —
+// that is out-of-bounds in BOTH C++ and Go, so it is not exercised here.)
+func TestCollider_SingleLeaf(t *testing.T) {
+	box := geom.Box{Min: geom.Vec3{X: 0, Y: 0, Z: 0}, Max: geom.Vec3{X: 1, Y: 1, Z: 1}}
+	c := New([]geom.Box{box}, []uint32{0}) // must not panic
+	if c == nil {
+		t.Fatal("New returned nil for single-leaf collider")
+	}
+}
