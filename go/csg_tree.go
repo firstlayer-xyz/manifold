@@ -187,3 +187,155 @@ func compose(leaves []*Impl) *MutableImpl {
 	combined.IncrementMeshIDs()
 	return combined
 }
+
+// composeManifolds runs compose over a set of leaf Manifolds and seals the
+// result. Mirrors the C++ CsgLeafNode::Compose call sites in BatchUnion.
+func composeManifolds(ms []*Manifold) *Manifold {
+	impls := make([]*Impl, len(ms))
+	for i, m := range ms {
+		impls[i] = getImpl(m)
+	}
+	defer func() {
+		for _, im := range impls {
+			im.Delete()
+		}
+	}()
+	return compose(impls).ToManifold()
+}
+
+// simpleBoolean is the Go port of SimpleBoolean (src/csg_tree.cpp:157): a single
+// two-operand Boolean3 evaluation. In the Go port that is exactly the native
+// Manifold.Boolean (nativeBoolean3), so it just delegates.
+func simpleBoolean(a, b *Manifold, op OpType) *Manifold { return a.Boolean(b, op) }
+
+// leafBBox returns a leaf's bounding box. In the eager model the leaf transform
+// is identity, so this is the Impl's bBox_ (CsgLeafNode::GetBoundingBox).
+func leafBBox(m *Manifold) geom.Box {
+	i := getImpl(m)
+	defer i.Delete()
+	mn, mx := i.BBox()
+	return geom.Box{Min: mn, Max: mx}
+}
+
+// batchBoolean is the Go port of BatchBoolean (src/csg_tree.cpp:413): the
+// commutative n-ary union/intersection (Add/Intersect only) that repeatedly
+// combines meshes, smaller results re-entering the pool. The C++ keeps a max-heap
+// keyed by (NumVert, insertion serial) and pops the two greatest per step, four
+// pairs per round. Because the serial makes that ordering TOTAL, the pop sequence
+// is fixed by the comparator alone — a linear max-select reproduces the exact
+// pairing order (and the 4-pairs-per-round batching) without depending on heap
+// internals. SEQ path (serials assigned in pop order).
+func batchBoolean(op OpType, results []*Manifold) *Manifold {
+	if len(results) == 0 {
+		return wrap(bridge.Empty())
+	}
+	if len(results) == 1 {
+		return results[0]
+	}
+	if len(results) == 2 {
+		return simpleBoolean(results[0], results[1], op)
+	}
+	type heapNode struct {
+		node    *Manifold
+		numVert int
+		serial  uint64
+	}
+	heap := make([]heapNode, len(results))
+	for i, m := range results {
+		heap[i] = heapNode{node: m, numVert: m.NumVert(), serial: uint64(i)}
+	}
+	nextSerial := uint64(len(heap))
+	// popMax removes and returns the element with the greatest (numVert, serial)
+	// — the std::pop_heap target under MeshCompare.
+	popMax := func() heapNode {
+		best := 0
+		for i := 1; i < len(heap); i++ {
+			if heap[i].numVert != heap[best].numVert {
+				if heap[i].numVert > heap[best].numVert {
+					best = i
+				}
+				continue
+			}
+			if heap[i].serial > heap[best].serial {
+				best = i
+			}
+		}
+		e := heap[best]
+		heap = append(heap[:best], heap[best+1:]...)
+		return e
+	}
+	for len(heap) > 1 {
+		var tmp []heapNode
+		for i := 0; i < 4 && len(heap) > 1; i++ {
+			a := popMax()
+			b := popMax()
+			result := simpleBoolean(a.node, b.node, op)
+			tmp = append(tmp, heapNode{node: result, numVert: result.NumVert(), serial: nextSerial})
+			nextSerial++
+		}
+		heap = append(heap, tmp...)
+	}
+	return heap[0].node
+}
+
+// batchUnion is the Go port of BatchUnion (src/csg_tree.cpp:486): union a set of
+// nodes by composing as many pairwise-disjoint subsets as possible (cheap
+// concatenation) before falling back to batchBoolean for the overlapping
+// remainder. Chunks at kMaxUnionSize to bound the O(n^2) disjointness check.
+// Operates on a private copy of children so the caller's slice is not mutated.
+func batchUnion(childrenIn []*Manifold) *Manifold {
+	const kMaxUnionSize = 1000
+	children := append([]*Manifold(nil), childrenIn...)
+	for len(children) > 1 {
+		start := 0
+		if len(children) > kMaxUnionSize {
+			start = len(children) - kMaxUnionSize
+		}
+		boxes := make([]geom.Box, 0, len(children)-start)
+		for i := start; i < len(children); i++ {
+			boxes = append(boxes, leafBBox(children[i]))
+		}
+		// Partition into pairwise-disjoint sets: greedy first-fit into the first
+		// set none of whose members overlap boxes[i], else a new set.
+		var disjointSets [][]int
+		for i := 0; i < len(boxes); i++ {
+			placed := false
+			for s := range disjointSets {
+				overlaps := false
+				for _, j := range disjointSets[s] {
+					if boxes[i].DoesOverlap(boxes[j]) {
+						overlaps = true
+						break
+					}
+				}
+				if !overlaps {
+					disjointSets[s] = append(disjointSets[s], i)
+					placed = true
+					break
+				}
+			}
+			if !placed {
+				disjointSets = append(disjointSets, []int{i})
+			}
+		}
+		// Compose each disjoint set (singletons pass through unchanged).
+		var impls []*Manifold
+		for _, set := range disjointSets {
+			if len(set) == 1 {
+				impls = append(impls, children[start+set[0]])
+			} else {
+				tmp := make([]*Manifold, len(set))
+				for k, j := range set {
+					tmp[k] = children[start+j]
+				}
+				impls = append(impls, composeManifolds(tmp))
+			}
+		}
+		children = children[:start]
+		children = append(children, batchBoolean(OpAdd, impls))
+		// Move the freshly-combined (likely complex) child to the front, since we
+		// process from the back.
+		children[0], children[len(children)-1] = children[len(children)-1], children[0]
+	}
+	return children[0]
+}

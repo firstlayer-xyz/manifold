@@ -790,18 +790,21 @@ func BatchBoolean(manifolds []*Manifold, op OpType) *Manifold {
 	if len(manifolds) == 1 {
 		return manifolds[0]
 	}
-	children := make([]*bridge.CsgNode, len(manifolds))
-	for i, m := range manifolds {
-		children[i] = bridge.LoadPNode(m.h)
+	// Native CsgOpNode::ToLeafNode finalize for a flat op node (all children are
+	// leaves — Go's eager model never nests op nodes). Subtract sends the first
+	// child to the positive set and the rest to the negative set, then combines
+	// each set with BatchUnion and subtracts (src/csg_tree.cpp:751-782).
+	switch op {
+	case OpAdd:
+		return batchUnion(manifolds)
+	case OpIntersect:
+		return batchBoolean(OpIntersect, manifolds)
+	case OpSubtract:
+		positive := batchUnion(manifolds[:1])
+		negative := batchUnion(manifolds[1:])
+		return simpleBoolean(positive, negative, OpSubtract)
 	}
-	defer func() {
-		for _, c := range children {
-			c.Delete()
-		}
-	}()
-	opNode := bridge.NewCsgOpNode(children, int(op))
-	defer opNode.Delete()
-	return wrap(opNode.ToManifold())
+	return wrap(bridge.Empty()) // unreachable: op is one of the three OpTypes
 }
 
 // Compose unions a list of manifolds — equivalent to BatchBoolean(OpAdd).
