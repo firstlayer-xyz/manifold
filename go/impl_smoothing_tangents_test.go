@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -134,7 +135,13 @@ func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
 
 			b := view.Copy()
 			defer b.Delete()
-			b.runBridgeAlgo(func() { b.h.CreateTangentsFromSmoothness(sharp) })
+			// The native SharpenEdges now returns []Smoothness; the bridge oracle
+			// method takes the bridge type, so convert for the comparison call.
+			bridgeSharp := make([]bridge.Smoothness, len(sharp))
+			for i, s := range sharp {
+				bridgeSharp[i] = bridge.Smoothness{Halfedge: s.Halfedge, Smoothness: s.Smoothness}
+			}
+			b.runBridgeAlgo(func() { b.h.CreateTangentsFromSmoothness(bridgeSharp) })
 			want := append([]float64(nil), b.HalfedgeTangents()...)
 
 			if len(got) != len(want) {

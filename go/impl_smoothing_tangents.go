@@ -584,7 +584,7 @@ func (ts *tangentState) linearizeFlatTangents(tangent []geom.Vec4) {
 // flagged in sharpenedEdges (smoothness < 1), making sharp-edge tangents
 // continuous and shrinking the crossing tangents toward the sharp edge.
 // (Go has no overloading, so the []Smoothness overload keeps a distinct name.)
-func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoothness) {
+func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []Smoothness) {
 	ts := newTangentState(mi)
 	ts.halfedgeTangent = nil // C++ halfedgeTangent_.clear() (line 939)
 	numHalfedge := len(ts.starts)
@@ -614,7 +614,7 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoo
 
 	// Add sharpened edges around flat faces, just on the face side. Copy first
 	// so the caller's slice is not mutated.
-	sharpenedEdges = append([]bridge.Smoothness(nil), sharpenedEdges...)
+	sharpenedEdges = append([]Smoothness(nil), sharpenedEdges...)
 	for tri := 0; tri < numTri; tri++ {
 		if !triIsFlatFace[tri] {
 			continue
@@ -622,12 +622,12 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoo
 		for j := 0; j < 3; j++ {
 			tri2 := int(ts.pairs[3*tri+j]) / 3
 			if !triIsFlatFace[tri2] || !triRefSameFace(ts.triRefs[tri], ts.triRefs[tri2]) {
-				sharpenedEdges = append(sharpenedEdges, bridge.Smoothness{Halfedge: uint64(3*tri + j), Smoothness: 0})
+				sharpenedEdges = append(sharpenedEdges, Smoothness{Halfedge: uint64(3*tri + j), Smoothness: 0})
 			}
 		}
 	}
 
-	type pair struct{ first, second bridge.Smoothness }
+	type pair struct{ first, second Smoothness }
 	// Fill in missing pairs with default smoothness = 1. C++ uses std::map<int>;
 	// iterate by sorted key below to match its order.
 	edges := map[int]pair{}
@@ -642,7 +642,7 @@ func (mi *MutableImpl) CreateTangentsFromSmoothness(sharpenedEdges []bridge.Smoo
 			idx = pr
 		}
 		if e, ok := edges[idx]; !ok {
-			ed := pair{first: edge, second: bridge.Smoothness{Halfedge: uint64(pr), Smoothness: 1}}
+			ed := pair{first: edge, second: Smoothness{Halfedge: uint64(pr), Smoothness: 1}}
 			if !forward {
 				ed.first, ed.second = ed.second, ed.first
 			}
