@@ -2,65 +2,17 @@ package boolean
 
 import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/multimap"
 	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
-
-// edgeMultimap replicates the std::multimap<int, int> in AssembleHalfedges
-// (face_op.cpp:44): startVert -> local edge index, ordered by key with FIFO
-// order among equal keys. Only the operations AssembleHalfedges uses are
-// provided. The C++ multimap::find on a duplicate key returns an
-// implementation-defined element of the equal range (libstdc++: the first); the
-// FIFO front replicates that, and the Boolean result is compared semantically.
-type edgeMultimap struct {
-	vals map[int][]int
-	n    int
-}
-
-func newEdgeMultimap() *edgeMultimap { return &edgeMultimap{vals: map[int][]int{}} }
-
-func (m *edgeMultimap) emplace(key, val int) {
-	m.vals[key] = append(m.vals[key], val)
-	m.n++
-}
-
-func (m *edgeMultimap) empty() bool { return m.n == 0 }
-
-// beginValue is multimap::begin()->second: the first value of the smallest key.
-func (m *edgeMultimap) beginValue() int {
-	minKey, first := 0, true
-	for k, vs := range m.vals {
-		if len(vs) == 0 {
-			continue
-		}
-		if first || k < minKey {
-			minKey, first = k, false
-		}
-	}
-	return m.vals[minKey][0]
-}
-
-// findFirst is multimap::find: the first value for key (ok=false if absent).
-func (m *edgeMultimap) findFirst(key int) (int, bool) {
-	vs := m.vals[key]
-	if len(vs) == 0 {
-		return 0, false
-	}
-	return vs[0], true
-}
-
-// eraseFirst erases the find() result: the first value for key.
-func (m *edgeMultimap) eraseFirst(key int) {
-	m.vals[key] = m.vals[key][1:]
-	m.n--
-}
 
 // assembleHalfedges is the Go port of AssembleHalfedges (face_op.cpp:41): walk
 // the halfedge range [lo, hi) of one face into vertex-index loops, using the
 // halfedge indices (startHalfedgeIdx + local index) rather than vertex indices.
 func assembleHalfedges(faceHalfedge []Halfedge, lo, hi, startHalfedgeIdx int) [][]int {
-	vertEdge := newEdgeMultimap()
+	vertEdge := multimap.New[int, int]()
 	for e := lo; e < hi; e++ {
-		vertEdge.emplace(faceHalfedge[e].StartVert, e-lo)
+		vertEdge.Emplace(faceHalfedge[e].StartVert, e-lo)
 	}
 
 	var polys [][]int
@@ -68,18 +20,18 @@ func assembleHalfedges(faceHalfedge []Halfedge, lo, hi, startHalfedgeIdx int) []
 	thisEdge := startEdge
 	for {
 		if thisEdge == startEdge {
-			if vertEdge.empty() {
+			if vertEdge.Empty() {
 				break
 			}
-			startEdge = vertEdge.beginValue()
+			startEdge = vertEdge.BeginValue()
 			thisEdge = startEdge
 			polys = append(polys, []int{})
 		}
 		polys[len(polys)-1] = append(polys[len(polys)-1], startHalfedgeIdx+thisEdge)
 		key := faceHalfedge[lo+thisEdge].EndVert
-		next, _ := vertEdge.findFirst(key) // DEBUG_ASSERT found (non-manifold edge)
+		next, _ := vertEdge.FindFirst(key) // DEBUG_ASSERT found (non-manifold edge)
 		thisEdge = next
-		vertEdge.eraseFirst(key)
+		vertEdge.EraseFirst(key)
 	}
 	return polys
 }
