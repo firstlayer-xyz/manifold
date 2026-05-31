@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/reference"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // TestWriteOBJ_Tetrahedron_FormatSpotCheck verifies the OBJ output
 // header and structure for a known tetrahedron — the format must match
 // the C++ writer so that ReadOBJ (either side) can consume it.
 func TestWriteOBJ_Tetrahedron_FormatSpotCheck(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	m := fromRefHandle(hRef)
 
 	var buf bytes.Buffer
@@ -46,8 +46,8 @@ func TestWriteOBJ_Tetrahedron_FormatSpotCheck(t *testing.T) {
 // back, and asserts the geometry survives (vertex/triangle counts,
 // volume, bounding box).
 func TestReadOBJ_RoundTrip_Tetrahedron(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	src := fromRefHandle(hRef)
 	defer runtime.KeepAlive(src)
 
@@ -113,8 +113,8 @@ func TestReadOBJ_IgnoresOverlongLines_AndComments(t *testing.T) {
 // resulting Manifold must match the original on counts/volume/bbox.
 // Failure here means Go's OBJ output is not C++-compatible.
 func TestWriteOBJ_GoToCppRead_Differential(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	src := fromRefHandle(hRef)
 
 	var buf bytes.Buffer
@@ -122,18 +122,18 @@ func TestWriteOBJ_GoToCppRead_Differential(t *testing.T) {
 		t.Fatal("WriteOBJ failed")
 	}
 
-	hRoundTrip := reference.ReadOBJ(buf.String())
-	defer reference.DeleteManifold(hRoundTrip)
+	hRoundTrip := cppref.ReadOBJ(buf.String())
+	defer cppref.DeleteManifold(hRoundTrip)
 
-	if got, want := reference.NumVert(hRoundTrip), src.NumVert(); got != want {
+	if got, want := cppref.NumVert(hRoundTrip), src.NumVert(); got != want {
 		t.Errorf("C++-read NumVert: got %d, want %d", got, want)
 	}
-	if got, want := reference.NumTri(hRoundTrip), src.NumTri(); got != want {
+	if got, want := cppref.NumTri(hRoundTrip), src.NumTri(); got != want {
 		t.Errorf("C++-read NumTri: got %d, want %d", got, want)
 	}
-	if !floatClose(reference.Volume(hRoundTrip), src.Volume(), 1e-15, 1e-15) {
+	if !floatClose(cppref.Volume(hRoundTrip), src.Volume(), 1e-15, 1e-15) {
 		t.Errorf("C++-read Volume: got %v, want %v",
-			reference.Volume(hRoundTrip), src.Volume())
+			cppref.Volume(hRoundTrip), src.Volume())
 	}
 	assertSameBoundingBox(t, src.refHandle(), hRoundTrip, 1e-15)
 }

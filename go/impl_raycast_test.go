@@ -5,16 +5,15 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
-	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestRayCast_VsCpp validates the entire native Boolean3 kernel cascade
 // (Shadow01 -> Kernel02 -> Kernel11 -> Kernel12) end-to-end via RayCast against
-// the C++ bridge. The cascade is pure arithmetic (no transcendentals), so the
+// the C++ cppref. The cascade is pure arithmetic (no transcendentals), so the
 // hits should match essentially bit-exactly.
 func TestRayCast_VsCpp(t *testing.T) {
 	cases := []struct {
@@ -55,8 +54,8 @@ func TestRayCast_VsCpp(t *testing.T) {
 
 			// C++ oracle: seal the native mesh into a bridge handle and read its Impl.
 			rh := m.refHandle()
-			defer reference.DeleteManifold(rh)
-			bimpl := bridge.GetImpl(rh)
+			defer cppref.DeleteManifold(rh)
+			bimpl := cppref.GetImpl(rh)
 			defer bimpl.Delete()
 
 			for ri, r := range rays {

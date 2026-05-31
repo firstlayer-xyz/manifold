@@ -1,25 +1,28 @@
-// Package bridge is the cgo seam between Go and the C++ manifold library.
+// Package cppref is the test-only C++ differential-test oracle for the Go port.
 //
-// During the port it was production scaffolding: every exported symbol stood for
-// a piece not yet ported to pure Go, and the production dependency shrank toward
-// zero as inner layers were drilled. Production no longer holds C++ storage; what
-// remains is a thin set of entry points used by the differential-test oracle (and
-// a few production holdouts pending step 4: ReserveIDs, ExecutionContext).
+// It is the merger of the former `bridge` and `reference` packages: production no
+// longer imports any cgo, and these two were the only remaining C++ entry points,
+// both linking the same libmanifold/libmanifoldc. Merging them puts the link
+// configuration in ONE cgo preamble (this file) — reference.go shares these flags
+// package-globally and carries no #cgo of its own, so the binary is linked once
+// (no duplicate-library warning).
 //
-// The bridge is NOT discarded at the end of the port — together with the reference
-// package it is the permanent C++ differential-test oracle, relocating to a
-// test-only location that production never imports.
+// Two layers live here:
+//   - public-API oracle (reference.go): calls the stable manifoldc C API; the
+//     trusted golden values. Must keep calling the public API (not the internals).
+//   - internals shim (bridge.go/.cpp/.h): reaches PRIVATE Impl internals via
+//     `friend struct ManifoldBridge` declared on Manifold in
+//     include/manifold/manifold.h, for differential-testing inner layers.
 //
-// Bridge functions route through the public manifoldc C API where it suffices;
-// deeper access (private Impl internals) goes through the custom shim in
-// bridge.cpp/bridge.h, which is granted access via `friend struct ManifoldBridge`
-// declared on Manifold in include/manifold/manifold.h.
-package bridge
+// KEPT PERMANENTLY (not deleted at the end of the port): the oracle catches
+// regressions, proves performance changes don't alter results, and re-validates the
+// port when upstream C++ changes are pulled in.
+package cppref
 
-// #cgo CFLAGS: -I${SRCDIR}/../../bindings/c/include
-// #cgo CXXFLAGS: -std=c++17 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_PAR=1 -DCLIPPER2_MAX_DECIMAL_PRECISION=8 -I${SRCDIR}/../../include -I${SRCDIR}/../../src -I${SRCDIR}/../../bindings/c -I${SRCDIR}/../../bindings/c/include -I${SRCDIR}/../../build/include -I${SRCDIR}/../../build/_deps/clipper2-src/CPP/Clipper2Lib/include -isystem /opt/homebrew/include
-// #cgo darwin LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -L/opt/homebrew/opt/tbb/lib -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src -Wl,-rpath,/opt/homebrew/opt/tbb/lib
-// #cgo linux LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src
+// #cgo CFLAGS: -I${SRCDIR}/../../../bindings/c/include
+// #cgo CXXFLAGS: -std=c++17 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_PAR=1 -DCLIPPER2_MAX_DECIMAL_PRECISION=8 -I${SRCDIR}/../../../include -I${SRCDIR}/../../../src -I${SRCDIR}/../../../bindings/c -I${SRCDIR}/../../../bindings/c/include -I${SRCDIR}/../../../build/include -I${SRCDIR}/../../../build/_deps/clipper2-src/CPP/Clipper2Lib/include -isystem /opt/homebrew/include
+// #cgo darwin LDFLAGS: -L${SRCDIR}/../../../build/bindings/c -L${SRCDIR}/../../../build/src -L/opt/homebrew/opt/tbb/lib -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../../build/src -Wl,-rpath,/opt/homebrew/opt/tbb/lib
+// #cgo linux LDFLAGS: -L${SRCDIR}/../../../build/bindings/c -L${SRCDIR}/../../../build/src -lmanifoldc -lmanifold -ltbb -Wl,-rpath,${SRCDIR}/../../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../../build/src
 // #include <manifold/manifoldc.h>
 // #include "bridge.h"
 import "C"

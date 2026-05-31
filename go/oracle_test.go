@@ -1,7 +1,7 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
@@ -15,20 +15,20 @@ import (
 
 // wrap takes ownership of a freshly-created bridge handle, marshals its Impl into
 // native storage, and releases the handle. Used by tests that build a Manifold via
-// a bridge constructor (e.g. bridge.ManifoldFromMeshGL64) and own the result.
+// a bridge constructor (e.g. cppref.ManifoldFromMeshGL64) and own the result.
 func wrap(h *handle.Manifold) *Manifold {
-	bi := bridge.GetImpl(h)
+	bi := cppref.GetImpl(h)
 	m := &Manifold{s: marshalImplStorageFromBridge(bi)}
 	bi.Delete()
-	bridge.DeleteManifold(h)
+	cppref.DeleteManifold(h)
 	return m
 }
 
 // fromRefHandle marshals a reference/bridge handle's Impl into a native Manifold
 // WITHOUT taking ownership of the handle — the caller retains it (and any later
-// reference.DeleteManifold). Replaces the old `&Manifold{h: refHandle}` pattern.
+// cppref.DeleteManifold). Replaces the old `&Manifold{h: refHandle}` pattern.
 func fromRefHandle(h *handle.Manifold) *Manifold {
-	bi := bridge.GetImpl(h)
+	bi := cppref.GetImpl(h)
 	defer bi.Delete()
 	return &Manifold{s: marshalImplStorageFromBridge(bi)}
 }
@@ -40,10 +40,10 @@ func fromRefHandle(h *handle.Manifold) *Manifold {
 // mesh — including transformed meshes whose faces are no longer Morton-sorted, on
 // which a direct Collider rebuild (which assumes sorted input) would corrupt or
 // crash. Replaces the old `m.h` field access. Each call allocates a new handle the
-// caller is responsible for (reference.DeleteManifold).
+// caller is responsible for (cppref.DeleteManifold).
 func (m *Manifold) refHandle() *handle.Manifold {
 	gl := m.GetMeshGL64(-1)
-	return bridge.ManifoldFromMeshGL64(
+	return cppref.ManifoldFromMeshGL64(
 		gl.NumProp,
 		gl.VertProperties, gl.TriVerts,
 		gl.MergeFromVert, gl.MergeToVert,
@@ -63,7 +63,7 @@ func (m *Manifold) refHandle() *handle.Manifold {
 // marshalImplStorageFromBridge reads a C++ Impl (via the bridge accessors) into a
 // freshly-owned native implStorage. Slices are copied so the storage is independent
 // of the bridge handle's lifetime.
-func marshalImplStorageFromBridge(h *bridge.Impl) *implStorage {
+func marshalImplStorageFromBridge(h *cppref.Impl) *implStorage {
 	s := newImplStorage()
 	scal := h.Scalars()
 	s.numProp = scal.NumProp
@@ -103,7 +103,7 @@ func marshalImplStorageFromBridge(h *bridge.Impl) *implStorage {
 // MutableImpl via the bulk setters — a field copy, NOT a MeshGL round-trip, so it
 // preserves the no-re-finalize contract. An errored storage short-circuits via
 // MakeEmpty (the only bridge path that sets a non-NoError status).
-func marshalImplStorageToBridge(s *implStorage, mi *bridge.MutableImpl) {
+func marshalImplStorageToBridge(s *implStorage, mi *cppref.MutableImpl) {
 	if s.status != NoError {
 		mi.MakeEmpty(int(s.status))
 		return
@@ -145,7 +145,7 @@ func marshalImplStorageToBridge(s *implStorage, mi *bridge.MutableImpl) {
 // handle back into the native implStorage. originalID and status are preserved from
 // mi.s — the bridge MutableImpl exposes no getters for them, and the C++ ops the
 // test harness runs (Subdivide/Refine/Simplify) never change identity or error state.
-func reloadFromBridge(mi *MutableImpl, h *bridge.MutableImpl) {
+func reloadFromBridge(mi *MutableImpl, h *cppref.MutableImpl) {
 	keepOriginalID := mi.s.meshRelation.OriginalID
 	keepStatus := mi.s.status
 
@@ -185,8 +185,8 @@ func reloadFromBridge(mi *MutableImpl, h *bridge.MutableImpl) {
 // runBridgeAlgo): marshal mi's native storage into a transient bridge handle, run a
 // C++ pass against it, then reload the mutated storage back into mi. The collider is
 // invalidated (Subdivide/Refine change geometry) so a later ensureCollider rebuilds.
-func runCppAlgo(mi *MutableImpl, algo func(*bridge.MutableImpl)) {
-	bm := bridge.NewMutableImpl()
+func runCppAlgo(mi *MutableImpl, algo func(*cppref.MutableImpl)) {
+	bm := cppref.NewMutableImpl()
 	defer bm.Delete()
 	marshalImplStorageToBridge(mi.s, bm)
 	algo(bm)

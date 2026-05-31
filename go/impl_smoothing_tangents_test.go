@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -80,7 +80,7 @@ func TestCreateTangentsIdx_VsCpp(t *testing.T) {
 			defer b.Delete()
 			// Bridge reference reads/writes the bridge handle; marshal around it so
 			// the tangents reload into native storage for HalfedgeTangents().
-			runCppAlgo(b, func(bm *bridge.MutableImpl) { bm.CreateTangentsIdx(0) })
+			runCppAlgo(b, func(bm *cppref.MutableImpl) { bm.CreateTangentsIdx(0) })
 			want := append([]float64(nil), b.HalfedgeTangents()...)
 
 			if len(got) != len(want) {
@@ -137,11 +137,11 @@ func TestCreateTangentsFromSmoothness_VsCpp(t *testing.T) {
 			defer b.Delete()
 			// The native SharpenEdges now returns []Smoothness; the bridge oracle
 			// method takes the bridge type, so convert for the comparison call.
-			bridgeSharp := make([]bridge.Smoothness, len(sharp))
+			bridgeSharp := make([]cppref.Smoothness, len(sharp))
 			for i, s := range sharp {
-				bridgeSharp[i] = bridge.Smoothness{Halfedge: s.Halfedge, Smoothness: s.Smoothness}
+				bridgeSharp[i] = cppref.Smoothness{Halfedge: s.Halfedge, Smoothness: s.Smoothness}
 			}
-			runCppAlgo(b, func(bm *bridge.MutableImpl) { bm.CreateTangentsFromSmoothness(bridgeSharp) })
+			runCppAlgo(b, func(bm *cppref.MutableImpl) { bm.CreateTangentsFromSmoothness(bridgeSharp) })
 			want := append([]float64(nil), b.HalfedgeTangents()...)
 
 			if len(got) != len(want) {

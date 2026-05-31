@@ -4,8 +4,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
-	"github.com/firstlayer-xyz/manifold/go/reference"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // TestCreateHalfedges_Tetrahedron_VsCpp builds a tetrahedron two ways
@@ -25,15 +24,15 @@ func TestCreateHalfedges_Tetrahedron_VsCpp(t *testing.T) {
 	// createHalfedges internally).
 	mGo := Tetrahedron()
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.refHandle())
+	goImpl := cppref.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 	goStarts := append([]int32(nil), goImpl.HalfedgeStarts()...)
 	goPairs := append([]int32(nil), goImpl.HalfedgePairs()...)
 
 	// Reference path: C++ tetrahedron.
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
-	refImpl := bridge.GetImpl(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
+	refImpl := cppref.GetImpl(hRef)
 	defer refImpl.Delete()
 	refStarts := append([]int32(nil), refImpl.HalfedgeStarts()...)
 	refPairs := append([]int32(nil), refImpl.HalfedgePairs()...)
@@ -68,12 +67,12 @@ func TestCreateHalfedges_Tetrahedron_VsCpp(t *testing.T) {
 func TestSetNormalsAndCoplanar_Tetrahedron_VsCpp(t *testing.T) {
 	mGo := Tetrahedron()
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.refHandle())
+	goImpl := cppref.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
-	refImpl := bridge.GetImpl(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
+	refImpl := cppref.GetImpl(hRef)
 	defer refImpl.Delete()
 
 	// Face normals: number must match.
@@ -128,14 +127,14 @@ func sameVec3Set(a, b []Vec3, eps float64) bool {
 func TestCreateHalfedges_Cube_VsCpp(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, false)
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.refHandle())
+	goImpl := cppref.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 	goStarts := append([]int32(nil), goImpl.HalfedgeStarts()...)
 	goPairs := append([]int32(nil), goImpl.HalfedgePairs()...)
 
-	hRef := reference.Cube(1, 1, 1, false)
-	defer reference.DeleteManifold(hRef)
-	refImpl := bridge.GetImpl(hRef)
+	hRef := cppref.Cube(1, 1, 1, false)
+	defer cppref.DeleteManifold(hRef)
+	refImpl := cppref.GetImpl(hRef)
 	defer refImpl.Delete()
 	refStarts := append([]int32(nil), refImpl.HalfedgeStarts()...)
 	refPairs := append([]int32(nil), refImpl.HalfedgePairs()...)

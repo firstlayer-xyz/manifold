@@ -5,8 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
-	"github.com/firstlayer-xyz/manifold/go/reference"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // TestImplStorageRoundTrip validates the marshalling seam: native implStorage
@@ -18,8 +17,8 @@ func TestImplStorageRoundTrip(t *testing.T) {
 	// refHandle marshals s -> a C++ handle (marshalImplStorageToBridge); reading it
 	// back via marshalImplStorageFromBridge round-trips through the full bridge seam.
 	rh := m.refHandle()
-	defer reference.DeleteManifold(rh)
-	bi := bridge.GetImpl(rh)
+	defer cppref.DeleteManifold(rh)
+	bi := cppref.GetImpl(rh)
 	defer bi.Delete()
 	s := marshalImplStorageFromBridge(bi)
 

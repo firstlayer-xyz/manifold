@@ -5,22 +5,21 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
-	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestNumVert_Tetrahedron_Differential constructs a tetrahedron via the C++
 // reference path, then asserts the Go-side NumVert returns the same value as
 // the reference-side NumVert (and that both return the expected 4).
 func TestNumVert_Tetrahedron_Differential(t *testing.T) {
-	h := reference.Tetrahedron()
-	defer reference.DeleteManifold(h)
+	h := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(h)
 
 	m := fromRefHandle(h)
 
 	got := m.NumVert()
-	want := reference.NumVert(h)
+	want := cppref.NumVert(h)
 
 	if got != want {
 		t.Errorf("NumVert mismatch: go=%d ref=%d", got, want)
@@ -36,19 +35,19 @@ func TestNumVert_Tetrahedron_Differential(t *testing.T) {
 func TestTranslate_Tetrahedron_Differential(t *testing.T) {
 	v := Vec3{X: 2, Y: 3, Z: 4}
 
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 
 	m := fromRefHandle(hOrig)
 	mGo := m.Translate(v)
 	defer runtime.KeepAlive(mGo)
 
-	hRef := reference.Translate(hOrig, v)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Translate(hOrig, v)
+	defer cppref.DeleteManifold(hRef)
 
 	assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("translated Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("translated Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
 }
 
@@ -57,19 +56,19 @@ func TestTranslate_Tetrahedron_Differential(t *testing.T) {
 func TestScale_Tetrahedron_Differential(t *testing.T) {
 	v := Vec3{X: 2, Y: 3, Z: 4}
 
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 
 	m := fromRefHandle(hOrig)
 	mGo := m.Scale(v)
 	defer runtime.KeepAlive(mGo)
 
-	hRef := reference.Scale(hOrig, v)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Scale(hOrig, v)
+	defer cppref.DeleteManifold(hRef)
 
 	assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("scaled Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("scaled Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
 }
 
@@ -86,13 +85,13 @@ func TestBoundingBox_Tetrahedron_Differential(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hOrig := reference.Tetrahedron()
-			defer reference.DeleteManifold(hOrig)
+			hOrig := cppref.Tetrahedron()
+			defer cppref.DeleteManifold(hOrig)
 
 			m := (fromRefHandle(hOrig)).Translate(tc.translate)
 			defer runtime.KeepAlive(m)
-			hRef := reference.Translate(hOrig, tc.translate)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Translate(hOrig, tc.translate)
+			defer cppref.DeleteManifold(hRef)
 
 			gotBox := m.BoundingBox()
 			wantBox := refBoundingBox(hRef)
@@ -105,10 +104,10 @@ func TestBoundingBox_Tetrahedron_Differential(t *testing.T) {
 	}
 }
 
-// refBoundingBox wraps reference.BoundingBox into a public Box for symmetry
+// refBoundingBox wraps cppref.BoundingBox into a public Box for symmetry
 // with the Go-side accessor.
 func refBoundingBox(h *handle.Manifold) Box {
-	min, max := reference.BoundingBox(h)
+	min, max := cppref.BoundingBox(h)
 	return Box{Min: min, Max: max}
 }
 
@@ -129,38 +128,38 @@ func TestMirror_Tetrahedron_Differential(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hOrig := reference.Tetrahedron()
-			defer reference.DeleteManifold(hOrig)
+			hOrig := cppref.Tetrahedron()
+			defer cppref.DeleteManifold(hOrig)
 
 			m := fromRefHandle(hOrig)
 			mGo := m.Mirror(tc.normal)
 			defer runtime.KeepAlive(mGo)
 
-			hRef := reference.Mirror(hOrig, tc.normal)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Mirror(hOrig, tc.normal)
+			defer cppref.DeleteManifold(hRef)
 
 			assertSameBoundingBox(t, mGo.refHandle(), hRef, tc.eps)
 			// Volume catches the triangle-orientation flip: a forgotten
 			// flip would invert the manifold and give negative volume.
-			if !floatClose(mGo.Volume(), reference.Volume(hRef), tc.eps, tc.eps) {
+			if !floatClose(mGo.Volume(), cppref.Volume(hRef), tc.eps, tc.eps) {
 				t.Errorf("mirrored Volume: go=%v ref=%v",
-					mGo.Volume(), reference.Volume(hRef))
+					mGo.Volume(), cppref.Volume(hRef))
 			}
 		})
 	}
 
 	t.Run("zero normal returns empty", func(t *testing.T) {
-		hOrig := reference.Tetrahedron()
-		defer reference.DeleteManifold(hOrig)
+		hOrig := cppref.Tetrahedron()
+		defer cppref.DeleteManifold(hOrig)
 
 		m := fromRefHandle(hOrig)
 		mGo := m.Mirror(Vec3{})
 		defer runtime.KeepAlive(mGo)
 
-		hRef := reference.Mirror(hOrig, Vec3{})
-		defer reference.DeleteManifold(hRef)
+		hRef := cppref.Mirror(hOrig, Vec3{})
+		defer cppref.DeleteManifold(hRef)
 
-		if got, want := mGo.NumVert(), reference.NumVert(hRef); got != want {
+		if got, want := mGo.NumVert(), cppref.NumVert(hRef); got != want {
 			t.Errorf("zero-normal NumVert: go=%d ref=%d (expected both 0)", got, want)
 		}
 		if mGo.NumVert() != 0 {
@@ -174,13 +173,13 @@ func TestMirror_Tetrahedron_Differential(t *testing.T) {
 // and Volume/SurfaceArea should be 0; BoundingBox should be the C++
 // default (+inf min, -inf max) so it matches the reference exactly.
 func TestEmpty_AccessorEdgeCases(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 
 	m := (fromRefHandle(hOrig)).Mirror(Vec3{}) // zero normal -> empty
 	defer runtime.KeepAlive(m)
-	hRef := reference.Mirror(hOrig, Vec3{})
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Mirror(hOrig, Vec3{})
+	defer cppref.DeleteManifold(hRef)
 
 	if !m.IsEmpty() {
 		t.Errorf("IsEmpty should be true for empty manifold")
@@ -195,10 +194,10 @@ func TestEmpty_AccessorEdgeCases(t *testing.T) {
 		t.Errorf("SurfaceArea on empty: got %v, want 0", a)
 	}
 
-	// Compare BoundingBox to reference. Reference returns whatever C++
+	// Compare BoundingBox to cppref. Reference returns whatever C++
 	// stores in bBox_ for an empty mesh.
 	gotBox := m.BoundingBox()
-	wantMin, wantMax := reference.BoundingBox(hRef)
+	wantMin, wantMax := cppref.BoundingBox(hRef)
 	if gotBox.Min != wantMin || gotBox.Max != wantMax {
 		t.Errorf("empty BoundingBox:\n  go:  min=%+v max=%+v\n  ref: min=%+v max=%+v",
 			gotBox.Min, gotBox.Max, wantMin, wantMax)
@@ -213,15 +212,15 @@ func TestSphere_VolumeSurfaceArea_Differential(t *testing.T) {
 	const segments = 64
 	mGo := Sphere(radius, segments)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Sphere(radius, segments)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Sphere(radius, segments)
+	defer cppref.DeleteManifold(hRef)
 
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-10, 1e-12) {
-		t.Errorf("Sphere Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-10, 1e-12) {
+		t.Errorf("Sphere Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
-	if !floatClose(mGo.SurfaceArea(), reference.SurfaceArea(hRef), 1e-10, 1e-12) {
+	if !floatClose(mGo.SurfaceArea(), cppref.SurfaceArea(hRef), 1e-10, 1e-12) {
 		t.Errorf("Sphere SurfaceArea: go=%v ref=%v",
-			mGo.SurfaceArea(), reference.SurfaceArea(hRef))
+			mGo.SurfaceArea(), cppref.SurfaceArea(hRef))
 	}
 }
 
@@ -244,21 +243,21 @@ func TestRotate_Tetrahedron_Differential(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			hOrig := reference.Tetrahedron()
-			defer reference.DeleteManifold(hOrig)
+			hOrig := cppref.Tetrahedron()
+			defer cppref.DeleteManifold(hOrig)
 
 			m := fromRefHandle(hOrig)
 			mGo := m.Rotate(tc.x, tc.y, tc.z)
 			defer runtime.KeepAlive(mGo)
 
-			hRef := reference.Rotate(hOrig, tc.x, tc.y, tc.z)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Rotate(hOrig, tc.x, tc.y, tc.z)
+			defer cppref.DeleteManifold(hRef)
 
 			assertSameBoundingBox(t, mGo.refHandle(), hRef, tc.eps)
 			// Volume is invariant under rotation; catches orientation bugs
 			// that the bbox check can't see when bboxes happen to coincide.
-			if !floatClose(mGo.Volume(), reference.Volume(hRef), tc.eps, tc.eps) {
-				t.Errorf("rotated Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+			if !floatClose(mGo.Volume(), cppref.Volume(hRef), tc.eps, tc.eps) {
+				t.Errorf("rotated Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 			}
 		})
 	}
@@ -266,8 +265,8 @@ func TestRotate_Tetrahedron_Differential(t *testing.T) {
 
 func assertSameBoundingBox(t *testing.T, got, want *handle.Manifold, eps float64) {
 	t.Helper()
-	minGot, maxGot := reference.BoundingBox(got)
-	minWant, maxWant := reference.BoundingBox(want)
+	minGot, maxGot := cppref.BoundingBox(got)
+	minWant, maxWant := cppref.BoundingBox(want)
 	if !vec3Close(minGot, minWant, eps) || !vec3Close(maxGot, maxWant, eps) {
 		t.Errorf("bounding boxes differ:\n  go:  min=%v max=%v\n  ref: min=%v max=%v",
 			minGot, maxGot, minWant, maxWant)
@@ -287,23 +286,23 @@ func floatClose(a, b, abs, rel float64) bool {
 // accessors NumTri, NumEdge, IsEmpty, Volume, SurfaceArea against the C++
 // reference for a tetrahedron.
 func TestAccessors_Tetrahedron_Differential(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 
-	if got, want := m.NumTri(), reference.NumTri(hOrig); got != want {
+	if got, want := m.NumTri(), cppref.NumTri(hOrig); got != want {
 		t.Errorf("NumTri: go=%d ref=%d", got, want)
 	}
-	if got, want := m.NumEdge(), reference.NumEdge(hOrig); got != want {
+	if got, want := m.NumEdge(), cppref.NumEdge(hOrig); got != want {
 		t.Errorf("NumEdge: go=%d ref=%d", got, want)
 	}
-	if got, want := m.IsEmpty(), reference.IsEmpty(hOrig); got != want {
+	if got, want := m.IsEmpty(), cppref.IsEmpty(hOrig); got != want {
 		t.Errorf("IsEmpty: go=%v ref=%v", got, want)
 	}
-	if got, want := m.Volume(), reference.Volume(hOrig); !floatClose(got, want, 1e-12, 1e-12) {
+	if got, want := m.Volume(), cppref.Volume(hOrig); !floatClose(got, want, 1e-12, 1e-12) {
 		t.Errorf("Volume: go=%v ref=%v", got, want)
 	}
-	if got, want := m.SurfaceArea(), reference.SurfaceArea(hOrig); !floatClose(got, want, 1e-12, 1e-12) {
+	if got, want := m.SurfaceArea(), cppref.SurfaceArea(hOrig); !floatClose(got, want, 1e-12, 1e-12) {
 		t.Errorf("SurfaceArea: go=%v ref=%v", got, want)
 	}
 }
@@ -315,22 +314,22 @@ func TestAccessors_Tetrahedron_Differential(t *testing.T) {
 func TestTetrahedron_GoFactory_Differential(t *testing.T) {
 	mGo := Tetrahedron()
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 
-	if got, want := mGo.NumVert(), reference.NumVert(hRef); got != want {
+	if got, want := mGo.NumVert(), cppref.NumVert(hRef); got != want {
 		t.Errorf("NumVert: go=%d ref=%d", got, want)
 	}
-	if got, want := mGo.NumTri(), reference.NumTri(hRef); got != want {
+	if got, want := mGo.NumTri(), cppref.NumTri(hRef); got != want {
 		t.Errorf("NumTri: go=%d ref=%d", got, want)
 	}
 	assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
-	if !floatClose(mGo.SurfaceArea(), reference.SurfaceArea(hRef), 1e-12, 1e-12) {
+	if !floatClose(mGo.SurfaceArea(), cppref.SurfaceArea(hRef), 1e-12, 1e-12) {
 		t.Errorf("SurfaceArea: go=%v ref=%v",
-			mGo.SurfaceArea(), reference.SurfaceArea(hRef))
+			mGo.SurfaceArea(), cppref.SurfaceArea(hRef))
 	}
 }
 
@@ -352,13 +351,13 @@ func TestCube_GoFactory_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mGo := Cube(tc.size, tc.center)
 			defer runtime.KeepAlive(mGo)
-			hRef := reference.Cube(tc.size.X, tc.size.Y, tc.size.Z, tc.center)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Cube(tc.size.X, tc.size.Y, tc.size.Z, tc.center)
+			defer cppref.DeleteManifold(hRef)
 			assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-			if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-				t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+			if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+				t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 			}
-			if got, want := mGo.NumTri(), reference.NumTri(hRef); got != want {
+			if got, want := mGo.NumTri(), cppref.NumTri(hRef); got != want {
 				t.Errorf("NumTri: go=%d ref=%d", got, want)
 			}
 		})
@@ -398,25 +397,25 @@ func TestAsOriginal_Differential(t *testing.T) {
 	combined := aGo.Union(bGo)
 	defer runtime.KeepAlive(combined)
 
-	aRef := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(aRef)
-	bRefBase := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(bRefBase)
-	bRef := reference.Translate(bRefBase, Vec3{X: 0.5})
-	defer reference.DeleteManifold(bRef)
-	combinedRef := reference.Union(aRef, bRef)
-	defer reference.DeleteManifold(combinedRef)
+	aRef := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(aRef)
+	bRefBase := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(bRefBase)
+	bRef := cppref.Translate(bRefBase, Vec3{X: 0.5})
+	defer cppref.DeleteManifold(bRef)
+	combinedRef := cppref.Union(aRef, bRef)
+	defer cppref.DeleteManifold(combinedRef)
 
 	mGo := combined.AsOriginal()
 	defer runtime.KeepAlive(mGo)
-	mRef := reference.AsOriginal(combinedRef)
-	defer reference.DeleteManifold(mRef)
+	mRef := cppref.AsOriginal(combinedRef)
+	defer cppref.DeleteManifold(mRef)
 
-	if !floatClose(mGo.Volume(), reference.Volume(mRef), 1e-9, 1e-9) {
-		t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(mRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(mRef), 1e-9, 1e-9) {
+		t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(mRef))
 	}
-	if mGo.NumVert() != reference.NumVert(mRef) {
-		t.Errorf("NumVert: go=%d ref=%d", mGo.NumVert(), reference.NumVert(mRef))
+	if mGo.NumVert() != cppref.NumVert(mRef) {
+		t.Errorf("NumVert: go=%d ref=%d", mGo.NumVert(), cppref.NumVert(mRef))
 	}
 	if mGo.Status() != NoError {
 		t.Errorf("Status: got %v, want NoError", mGo.Status())
@@ -434,27 +433,27 @@ func TestBoolean_DirectAPI_Differential(t *testing.T) {
 	bGo := Cube(Vec3{X: 2, Y: 2, Z: 2}, true).Translate(Vec3{X: 1, Y: 1, Z: 1})
 	defer runtime.KeepAlive(aGo)
 	defer runtime.KeepAlive(bGo)
-	aRef := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(aRef)
-	bRefBase := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(bRefBase)
-	bRef := reference.Translate(bRefBase, Vec3{X: 1, Y: 1, Z: 1})
-	defer reference.DeleteManifold(bRef)
+	aRef := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(aRef)
+	bRefBase := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(bRefBase)
+	bRef := cppref.Translate(bRefBase, Vec3{X: 1, Y: 1, Z: 1})
+	defer cppref.DeleteManifold(bRef)
 
 	for _, op := range []OpType{OpAdd, OpSubtract, OpIntersect} {
 		var refOp = map[OpType]func(a, b *handle.Manifold) *handle.Manifold{
-			OpAdd:       reference.Union,
-			OpSubtract:  reference.Difference,
-			OpIntersect: reference.Intersection,
+			OpAdd:       cppref.Union,
+			OpSubtract:  cppref.Difference,
+			OpIntersect: cppref.Intersection,
 		}[op]
 
 		gotGo := aGo.Boolean(bGo, op)
 		defer runtime.KeepAlive(gotGo)
 		gotRef := refOp(aRef, bRef)
-		defer reference.DeleteManifold(gotRef)
-		if !floatClose(gotGo.Volume(), reference.Volume(gotRef), 1e-9, 1e-9) {
+		defer cppref.DeleteManifold(gotRef)
+		if !floatClose(gotGo.Volume(), cppref.Volume(gotRef), 1e-9, 1e-9) {
 			t.Errorf("Boolean(op=%d) Volume: go=%v ref=%v",
-				op, gotGo.Volume(), reference.Volume(gotRef))
+				op, gotGo.Volume(), cppref.Volume(gotRef))
 		}
 	}
 }
@@ -475,17 +474,17 @@ func TestTrimByPlane_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mGo := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
 			defer runtime.KeepAlive(mGo)
-			hRef := reference.Cube(2, 2, 2, true)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Cube(2, 2, 2, true)
+			defer cppref.DeleteManifold(hRef)
 
 			trimGo := mGo.TrimByPlane(tc.normal, tc.offset)
 			defer runtime.KeepAlive(trimGo)
-			trimRef := reference.TrimByPlane(hRef, tc.normal.X, tc.normal.Y, tc.normal.Z, tc.offset)
-			defer reference.DeleteManifold(trimRef)
+			trimRef := cppref.TrimByPlane(hRef, tc.normal.X, tc.normal.Y, tc.normal.Z, tc.offset)
+			defer cppref.DeleteManifold(trimRef)
 
-			if !floatClose(trimGo.Volume(), reference.Volume(trimRef), 1e-9, 1e-9) {
+			if !floatClose(trimGo.Volume(), cppref.Volume(trimRef), 1e-9, 1e-9) {
 				t.Errorf("TrimByPlane Volume: go=%v ref=%v",
-					trimGo.Volume(), reference.Volume(trimRef))
+					trimGo.Volume(), cppref.Volume(trimRef))
 			}
 			assertSameBoundingBox(t, trimGo.refHandle(), trimRef, 1e-10)
 		})
@@ -550,9 +549,9 @@ func TestWarpBatch_TranslatesViaCallback(t *testing.T) {
 }
 
 // TestRevolve_Differential exercises the inline Revolve port against
-// the C++ reference. A unit square (axis-offset rectangle) revolved
+// the C++ cppref. A unit square (axis-offset rectangle) revolved
 // around Y produces a hollow torus-ish shape; the resulting Volume
-// and bounding box must match the reference.
+// and bounding box must match the cppref.
 func TestRevolve_Differential(t *testing.T) {
 	// A square offset from the Y axis: (1,0)-(2,0)-(2,1)-(1,1).
 	square := SimplePolygon{
@@ -575,17 +574,17 @@ func TestRevolve_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mGo := Revolve(polys, tc.segments, tc.degrees)
 			defer runtime.KeepAlive(mGo)
-			mRef := reference.Revolve(polys, tc.segments, tc.degrees)
-			defer reference.DeleteManifold(mRef)
+			mRef := cppref.Revolve(polys, tc.segments, tc.degrees)
+			defer cppref.DeleteManifold(mRef)
 
 			if mGo.Status() != NoError {
 				t.Fatalf("Go Revolve Status: %v", mGo.Status())
 			}
-			if !floatClose(mGo.Volume(), reference.Volume(mRef), 1e-8, 1e-9) {
-				t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(mRef))
+			if !floatClose(mGo.Volume(), cppref.Volume(mRef), 1e-8, 1e-9) {
+				t.Errorf("Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(mRef))
 			}
-			if mGo.NumVert() != reference.NumVert(mRef) {
-				t.Errorf("NumVert: go=%d ref=%d", mGo.NumVert(), reference.NumVert(mRef))
+			if mGo.NumVert() != cppref.NumVert(mRef) {
+				t.Errorf("NumVert: go=%d ref=%d", mGo.NumVert(), cppref.NumVert(mRef))
 			}
 			assertSameBoundingBox(t, mGo.refHandle(), mRef, 1e-9)
 		})
@@ -785,48 +784,48 @@ func TestProject_PureGo(t *testing.T) {
 }
 
 // TestCalculateCurvature_Differential exercises Manifold::CalculateCurvature
-// against the reference. We use a sphere where curvature is meaningful
+// against the cppref. We use a sphere where curvature is meaningful
 // (a flat-faced cube would have zero curvature everywhere).
 func TestCalculateCurvature_Differential(t *testing.T) {
 	mGo := Sphere(1.0, 32)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Sphere(1.0, 32)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Sphere(1.0, 32)
+	defer cppref.DeleteManifold(hRef)
 
 	cGo := mGo.CalculateCurvature(0, 1)
 	defer runtime.KeepAlive(cGo)
-	cRef := reference.CalculateCurvature(hRef, 0, 1)
-	defer reference.DeleteManifold(cRef)
+	cRef := cppref.CalculateCurvature(hRef, 0, 1)
+	defer cppref.DeleteManifold(cRef)
 
-	if got, want := cGo.NumProp(), reference.NumProp(cRef); got != want {
+	if got, want := cGo.NumProp(), cppref.NumProp(cRef); got != want {
 		t.Errorf("NumProp: go=%d ref=%d", got, want)
 	}
-	if !floatClose(cGo.Volume(), reference.Volume(cRef), 1e-9, 1e-9) {
+	if !floatClose(cGo.Volume(), cppref.Volume(cRef), 1e-9, 1e-9) {
 		t.Errorf("Volume: go=%v ref=%v",
-			cGo.Volume(), reference.Volume(cRef))
+			cGo.Volume(), cppref.Volume(cRef))
 	}
 }
 
 // TestCalculateNormals_Differential exercises Manifold::CalculateNormals
-// against the reference. After CalculateNormals(0, ...), NumProp must
+// against the cppref. After CalculateNormals(0, ...), NumProp must
 // be at least 3 (xyz normals) and the resulting Volume must match.
 func TestCalculateNormals_Differential(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(hRef)
 
 	nGo := mGo.CalculateNormals(0, 60)
 	defer runtime.KeepAlive(nGo)
-	nRef := reference.CalculateNormals(hRef, 0, 60)
-	defer reference.DeleteManifold(nRef)
+	nRef := cppref.CalculateNormals(hRef, 0, 60)
+	defer cppref.DeleteManifold(nRef)
 
-	if got, want := nGo.NumProp(), reference.NumProp(nRef); got != want {
+	if got, want := nGo.NumProp(), cppref.NumProp(nRef); got != want {
 		t.Errorf("NumProp: go=%d ref=%d", got, want)
 	}
-	if !floatClose(nGo.Volume(), reference.Volume(nRef), 1e-9, 1e-9) {
+	if !floatClose(nGo.Volume(), cppref.Volume(nRef), 1e-9, 1e-9) {
 		t.Errorf("Volume: go=%v ref=%v",
-			nGo.Volume(), reference.Volume(nRef))
+			nGo.Volume(), cppref.Volume(nRef))
 	}
 }
 
@@ -845,19 +844,19 @@ func TestSimplify_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 			defer runtime.KeepAlive(mGo)
-			hRef := reference.Cube(1, 1, 1, true)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Cube(1, 1, 1, true)
+			defer cppref.DeleteManifold(hRef)
 
 			sGo := mGo.Simplify(tc.tol)
 			defer runtime.KeepAlive(sGo)
-			sRef := reference.Simplify(hRef, tc.tol)
-			defer reference.DeleteManifold(sRef)
+			sRef := cppref.Simplify(hRef, tc.tol)
+			defer cppref.DeleteManifold(sRef)
 
-			if !floatClose(sGo.Volume(), reference.Volume(sRef), 1e-9, 1e-9) {
+			if !floatClose(sGo.Volume(), cppref.Volume(sRef), 1e-9, 1e-9) {
 				t.Errorf("Volume: go=%v ref=%v",
-					sGo.Volume(), reference.Volume(sRef))
+					sGo.Volume(), cppref.Volume(sRef))
 			}
-			if got, want := sGo.NumVert(), reference.NumVert(sRef); got != want {
+			if got, want := sGo.NumVert(), cppref.NumVert(sRef); got != want {
 				t.Errorf("NumVert: go=%d ref=%d", got, want)
 			}
 		})
@@ -908,7 +907,7 @@ func TestSmoothOut_SmokeRun(t *testing.T) {
 }
 
 // TestSetTolerance_Differential exercises the top-down port of
-// SetTolerance against the C++ reference. Both the "increase tolerance"
+// SetTolerance against the C++ cppref. Both the "increase tolerance"
 // branch (which runs SetNormalsAndCoplanar/SimplifyTopology/SortGeometry)
 // and the "reduce tolerance" branch (max(epsilon, tol)) are covered.
 func TestSetTolerance_Differential(t *testing.T) {
@@ -924,25 +923,25 @@ func TestSetTolerance_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 			defer runtime.KeepAlive(mGo)
-			hRef := reference.Cube(1, 1, 1, true)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Cube(1, 1, 1, true)
+			defer cppref.DeleteManifold(hRef)
 
 			setGo := mGo.SetTolerance(tc.tol)
 			defer runtime.KeepAlive(setGo)
-			setRef := reference.SetTolerance(hRef, tc.tol)
-			defer reference.DeleteManifold(setRef)
+			setRef := cppref.SetTolerance(hRef, tc.tol)
+			defer cppref.DeleteManifold(setRef)
 
-			if !floatClose(setGo.GetTolerance(), reference.GetTolerance(setRef), 1e-15, 1e-15) {
+			if !floatClose(setGo.GetTolerance(), cppref.GetTolerance(setRef), 1e-15, 1e-15) {
 				t.Errorf("GetTolerance: go=%v ref=%v",
-					setGo.GetTolerance(), reference.GetTolerance(setRef))
+					setGo.GetTolerance(), cppref.GetTolerance(setRef))
 			}
-			if !floatClose(setGo.Volume(), reference.Volume(setRef), 1e-9, 1e-9) {
+			if !floatClose(setGo.Volume(), cppref.Volume(setRef), 1e-9, 1e-9) {
 				t.Errorf("Volume: go=%v ref=%v",
-					setGo.Volume(), reference.Volume(setRef))
+					setGo.Volume(), cppref.Volume(setRef))
 			}
-			if setGo.NumVert() != reference.NumVert(setRef) {
+			if setGo.NumVert() != cppref.NumVert(setRef) {
 				t.Errorf("NumVert: go=%d ref=%d",
-					setGo.NumVert(), reference.NumVert(setRef))
+					setGo.NumVert(), cppref.NumVert(setRef))
 			}
 		})
 	}
@@ -951,23 +950,23 @@ func TestSetTolerance_Differential(t *testing.T) {
 // TestMoreAccessors_Tetrahedron_Differential covers NumProp, NumPropVert,
 // Genus, GetTolerance, OriginalID.
 func TestMoreAccessors_Tetrahedron_Differential(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 
-	if got, want := m.NumProp(), reference.NumProp(hOrig); got != want {
+	if got, want := m.NumProp(), cppref.NumProp(hOrig); got != want {
 		t.Errorf("NumProp: go=%d ref=%d", got, want)
 	}
-	if got, want := m.NumPropVert(), reference.NumPropVert(hOrig); got != want {
+	if got, want := m.NumPropVert(), cppref.NumPropVert(hOrig); got != want {
 		t.Errorf("NumPropVert: go=%d ref=%d", got, want)
 	}
-	if got, want := m.Genus(), reference.Genus(hOrig); got != want {
+	if got, want := m.Genus(), cppref.Genus(hOrig); got != want {
 		t.Errorf("Genus: go=%d ref=%d", got, want)
 	}
-	if got, want := m.GetTolerance(), reference.GetTolerance(hOrig); !floatClose(got, want, 1e-15, 1e-15) {
+	if got, want := m.GetTolerance(), cppref.GetTolerance(hOrig); !floatClose(got, want, 1e-15, 1e-15) {
 		t.Errorf("GetTolerance: go=%v ref=%v", got, want)
 	}
-	if got, want := m.OriginalID(), reference.OriginalID(hOrig); got != want {
+	if got, want := m.OriginalID(), cppref.OriginalID(hOrig); got != want {
 		t.Errorf("OriginalID: go=%d ref=%d", got, want)
 	}
 }
@@ -978,25 +977,25 @@ func TestSphereCylinder_GoFactory_Differential(t *testing.T) {
 	t.Run("sphere r=1", func(t *testing.T) {
 		mGo := Sphere(1.0, 16)
 		defer runtime.KeepAlive(mGo)
-		hRef := reference.Sphere(1.0, 16)
-		defer reference.DeleteManifold(hRef)
+		hRef := cppref.Sphere(1.0, 16)
+		defer cppref.DeleteManifold(hRef)
 		assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-		if got, want := mGo.NumVert(), reference.NumVert(hRef); got != want {
+		if got, want := mGo.NumVert(), cppref.NumVert(hRef); got != want {
 			t.Errorf("NumVert: go=%d ref=%d", got, want)
 		}
 	})
 	t.Run("cylinder", func(t *testing.T) {
 		mGo := Cylinder(5, 1, 1, 12, false)
 		defer runtime.KeepAlive(mGo)
-		hRef := reference.Cylinder(5, 1, 1, 12, false)
-		defer reference.DeleteManifold(hRef)
+		hRef := cppref.Cylinder(5, 1, 1, 12, false)
+		defer cppref.DeleteManifold(hRef)
 		assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
 	})
 	t.Run("frustum centered", func(t *testing.T) {
 		mGo := Cylinder(2, 1, 0.5, 8, true)
 		defer runtime.KeepAlive(mGo)
-		hRef := reference.Cylinder(2, 1, 0.5, 8, true)
-		defer reference.DeleteManifold(hRef)
+		hRef := cppref.Cylinder(2, 1, 0.5, 8, true)
+		defer cppref.DeleteManifold(hRef)
 		assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
 	})
 }
@@ -1009,40 +1008,40 @@ func TestBooleanOps_Differential(t *testing.T) {
 	defer runtime.KeepAlive(aGo)
 	defer runtime.KeepAlive(bGo)
 
-	aRef := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(aRef)
-	bRefBase := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(bRefBase)
-	bRef := reference.Translate(bRefBase, Vec3{X: 1, Y: 1, Z: 1})
-	defer reference.DeleteManifold(bRef)
+	aRef := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(aRef)
+	bRefBase := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(bRefBase)
+	bRef := cppref.Translate(bRefBase, Vec3{X: 1, Y: 1, Z: 1})
+	defer cppref.DeleteManifold(bRef)
 
 	t.Run("union", func(t *testing.T) {
 		uGo := aGo.Union(bGo)
 		defer runtime.KeepAlive(uGo)
-		uRef := reference.Union(aRef, bRef)
-		defer reference.DeleteManifold(uRef)
+		uRef := cppref.Union(aRef, bRef)
+		defer cppref.DeleteManifold(uRef)
 		assertSameBoundingBox(t, uGo.refHandle(), uRef, 1e-10)
-		if !floatClose(uGo.Volume(), reference.Volume(uRef), 1e-9, 1e-9) {
-			t.Errorf("union volume: go=%v ref=%v", uGo.Volume(), reference.Volume(uRef))
+		if !floatClose(uGo.Volume(), cppref.Volume(uRef), 1e-9, 1e-9) {
+			t.Errorf("union volume: go=%v ref=%v", uGo.Volume(), cppref.Volume(uRef))
 		}
 	})
 	t.Run("difference", func(t *testing.T) {
 		dGo := aGo.Difference(bGo)
 		defer runtime.KeepAlive(dGo)
-		dRef := reference.Difference(aRef, bRef)
-		defer reference.DeleteManifold(dRef)
-		if !floatClose(dGo.Volume(), reference.Volume(dRef), 1e-9, 1e-9) {
-			t.Errorf("difference volume: go=%v ref=%v", dGo.Volume(), reference.Volume(dRef))
+		dRef := cppref.Difference(aRef, bRef)
+		defer cppref.DeleteManifold(dRef)
+		if !floatClose(dGo.Volume(), cppref.Volume(dRef), 1e-9, 1e-9) {
+			t.Errorf("difference volume: go=%v ref=%v", dGo.Volume(), cppref.Volume(dRef))
 		}
 	})
 	t.Run("intersection", func(t *testing.T) {
 		iGo := aGo.Intersection(bGo)
 		defer runtime.KeepAlive(iGo)
-		iRef := reference.Intersection(aRef, bRef)
-		defer reference.DeleteManifold(iRef)
+		iRef := cppref.Intersection(aRef, bRef)
+		defer cppref.DeleteManifold(iRef)
 		assertSameBoundingBox(t, iGo.refHandle(), iRef, 1e-10)
-		if !floatClose(iGo.Volume(), reference.Volume(iRef), 1e-9, 1e-9) {
-			t.Errorf("intersection volume: go=%v ref=%v", iGo.Volume(), reference.Volume(iRef))
+		if !floatClose(iGo.Volume(), cppref.Volume(iRef), 1e-9, 1e-9) {
+			t.Errorf("intersection volume: go=%v ref=%v", iGo.Volume(), cppref.Volume(iRef))
 		}
 	})
 }
@@ -1055,13 +1054,13 @@ func TestStatus_Tetrahedron_Differential(t *testing.T) {
 	if m.Status() != NoError {
 		t.Errorf("Tetrahedron Status: got %v, want NoError", m.Status())
 	}
-	if int(m.Status()) != reference.Status(m.refHandle()) {
-		t.Errorf("Status: go=%d ref=%d", m.Status(), reference.Status(m.refHandle()))
+	if int(m.Status()) != cppref.Status(m.refHandle()) {
+		t.Errorf("Status: go=%d ref=%d", m.Status(), cppref.Status(m.refHandle()))
 	}
 }
 
 // TestHullPts_Differential exercises the top-down port of the static
-// Manifold::Hull(pts) against the C++ reference.
+// Manifold::Hull(pts) against the C++ cppref.
 func TestHullPts_Differential(t *testing.T) {
 	pts := []Vec3{
 		{X: -1, Y: -1, Z: 1},
@@ -1072,12 +1071,12 @@ func TestHullPts_Differential(t *testing.T) {
 	}
 	mGo := HullPts(pts)
 	defer runtime.KeepAlive(mGo)
-	mRef := reference.HullPts(pts)
-	defer reference.DeleteManifold(mRef)
+	mRef := cppref.HullPts(pts)
+	defer cppref.DeleteManifold(mRef)
 
-	if !floatClose(mGo.Volume(), reference.Volume(mRef), 1e-12, 1e-12) {
+	if !floatClose(mGo.Volume(), cppref.Volume(mRef), 1e-12, 1e-12) {
 		t.Errorf("HullPts Volume: go=%v ref=%v",
-			mGo.Volume(), reference.Volume(mRef))
+			mGo.Volume(), cppref.Volume(mRef))
 	}
 	assertSameBoundingBox(t, mGo.refHandle(), mRef, 1e-12)
 }
@@ -1117,43 +1116,43 @@ func TestBatchHull_Differential(t *testing.T) {
 	// Reference: collect vert positions of both, run HullPts on them.
 	var allPts []Vec3
 	for _, m := range []*Manifold{a, b} {
-		impl := bridge.GetImpl(m.refHandle())
+		impl := cppref.GetImpl(m.refHandle())
 		allPts = append(allPts, impl.Verts()...)
 		impl.Delete()
 	}
-	hRef := reference.HullPts(allPts)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.HullPts(allPts)
+	defer cppref.DeleteManifold(hRef)
 
-	if !floatClose(bh.Volume(), reference.Volume(hRef), 1e-9, 1e-9) {
+	if !floatClose(bh.Volume(), cppref.Volume(hRef), 1e-9, 1e-9) {
 		t.Errorf("BatchHull Volume: go=%v ref=%v",
-			bh.Volume(), reference.Volume(hRef))
+			bh.Volume(), cppref.Volume(hRef))
 	}
 	assertSameBoundingBox(t, bh.refHandle(), hRef, 1e-10)
 }
 
 // TestHull_Differential checks that Hull on a Manifold (already convex
-// tetrahedron) produces equivalent volume/bbox to the C++ reference.
+// tetrahedron) produces equivalent volume/bbox to the C++ cppref.
 func TestHull_Differential(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 
 	hGo := m.Hull()
 	defer runtime.KeepAlive(hGo)
-	hRef := reference.Hull(hOrig)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Hull(hOrig)
+	defer cppref.DeleteManifold(hRef)
 
 	assertSameBoundingBox(t, hGo.refHandle(), hRef, 1e-12)
-	if !floatClose(hGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("Hull volume: go=%v ref=%v", hGo.Volume(), reference.Volume(hRef))
+	if !floatClose(hGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("Hull volume: go=%v ref=%v", hGo.Volume(), cppref.Volume(hRef))
 	}
 }
 
 // TestRefine_Differential checks the three refine flavors all change the
-// vertex count consistently with the C++ reference.
+// vertex count consistently with the C++ cppref.
 // TestRefine_Smoothed_VsReference differential-tests the native Refine SMOOTHING
 // path (Impl::Refine + the InterpTri cubic-Bezier surface interpolation, incl. the
-// quaternion machinery) against the C++ bridge. The input must carry halfedge
+// quaternion machinery) against the C++ cppref. The input must carry halfedge
 // tangents (else InterpTri is skipped), so each case smooths first, then Refines
 // the SAME smoothed manifold both ways. Topology is deterministic (exact vert/tri
 // counts); positions go through acos/sin/cos (Go stdlib vs C++ musl), so volume/
@@ -1180,20 +1179,20 @@ func TestRefine_Smoothed_VsReference(t *testing.T) {
 
 			got := sm.Refine(3) // native: Impl::Refine + InterpTri
 			defer runtime.KeepAlive(got)
-			ref := reference.Refine(sm.refHandle(), 3) // C++ bridge on the identical smoothed input
-			defer reference.DeleteManifold(ref)
+			ref := cppref.Refine(sm.refHandle(), 3) // C++ bridge on the identical smoothed input
+			defer cppref.DeleteManifold(ref)
 
-			if g, w := got.NumVert(), reference.NumVert(ref); g != w {
+			if g, w := got.NumVert(), cppref.NumVert(ref); g != w {
 				t.Errorf("NumVert: native=%d ref=%d", g, w)
 			}
-			if g, w := got.NumTri(), reference.NumTri(ref); g != w {
+			if g, w := got.NumTri(), cppref.NumTri(ref); g != w {
 				t.Errorf("NumTri: native=%d ref=%d", g, w)
 			}
-			if !floatClose(got.Volume(), reference.Volume(ref), 1e-6, 1e-6) {
-				t.Errorf("Volume: native=%v ref=%v", got.Volume(), reference.Volume(ref))
+			if !floatClose(got.Volume(), cppref.Volume(ref), 1e-6, 1e-6) {
+				t.Errorf("Volume: native=%v ref=%v", got.Volume(), cppref.Volume(ref))
 			}
-			if !floatClose(got.SurfaceArea(), reference.SurfaceArea(ref), 1e-6, 1e-6) {
-				t.Errorf("SurfaceArea: native=%v ref=%v", got.SurfaceArea(), reference.SurfaceArea(ref))
+			if !floatClose(got.SurfaceArea(), cppref.SurfaceArea(ref), 1e-6, 1e-6) {
+				t.Errorf("SurfaceArea: native=%v ref=%v", got.SurfaceArea(), cppref.SurfaceArea(ref))
 			}
 		})
 	}
@@ -1201,33 +1200,33 @@ func TestRefine_Smoothed_VsReference(t *testing.T) {
 
 func TestRefine_Differential(t *testing.T) {
 	t.Run("refine(2)", func(t *testing.T) {
-		hOrig := reference.Tetrahedron()
-		defer reference.DeleteManifold(hOrig)
+		hOrig := cppref.Tetrahedron()
+		defer cppref.DeleteManifold(hOrig)
 		m := fromRefHandle(hOrig)
 		rGo := m.Refine(2)
 		defer runtime.KeepAlive(rGo)
-		rRef := reference.Refine(hOrig, 2)
-		defer reference.DeleteManifold(rRef)
-		if rGo.NumVert() != reference.NumVert(rRef) {
-			t.Errorf("Refine(2) NumVert: go=%d ref=%d", rGo.NumVert(), reference.NumVert(rRef))
+		rRef := cppref.Refine(hOrig, 2)
+		defer cppref.DeleteManifold(rRef)
+		if rGo.NumVert() != cppref.NumVert(rRef) {
+			t.Errorf("Refine(2) NumVert: go=%d ref=%d", rGo.NumVert(), cppref.NumVert(rRef))
 		}
 	})
 	t.Run("refine_to_length(0.5)", func(t *testing.T) {
-		hOrig := reference.Tetrahedron()
-		defer reference.DeleteManifold(hOrig)
+		hOrig := cppref.Tetrahedron()
+		defer cppref.DeleteManifold(hOrig)
 		m := fromRefHandle(hOrig)
 		rGo := m.RefineToLength(0.5)
 		defer runtime.KeepAlive(rGo)
-		rRef := reference.RefineToLength(hOrig, 0.5)
-		defer reference.DeleteManifold(rRef)
-		if rGo.NumVert() != reference.NumVert(rRef) {
-			t.Errorf("RefineToLength NumVert: go=%d ref=%d", rGo.NumVert(), reference.NumVert(rRef))
+		rRef := cppref.RefineToLength(hOrig, 0.5)
+		defer cppref.DeleteManifold(rRef)
+		if rGo.NumVert() != cppref.NumVert(rRef) {
+			t.Errorf("RefineToLength NumVert: go=%d ref=%d", rGo.NumVert(), cppref.NumVert(rRef))
 		}
 	})
 }
 
 // TestMinGap_Differential exercises the top-down port of MinGap against
-// the C++ reference. Two disjoint cubes (overlap = 0) should report the
+// the C++ cppref. Two disjoint cubes (overlap = 0) should report the
 // edge-to-edge distance; overlapping cubes should report 0.
 func TestMinGap_Differential(t *testing.T) {
 	t.Run("disjoint", func(t *testing.T) {
@@ -1235,15 +1234,15 @@ func TestMinGap_Differential(t *testing.T) {
 		bGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true).Translate(Vec3{X: 3})
 		defer runtime.KeepAlive(aGo)
 		defer runtime.KeepAlive(bGo)
-		aRef := reference.Cube(1, 1, 1, true)
-		defer reference.DeleteManifold(aRef)
-		bRefBase := reference.Cube(1, 1, 1, true)
-		defer reference.DeleteManifold(bRefBase)
-		bRef := reference.Translate(bRefBase, Vec3{X: 3})
-		defer reference.DeleteManifold(bRef)
+		aRef := cppref.Cube(1, 1, 1, true)
+		defer cppref.DeleteManifold(aRef)
+		bRefBase := cppref.Cube(1, 1, 1, true)
+		defer cppref.DeleteManifold(bRefBase)
+		bRef := cppref.Translate(bRefBase, Vec3{X: 3})
+		defer cppref.DeleteManifold(bRef)
 
 		got := aGo.MinGap(bGo, 5)
-		want := reference.MinGap(aRef, bRef, 5)
+		want := cppref.MinGap(aRef, bRef, 5)
 		if !floatClose(got, want, 1e-9, 1e-9) {
 			t.Errorf("disjoint MinGap: go=%v ref=%v", got, want)
 		}
@@ -1265,18 +1264,18 @@ func TestMinkowski_Differential(t *testing.T) {
 	bGo := Cube(Vec3{X: 0.5, Y: 0.5, Z: 0.5}, true)
 	defer runtime.KeepAlive(aGo)
 	defer runtime.KeepAlive(bGo)
-	aRef := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(aRef)
-	bRef := reference.Cube(0.5, 0.5, 0.5, true)
-	defer reference.DeleteManifold(bRef)
+	aRef := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(aRef)
+	bRef := cppref.Cube(0.5, 0.5, 0.5, true)
+	defer cppref.DeleteManifold(bRef)
 
 	sGo := aGo.MinkowskiSum(bGo)
 	defer runtime.KeepAlive(sGo)
-	sRef := reference.MinkowskiSum(aRef, bRef)
-	defer reference.DeleteManifold(sRef)
+	sRef := cppref.MinkowskiSum(aRef, bRef)
+	defer cppref.DeleteManifold(sRef)
 
-	if !floatClose(sGo.Volume(), reference.Volume(sRef), 1e-9, 1e-9) {
-		t.Errorf("MinkowskiSum volume: go=%v ref=%v", sGo.Volume(), reference.Volume(sRef))
+	if !floatClose(sGo.Volume(), cppref.Volume(sRef), 1e-9, 1e-9) {
+		t.Errorf("MinkowskiSum volume: go=%v ref=%v", sGo.Volume(), cppref.Volume(sRef))
 	}
 }
 
@@ -1313,14 +1312,14 @@ func TestMinkowski_Native_VsReference(t *testing.T) {
 			var refGenus int
 			if tc.inset {
 				got = a.MinkowskiDifference(b)
-				r := reference.MinkowskiDifference(a.refHandle(), b.refHandle())
-				refVol, refArea, refGenus = reference.Volume(r), reference.SurfaceArea(r), reference.Genus(r)
-				reference.DeleteManifold(r)
+				r := cppref.MinkowskiDifference(a.refHandle(), b.refHandle())
+				refVol, refArea, refGenus = cppref.Volume(r), cppref.SurfaceArea(r), cppref.Genus(r)
+				cppref.DeleteManifold(r)
 			} else {
 				got = a.MinkowskiSum(b)
-				r := reference.MinkowskiSum(a.refHandle(), b.refHandle())
-				refVol, refArea, refGenus = reference.Volume(r), reference.SurfaceArea(r), reference.Genus(r)
-				reference.DeleteManifold(r)
+				r := cppref.MinkowskiSum(a.refHandle(), b.refHandle())
+				refVol, refArea, refGenus = cppref.Volume(r), cppref.SurfaceArea(r), cppref.Genus(r)
+				cppref.DeleteManifold(r)
 			}
 			defer runtime.KeepAlive(got)
 
@@ -1342,8 +1341,8 @@ func TestMinkowski_Native_VsReference(t *testing.T) {
 // implicitly via off-diagonal entry, translate by (1,0,0)) and comparing
 // to the C++ reference Transform.
 func TestTransform_Tetrahedron_Differential(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 
 	m := Mat3x4{
 		{2, 0, 0},   // col 0
@@ -1355,17 +1354,17 @@ func TestTransform_Tetrahedron_Differential(t *testing.T) {
 	mGo := mManifold.Transform(m)
 	defer runtime.KeepAlive(mGo)
 
-	hRef := reference.Transform(hOrig,
+	hRef := cppref.Transform(hOrig,
 		m[0][0], m[0][1], m[0][2],
 		m[1][0], m[1][1], m[1][2],
 		m[2][0], m[2][1], m[2][2],
 		m[3][0], m[3][1], m[3][2],
 	)
-	defer reference.DeleteManifold(hRef)
+	defer cppref.DeleteManifold(hRef)
 
 	assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("transformed Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("transformed Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
 }
 
@@ -1375,8 +1374,8 @@ func TestTransform_Tetrahedron_Differential(t *testing.T) {
 // match the reference; if the flip is missing or done wrong, volume
 // goes negative or shapes are inverted.
 func TestTransform_NegativeDet_Differential(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 
 	m := Mat3x4{
 		{-1, 0, 0},
@@ -1387,23 +1386,23 @@ func TestTransform_NegativeDet_Differential(t *testing.T) {
 	mGo := (fromRefHandle(hOrig)).Transform(m)
 	defer runtime.KeepAlive(mGo)
 
-	hRef := reference.Transform(hOrig,
+	hRef := cppref.Transform(hOrig,
 		m[0][0], m[0][1], m[0][2],
 		m[1][0], m[1][1], m[1][2],
 		m[2][0], m[2][1], m[2][2],
 		m[3][0], m[3][1], m[3][2],
 	)
-	defer reference.DeleteManifold(hRef)
+	defer cppref.DeleteManifold(hRef)
 
 	assertSameBoundingBox(t, mGo.refHandle(), hRef, 1e-12)
-	if !floatClose(mGo.Volume(), reference.Volume(hRef), 1e-12, 1e-12) {
-		t.Errorf("neg-det Volume: go=%v ref=%v", mGo.Volume(), reference.Volume(hRef))
+	if !floatClose(mGo.Volume(), cppref.Volume(hRef), 1e-12, 1e-12) {
+		t.Errorf("neg-det Volume: go=%v ref=%v", mGo.Volume(), cppref.Volume(hRef))
 	}
 }
 
 // TestSplit_TwoCubes_Differential cuts a unit cube with an
 // overlapping cube and asserts the Go (intersection, difference)
-// volumes match the C++ reference.
+// volumes match the C++ cppref.
 func TestSplit_TwoCubes_Differential(t *testing.T) {
 	mGoA := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
 	mGoB := Cube(Vec3{X: 2, Y: 2, Z: 2}, true).Translate(Vec3{X: 1, Y: 1, Z: 1})
@@ -1414,30 +1413,30 @@ func TestSplit_TwoCubes_Differential(t *testing.T) {
 	defer runtime.KeepAlive(gotInter)
 	defer runtime.KeepAlive(gotDiff)
 
-	hRefA := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(hRefA)
-	hRefB := reference.Cube(2, 2, 2, true)
-	hRefB = reference.Translate(hRefB, Vec3{X: 1, Y: 1, Z: 1})
-	defer reference.DeleteManifold(hRefB)
+	hRefA := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(hRefA)
+	hRefB := cppref.Cube(2, 2, 2, true)
+	hRefB = cppref.Translate(hRefB, Vec3{X: 1, Y: 1, Z: 1})
+	defer cppref.DeleteManifold(hRefB)
 
-	wantInter, wantDiff := reference.Split(hRefA, hRefB)
-	defer reference.DeleteManifold(wantInter)
-	defer reference.DeleteManifold(wantDiff)
+	wantInter, wantDiff := cppref.Split(hRefA, hRefB)
+	defer cppref.DeleteManifold(wantInter)
+	defer cppref.DeleteManifold(wantDiff)
 
-	if !floatClose(gotInter.Volume(), reference.Volume(wantInter), 1e-9, 1e-9) {
+	if !floatClose(gotInter.Volume(), cppref.Volume(wantInter), 1e-9, 1e-9) {
 		t.Errorf("Split intersection volume: go=%v ref=%v",
-			gotInter.Volume(), reference.Volume(wantInter))
+			gotInter.Volume(), cppref.Volume(wantInter))
 	}
-	if !floatClose(gotDiff.Volume(), reference.Volume(wantDiff), 1e-9, 1e-9) {
+	if !floatClose(gotDiff.Volume(), cppref.Volume(wantDiff), 1e-9, 1e-9) {
 		t.Errorf("Split difference volume: go=%v ref=%v",
-			gotDiff.Volume(), reference.Volume(wantDiff))
+			gotDiff.Volume(), cppref.Volume(wantDiff))
 	}
 	assertSameBoundingBox(t, gotInter.refHandle(), wantInter, 1e-9)
 	assertSameBoundingBox(t, gotDiff.refHandle(), wantDiff, 1e-9)
 }
 
 // TestSplitByPlane_Cube_Differential bisects a unit cube with a
-// plane and asserts both halves match the C++ reference.
+// plane and asserts both halves match the C++ cppref.
 func TestSplitByPlane_Cube_Differential(t *testing.T) {
 	mGo := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
 	defer runtime.KeepAlive(mGo)
@@ -1447,19 +1446,19 @@ func TestSplitByPlane_Cube_Differential(t *testing.T) {
 	defer runtime.KeepAlive(gotPos)
 	defer runtime.KeepAlive(gotNeg)
 
-	hRef := reference.Cube(2, 2, 2, true)
-	defer reference.DeleteManifold(hRef)
-	wantPos, wantNeg := reference.SplitByPlane(hRef, normal.X, normal.Y, normal.Z, 0)
-	defer reference.DeleteManifold(wantPos)
-	defer reference.DeleteManifold(wantNeg)
+	hRef := cppref.Cube(2, 2, 2, true)
+	defer cppref.DeleteManifold(hRef)
+	wantPos, wantNeg := cppref.SplitByPlane(hRef, normal.X, normal.Y, normal.Z, 0)
+	defer cppref.DeleteManifold(wantPos)
+	defer cppref.DeleteManifold(wantNeg)
 
-	if !floatClose(gotPos.Volume(), reference.Volume(wantPos), 1e-9, 1e-9) {
+	if !floatClose(gotPos.Volume(), cppref.Volume(wantPos), 1e-9, 1e-9) {
 		t.Errorf("SplitByPlane +side volume: go=%v ref=%v",
-			gotPos.Volume(), reference.Volume(wantPos))
+			gotPos.Volume(), cppref.Volume(wantPos))
 	}
-	if !floatClose(gotNeg.Volume(), reference.Volume(wantNeg), 1e-9, 1e-9) {
+	if !floatClose(gotNeg.Volume(), cppref.Volume(wantNeg), 1e-9, 1e-9) {
 		t.Errorf("SplitByPlane -side volume: go=%v ref=%v",
-			gotNeg.Volume(), reference.Volume(wantNeg))
+			gotNeg.Volume(), cppref.Volume(wantNeg))
 	}
 }
 
@@ -1467,8 +1466,8 @@ func TestSplitByPlane_Cube_Differential(t *testing.T) {
 // A tetrahedron from the standard factory must pass the consistency
 // check.
 func TestMatchesTriNormals_Tetrahedron(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 	if !m.MatchesTriNormals() {
 		t.Error("Tetrahedron should have matching tri normals")
@@ -1481,8 +1480,8 @@ func TestMatchesTriNormals_Tetrahedron(t *testing.T) {
 // boolean op can hit) — but Tetrahedron() returns an Impl with normals
 // cached, so we get the loop's count: 0.
 func TestNumDegenerateTris_Tetrahedron(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 	if got := m.NumDegenerateTris(); got != 0 {
 		t.Errorf("Tetrahedron NumDegenerateTris: got %d, want 0", got)
@@ -1503,7 +1502,7 @@ func TestMatchesTriNormals_DrilledVsCpp_Differential(t *testing.T) {
 		make func() *Manifold
 	}{
 		{"tetrahedron", func() *Manifold {
-			return fromRefHandle(reference.Tetrahedron())
+			return fromRefHandle(cppref.Tetrahedron())
 		}},
 		{"cube union", func() *Manifold {
 			a := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
@@ -1520,7 +1519,7 @@ func TestMatchesTriNormals_DrilledVsCpp_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := tc.make()
 			defer runtime.KeepAlive(m)
-			impl := bridge.GetImpl(m.refHandle())
+			impl := cppref.GetImpl(m.refHandle())
 			defer impl.Delete()
 			gotGo := m.MatchesTriNormals() // drilled Go path
 			gotCpp := impl.MatchesTriNormals()
@@ -1539,7 +1538,7 @@ func TestNumDegenerateTris_DrilledVsCpp_Differential(t *testing.T) {
 		make func() *Manifold
 	}{
 		{"tetrahedron", func() *Manifold {
-			return fromRefHandle(reference.Tetrahedron())
+			return fromRefHandle(cppref.Tetrahedron())
 		}},
 		{"cube union", func() *Manifold {
 			a := Cube(Vec3{X: 2, Y: 2, Z: 2}, true)
@@ -1556,7 +1555,7 @@ func TestNumDegenerateTris_DrilledVsCpp_Differential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := tc.make()
 			defer runtime.KeepAlive(m)
-			impl := bridge.GetImpl(m.refHandle())
+			impl := cppref.GetImpl(m.refHandle())
 			defer impl.Delete()
 			gotGo := m.NumDegenerateTris()
 			gotCpp := impl.NumDegenerateTris()
@@ -1570,8 +1569,8 @@ func TestNumDegenerateTris_DrilledVsCpp_Differential(t *testing.T) {
 // TestGetEpsilon_Tetrahedron checks GetEpsilon returns a positive
 // value for a well-formed manifold.
 func TestGetEpsilon_Tetrahedron(t *testing.T) {
-	hOrig := reference.Tetrahedron()
-	defer reference.DeleteManifold(hOrig)
+	hOrig := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hOrig)
 	m := fromRefHandle(hOrig)
 	if got := m.GetEpsilon(); !(got > 0) {
 		t.Errorf("Tetrahedron GetEpsilon: got %v, want > 0", got)
@@ -1587,8 +1586,8 @@ func TestGetEpsilon_Tetrahedron(t *testing.T) {
 func TestSmoothFromMeshGL64_SmokeRun(t *testing.T) {
 	// Build a unit tetrahedron MeshGL64 from the C++ reference, then
 	// feed it back through Smooth.
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	mRef := fromRefHandle(hRef)
 	mesh := mRef.GetMeshGL64(-1)
 	mesh.HalfedgeTangent = nil // Smooth refuses tangented input.
@@ -1667,8 +1666,8 @@ func TestWithContext_NoCancel_ProducesSameResult(t *testing.T) {
 // MeshGL64.NumProp = 3 (position) + Impl::numProp_, so user props live
 // at offsets 3..6 within each propVert.
 func TestSetProperties_PerVertexPosition(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	src := fromRefHandle(hRef)
 
 	out := src.SetProperties(3, func(newProp []float64, pos Vec3, _ []float64) {
@@ -1707,8 +1706,8 @@ func TestSetProperties_PerVertexPosition(t *testing.T) {
 // all zero. Verified via GetMeshGL64 (positions at offsets 0..2 remain
 // non-zero; user channels at offsets 3..numProp must be zero).
 func TestSetProperties_NilCallback_ZeroFills(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	src := fromRefHandle(hRef)
 
 	out := src.SetProperties(2, nil)
@@ -1806,11 +1805,11 @@ func TestSmoothFromMeshGL_VsBridge(t *testing.T) {
 	got := SmoothFromMeshGL(mesh, edges)
 	defer runtime.KeepAlive(got)
 
-	bridgeEdges := make([]bridge.Smoothness, len(edges))
+	bridgeEdges := make([]cppref.Smoothness, len(edges))
 	for i, e := range edges {
-		bridgeEdges[i] = bridge.Smoothness{Halfedge: e.Halfedge, Smoothness: e.Smoothness}
+		bridgeEdges[i] = cppref.Smoothness{Halfedge: e.Halfedge, Smoothness: e.Smoothness}
 	}
-	want := wrap(bridge.SmoothFromMeshGL(
+	want := wrap(cppref.SmoothFromMeshGL(
 		mesh.NumProp, mesh.VertProperties, mesh.TriVerts,
 		mesh.MergeFromVert, mesh.MergeToVert,
 		mesh.RunIndex, mesh.RunOriginalID, mesh.RunTransform, mesh.RunFlags,
@@ -1848,8 +1847,8 @@ func TestSmoothFromMeshGL_VsBridge(t *testing.T) {
 }
 
 func TestSmoothFromMeshGL_SmokeRun(t *testing.T) {
-	hRef := reference.Tetrahedron()
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Tetrahedron()
+	defer cppref.DeleteManifold(hRef)
 	mRef := fromRefHandle(hRef)
 	mesh := mRef.GetMeshGL(-1)
 	mesh.HalfedgeTangent = nil

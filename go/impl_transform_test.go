@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/reference"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // TestTransform_Translate exercises pure translation against the
@@ -92,31 +92,31 @@ func TestTransform_Rotate(t *testing.T) {
 func TestTransform_VsCpp_Translate(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(hRef)
 
 	v := Vec3{X: 0.5, Y: 1.5, Z: -2.5}
 	tGo := mGo.Translate(v)
 	defer runtime.KeepAlive(tGo)
-	tRef := reference.Translate(hRef, v)
-	defer reference.DeleteManifold(tRef)
+	tRef := cppref.Translate(hRef, v)
+	defer cppref.DeleteManifold(tRef)
 
-	if !floatClose(tGo.Volume(), reference.Volume(tRef), 1e-12, 1e-12) {
-		t.Errorf("Volume: go=%v ref=%v", tGo.Volume(), reference.Volume(tRef))
+	if !floatClose(tGo.Volume(), cppref.Volume(tRef), 1e-12, 1e-12) {
+		t.Errorf("Volume: go=%v ref=%v", tGo.Volume(), cppref.Volume(tRef))
 	}
-	if !floatClose(tGo.SurfaceArea(), reference.SurfaceArea(tRef), 1e-12, 1e-12) {
+	if !floatClose(tGo.SurfaceArea(), cppref.SurfaceArea(tRef), 1e-12, 1e-12) {
 		t.Errorf("SurfaceArea: go=%v ref=%v",
-			tGo.SurfaceArea(), reference.SurfaceArea(tRef))
+			tGo.SurfaceArea(), cppref.SurfaceArea(tRef))
 	}
 }
 
 // TestTransform_VsCpp_Transform: a non-axis-aligned linear transform
-// must yield identical Volume to the C++ reference.
+// must yield identical Volume to the C++ cppref.
 func TestTransform_VsCpp_Transform(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Cube(1, 1, 1, true)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Cube(1, 1, 1, true)
+	defer cppref.DeleteManifold(hRef)
 
 	// Skew + non-uniform scale.
 	mat := Mat3x4{
@@ -127,19 +127,19 @@ func TestTransform_VsCpp_Transform(t *testing.T) {
 	}
 	tGo := mGo.Transform(mat)
 	defer runtime.KeepAlive(tGo)
-	tRef := reference.Transform(hRef,
+	tRef := cppref.Transform(hRef,
 		mat[0][0], mat[0][1], mat[0][2],
 		mat[1][0], mat[1][1], mat[1][2],
 		mat[2][0], mat[2][1], mat[2][2],
 		mat[3][0], mat[3][1], mat[3][2])
-	defer reference.DeleteManifold(tRef)
+	defer cppref.DeleteManifold(tRef)
 
-	if !floatClose(tGo.Volume(), reference.Volume(tRef), 1e-9, 1e-9) {
-		t.Errorf("Volume: go=%v ref=%v", tGo.Volume(), reference.Volume(tRef))
+	if !floatClose(tGo.Volume(), cppref.Volume(tRef), 1e-9, 1e-9) {
+		t.Errorf("Volume: go=%v ref=%v", tGo.Volume(), cppref.Volume(tRef))
 	}
-	if !floatClose(tGo.SurfaceArea(), reference.SurfaceArea(tRef), 1e-9, 1e-9) {
+	if !floatClose(tGo.SurfaceArea(), cppref.SurfaceArea(tRef), 1e-9, 1e-9) {
 		t.Errorf("SurfaceArea: go=%v ref=%v",
-			tGo.SurfaceArea(), reference.SurfaceArea(tRef))
+			tGo.SurfaceArea(), cppref.SurfaceArea(tRef))
 	}
 }
 

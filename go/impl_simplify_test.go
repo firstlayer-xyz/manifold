@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // removeDegenResult runs RemoveDegenerates — the native Go port or the C++
@@ -23,7 +23,7 @@ func removeDegenResult(t *testing.T, m *Manifold, eps float64, useBridge bool) *
 		// The bridge reference reads its storage from the bridge handle, so
 		// marshal the native storage in (incl. the eps/tol set above), run the
 		// C++ pass, and reload — the same seam production Refine/Subdivide use.
-		runCppAlgo(impl, func(bm *bridge.MutableImpl) { bm.RemoveDegenerates(0) })
+		runCppAlgo(impl, func(bm *cppref.MutableImpl) { bm.RemoveDegenerates(0) })
 	} else {
 		impl.RemoveDegenerates(0)
 	}
@@ -32,7 +32,7 @@ func removeDegenResult(t *testing.T, m *Manifold, eps float64, useBridge bool) *
 }
 
 // TestRemoveDegenerates_VsCpp checks the native Go RemoveDegenerates against
-// the C++ reference. The no-op cases (tiny epsilon) confirm a clean mesh
+// the C++ cppref. The no-op cases (tiny epsilon) confirm a clean mesh
 // passes through identically; the collapse case (epsilon above the edge
 // length) exercises CollapseShortEdges / CollapseEdge and friends, and the
 // two implementations must agree.
@@ -93,7 +93,7 @@ func simplifyTopoResult(t *testing.T, m *Manifold, eps float64, useBridge bool) 
 	impl.SetEpsilonValue(eps)
 	impl.SetToleranceValue(eps)
 	if useBridge {
-		runCppAlgo(impl, func(bm *bridge.MutableImpl) { bm.SimplifyTopology() })
+		runCppAlgo(impl, func(bm *cppref.MutableImpl) { bm.SimplifyTopology() })
 	} else {
 		impl.SimplifyTopology(0)
 	}

@@ -6,9 +6,10 @@ import "testing"
 // the C++ Quality::GetCircularSegments output for several radii.
 //
 // Formula (defaults: angle=10°, length=1.0, segments=0):
-//   nSegA = 360/10 = 36
-//   nSegL = floor(2π·|r|)
-//   nSeg = min(nSegA, nSegL) + 3, rounded down to multiple of 4, floor 4
+//
+//	nSegA = 360/10 = 36
+//	nSegL = floor(2π·|r|)
+//	nSeg = min(nSegA, nSegL) + 3, rounded down to multiple of 4, floor 4
 func TestQuality_Defaults(t *testing.T) {
 	defer ResetQualityToDefaults()
 	cases := []struct {

@@ -5,13 +5,13 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // pureBridgeIngestGL64 ingests via the C++ bridge directly — the reference
 // oracle for the native ingest drill.
 func pureBridgeIngestGL64(m MeshGL64) *Manifold {
-	return wrap(bridge.ManifoldFromMeshGL64(
+	return wrap(cppref.ManifoldFromMeshGL64(
 		m.NumProp,
 		m.VertProperties, m.TriVerts,
 		m.MergeFromVert, m.MergeToVert,
@@ -155,7 +155,7 @@ func TestMeshGLIngest_Float32_VsCpp(t *testing.T) {
 		m := src.GetMeshGL(-1)
 		goM := NewManifoldFromMeshGL(m)
 		defer runtime.KeepAlive(goM)
-		refM := wrap(bridge.ManifoldFromMeshGL(
+		refM := wrap(cppref.ManifoldFromMeshGL(
 			m.NumProp,
 			m.VertProperties, m.TriVerts,
 			m.MergeFromVert, m.MergeToVert,

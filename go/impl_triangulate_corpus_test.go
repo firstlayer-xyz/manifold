@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -113,7 +113,7 @@ func duplicate(polys [][]geom.Vec2) [][]geom.Vec2 {
 // TestTriangulateCorpus_VsCpp runs the native triangulator over the manifold
 // polygon corpus (the same fixtures the C++ PolygonTest uses) and asserts it
 // produces the curated expected triangle count — the exact bar of C++ TestPoly
-// (Basic / Turn180 / Duplicate) — plus that it agrees with the bridge. The
+// (Basic / Turn180 / Duplicate) — plus that it agrees with the cppref. The
 // large zebra fixtures are gated behind -short because the increment-6
 // brute-force collider is O(n^2) (the kd-tree lands in increment 9).
 func TestTriangulateCorpus_VsCpp(t *testing.T) {
@@ -128,7 +128,7 @@ func TestTriangulateCorpus_VsCpp(t *testing.T) {
 				if len(got)/3 != e.numTri {
 					t.Errorf("Basic: numTri %d != expected %d", len(got)/3, e.numTri)
 				}
-				if want := bridge.Triangulate(e.polys, e.epsilon); len(got) != len(want) {
+				if want := cppref.Triangulate(e.polys, e.epsilon); len(got) != len(want) {
 					t.Errorf("Basic: count %d != bridge %d", len(got)/3, len(want)/3)
 				} else if !sameTriangulation(got, want) {
 					t.Logf("%s: differs from bridge as a set (both same count)", e.name)

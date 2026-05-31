@@ -6,14 +6,14 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
 
 // nativeFlat triangulates via the internal package and flattens the [][3]int
 // result to the bridge's []int32 layout, purely so differential tests can
-// compare against bridge.Triangulate's flat output. Test scaffolding only —
+// compare against cppref.Triangulate's flat output. Test scaffolding only —
 // production code (extrude/revolve) consumes the [][3]int triples directly,
 // matching the C++ std::vector<ivec3>.
 func nativeFlat(polys [][]geom.Vec2, epsilon float64) []int32 {
@@ -36,7 +36,7 @@ func regularPolygon(n int, r float64) [][]geom.Vec2 {
 }
 
 // TestTriangulateConvex_VsCpp checks the native convex fast path against the
-// C++ bridge. C++ also routes convex input through TriangulateConvex, so the
+// C++ cppref. C++ also routes convex input through TriangulateConvex, so the
 // zig-zag fan is deterministic and the exact triangle index triples must match.
 func TestTriangulateConvex_VsCpp(t *testing.T) {
 	cases := []struct {
@@ -52,7 +52,7 @@ func TestTriangulateConvex_VsCpp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := nativeFlat(tc.polys, -1)
-			want := bridge.Triangulate(tc.polys, -1)
+			want := cppref.Triangulate(tc.polys, -1)
 			// Convex input routes through TriangulateConvex in both Go and C++,
 			// so the zig-zag fan is deterministic and the triples match exactly.
 			if !slices.Equal(got, want) {
@@ -156,7 +156,7 @@ func starPolygon(points int, rOuter, rInner float64) [][]geom.Vec2 {
 // TestTriangulateConcave_VsCpp exercises the native EarClip ear-clipper on
 // simple concave polygons (no holes). The output must be a valid triangulation
 // (correct count, tiles the polygon, all-CCW) with the same triangle count as
-// the C++ bridge. An exact triangle-set match is asserted where it holds, but
+// the C++ cppref. An exact triangle-set match is asserted where it holds, but
 // is not required: EarCost uses normalize/dot/determinant whose last-ULP
 // differences between Go and C++ can flip the clip order of near-equal-cost
 // ears (symmetric stars), yielding a different — but equally valid —
@@ -185,7 +185,7 @@ func TestTriangulateConcave_VsCpp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := nativeFlat(tc.polys, -1)
-			want := bridge.Triangulate(tc.polys, -1)
+			want := cppref.Triangulate(tc.polys, -1)
 			// The Go output must be a genuine triangulation of the polygon.
 			checkValidTriangulation(t, tc.polys, got)
 			// ... with the same triangle count as C++.
@@ -204,7 +204,7 @@ func TestTriangulateConcave_VsCpp(t *testing.T) {
 // FindCloserBridge / JoinPolygons): polygons with one or more CW holes inside a
 // CCW outer contour. The native EarClip must bridge each hole into an outer and
 // produce a valid triangulation of the region between them, with the same
-// triangle count as the C++ bridge.
+// triangle count as the C++ cppref.
 func TestTriangulateHoles_VsCpp(t *testing.T) {
 	// CCW outer, CW hole(s).
 	square1Hole := [][]geom.Vec2{
@@ -238,7 +238,7 @@ func TestTriangulateHoles_VsCpp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := nativeFlat(tc.polys, -1)
-			want := bridge.Triangulate(tc.polys, -1)
+			want := cppref.Triangulate(tc.polys, -1)
 			checkValidTriangulation(t, tc.polys, got)
 			if len(got) != len(want) {
 				t.Errorf("triangle count %d != bridge %d", len(got)/3, len(want)/3)

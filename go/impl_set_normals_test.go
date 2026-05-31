@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/reference"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 )
 
 // TestSetNormals_VsCpp_Cube exercises the multi-normal split path —
@@ -19,24 +19,24 @@ func TestSetNormals_VsCpp_Cube(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
 			defer runtime.KeepAlive(mGo)
-			hRef := reference.Cube(1, 1, 1, true)
-			defer reference.DeleteManifold(hRef)
+			hRef := cppref.Cube(1, 1, 1, true)
+			defer cppref.DeleteManifold(hRef)
 
 			nGo := mGo.CalculateNormals(0, minSharp)
 			defer runtime.KeepAlive(nGo)
-			nRef := reference.CalculateNormals(hRef, 0, minSharp)
-			defer reference.DeleteManifold(nRef)
+			nRef := cppref.CalculateNormals(hRef, 0, minSharp)
+			defer cppref.DeleteManifold(nRef)
 
-			if got, want := nGo.NumProp(), reference.NumProp(nRef); got != want {
+			if got, want := nGo.NumProp(), cppref.NumProp(nRef); got != want {
 				t.Errorf("NumProp: go=%d ref=%d", got, want)
 			}
-			if !floatClose(nGo.Volume(), reference.Volume(nRef), 1e-9, 1e-9) {
+			if !floatClose(nGo.Volume(), cppref.Volume(nRef), 1e-9, 1e-9) {
 				t.Errorf("Volume: go=%v ref=%v",
-					nGo.Volume(), reference.Volume(nRef))
+					nGo.Volume(), cppref.Volume(nRef))
 			}
-			if !floatClose(nGo.SurfaceArea(), reference.SurfaceArea(nRef), 1e-9, 1e-9) {
+			if !floatClose(nGo.SurfaceArea(), cppref.SurfaceArea(nRef), 1e-9, 1e-9) {
 				t.Errorf("SurfaceArea: go=%v ref=%v",
-					nGo.SurfaceArea(), reference.SurfaceArea(nRef))
+					nGo.SurfaceArea(), cppref.SurfaceArea(nRef))
 			}
 		})
 	}
@@ -49,22 +49,22 @@ func TestSetNormals_VsCpp_Cube(t *testing.T) {
 func TestSetNormals_VsCpp_Sphere(t *testing.T) {
 	mGo := Sphere(1.0, 24)
 	defer runtime.KeepAlive(mGo)
-	hRef := reference.Sphere(1.0, 24)
-	defer reference.DeleteManifold(hRef)
+	hRef := cppref.Sphere(1.0, 24)
+	defer cppref.DeleteManifold(hRef)
 
 	nGo := mGo.CalculateNormals(0, 60)
 	defer runtime.KeepAlive(nGo)
-	nRef := reference.CalculateNormals(hRef, 0, 60)
-	defer reference.DeleteManifold(nRef)
+	nRef := cppref.CalculateNormals(hRef, 0, 60)
+	defer cppref.DeleteManifold(nRef)
 
-	if got, want := nGo.NumProp(), reference.NumProp(nRef); got != want {
+	if got, want := nGo.NumProp(), cppref.NumProp(nRef); got != want {
 		t.Errorf("NumProp: go=%d ref=%d", got, want)
 	}
-	if !floatClose(nGo.Volume(), reference.Volume(nRef), 1e-9, 1e-9) {
-		t.Errorf("Volume: go=%v ref=%v", nGo.Volume(), reference.Volume(nRef))
+	if !floatClose(nGo.Volume(), cppref.Volume(nRef), 1e-9, 1e-9) {
+		t.Errorf("Volume: go=%v ref=%v", nGo.Volume(), cppref.Volume(nRef))
 	}
-	if !floatClose(nGo.SurfaceArea(), reference.SurfaceArea(nRef), 1e-9, 1e-9) {
-		t.Errorf("SurfaceArea: go=%v ref=%v", nGo.SurfaceArea(), reference.SurfaceArea(nRef))
+	if !floatClose(nGo.SurfaceArea(), cppref.SurfaceArea(nRef), 1e-9, 1e-9) {
+		t.Errorf("SurfaceArea: go=%v ref=%v", nGo.SurfaceArea(), cppref.SurfaceArea(nRef))
 	}
 }
 

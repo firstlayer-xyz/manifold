@@ -4,10 +4,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
-	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestSubdivideHelpers_Cube validates the subdivision topology helpers on a cube
@@ -70,7 +69,7 @@ func TestSubdivide_VsBridge(t *testing.T) {
 	}{
 		{"cube_n2", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, true) }, 2},
 		{"cube_n5", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, true) }, 5},
-		{"tetra_n4", func() *Manifold { return fromRefHandle(reference.Tetrahedron()) }, 4},
+		{"tetra_n4", func() *Manifold { return fromRefHandle(cppref.Tetrahedron()) }, 4},
 		{"sphere_n3", func() *Manifold { return Sphere(1, 8) }, 3},
 	}
 	for _, tc := range cases {
@@ -86,7 +85,7 @@ func TestSubdivide_VsBridge(t *testing.T) {
 
 			bv := getImpl(m).Copy()
 			defer bv.Delete()
-			runCppAlgo(bv, func(bm *bridge.MutableImpl) { bm.SubdivideN(tc.n) })
+			runCppAlgo(bv, func(bm *cppref.MutableImpl) { bm.SubdivideN(tc.n) })
 			want := bv.ToManifold()
 			defer runtime.KeepAlive(want)
 

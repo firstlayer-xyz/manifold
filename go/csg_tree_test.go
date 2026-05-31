@@ -4,12 +4,12 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/firstlayer-xyz/manifold/go/internal/cppref"
 	"github.com/firstlayer-xyz/manifold/go/internal/handle"
-	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestCompose_VsBridge differential-tests the native compose (CsgLeafNode::
-// Compose) against the C++ bridge. For pairwise-disjoint inputs the bridge
+// Compose) against the C++ cppref. For pairwise-disjoint inputs the bridge
 // BatchBoolean(OpAdd) partitions into a single disjoint set and routes through
 // Compose, so it is the exact oracle for native compose.
 func TestCompose_VsBridge(t *testing.T) {
@@ -73,7 +73,7 @@ func TestCompose_VsBridge(t *testing.T) {
 
 // TestBatchBoolean_Native_VsReference differential-tests the native n-ary
 // BatchBoolean (batchUnion / batchBoolean heap / the Subtract positive-negative
-// split) against the C++ bridge reference. The oracle is built by pairwise
+// split) against the C++ bridge cppref. The oracle is built by pairwise
 // reduction: Add/Intersect are commutative+associative so their geometry is
 // order-independent, and a-b-c == a-(b∪c). Cases mix overlapping and disjoint
 // operands and exceed 4 children to exercise the 4-pairs-per-round batching and
@@ -86,7 +86,7 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 		for i := 1; i < len(hs); i++ {
 			next := f(acc, hs[i])
 			if i > 1 {
-				reference.DeleteManifold(acc)
+				cppref.DeleteManifold(acc)
 			}
 			acc = next
 		}
@@ -101,13 +101,13 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 	}
 	assertGeom := func(t *testing.T, got *Manifold, oracle *handle.Manifold) {
 		t.Helper()
-		if !floatClose(got.Volume(), reference.Volume(oracle), 1e-8, 1e-8) {
-			t.Errorf("Volume: native=%v ref=%v", got.Volume(), reference.Volume(oracle))
+		if !floatClose(got.Volume(), cppref.Volume(oracle), 1e-8, 1e-8) {
+			t.Errorf("Volume: native=%v ref=%v", got.Volume(), cppref.Volume(oracle))
 		}
-		if !floatClose(got.SurfaceArea(), reference.SurfaceArea(oracle), 1e-8, 1e-8) {
-			t.Errorf("SurfaceArea: native=%v ref=%v", got.SurfaceArea(), reference.SurfaceArea(oracle))
+		if !floatClose(got.SurfaceArea(), cppref.SurfaceArea(oracle), 1e-8, 1e-8) {
+			t.Errorf("SurfaceArea: native=%v ref=%v", got.SurfaceArea(), cppref.SurfaceArea(oracle))
 		}
-		if g, r := got.Genus(), reference.Genus(oracle); g != r {
+		if g, r := got.Genus(), cppref.Genus(oracle); g != r {
 			t.Errorf("Genus: native=%d ref=%d", g, r)
 		}
 	}
@@ -127,8 +127,8 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 		}
 		got := BatchBoolean(ms, OpAdd)
 		defer runtime.KeepAlive(got)
-		oracle := refFold(handlesOf(ms), reference.Union)
-		defer reference.DeleteManifold(oracle)
+		oracle := refFold(handlesOf(ms), cppref.Union)
+		defer cppref.DeleteManifold(oracle)
 		assertGeom(t, got, oracle)
 	})
 
@@ -143,8 +143,8 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 		}
 		got := BatchBoolean(ms, OpIntersect)
 		defer runtime.KeepAlive(got)
-		oracle := refFold(handlesOf(ms), reference.Intersection)
-		defer reference.DeleteManifold(oracle)
+		oracle := refFold(handlesOf(ms), cppref.Intersection)
+		defer cppref.DeleteManifold(oracle)
 		assertGeom(t, got, oracle)
 	})
 
@@ -158,10 +158,10 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 		got := BatchBoolean([]*Manifold{a, b, c}, OpSubtract)
 		defer runtime.KeepAlive(got)
 		// a - b - c == a - (b ∪ c)
-		bc := reference.Union(b.refHandle(), c.refHandle())
-		defer reference.DeleteManifold(bc)
-		oracle := reference.Difference(a.refHandle(), bc)
-		defer reference.DeleteManifold(oracle)
+		bc := cppref.Union(b.refHandle(), c.refHandle())
+		defer cppref.DeleteManifold(bc)
+		oracle := cppref.Difference(a.refHandle(), bc)
+		defer cppref.DeleteManifold(oracle)
 		assertGeom(t, got, oracle)
 	})
 }

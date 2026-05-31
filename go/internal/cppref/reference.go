@@ -1,19 +1,13 @@
-// Package reference is the test-only oracle for the Go port.
+// reference.go is the public-API-oracle layer of package cppref: every function
+// here calls straight into the stable public C API of libmanifoldc, providing the
+// trusted golden values the differential tests compare against. (Keep these calling
+// the public API — never reimplement them on top of the internals shim, or they
+// stop being an independent check.)
 //
-// Every function here calls straight into the public C API of libmanifoldc.
-// Tests compare results from the Go implementation against the equivalent call
-// here. This package is KEPT permanently as the differential-test oracle (it is
-// NOT deleted at the end of the port): it catches regressions when fixing bugs,
-// proves performance changes don't alter results, and re-validates the port when
-// upstream C++ changes are pulled in. At the endgame it relocates to a test-only
-// location that production never imports; the cgo/libmanifold build stays a
-// test-only dependency.
-package reference
+// This file carries NO #cgo directives: the link/include configuration lives once
+// in bridge.go and applies package-globally, so libmanifold is linked a single time.
+package cppref
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo CFLAGS: -I${SRCDIR}/../../bindings/c/include
-// #cgo darwin LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -lmanifoldc -lmanifold -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src
-// #cgo linux LDFLAGS: -L${SRCDIR}/../../build/bindings/c -L${SRCDIR}/../../build/src -lmanifoldc -lmanifold -Wl,-rpath,${SRCDIR}/../../build/bindings/c -Wl,-rpath,${SRCDIR}/../../build/src
 // #include <stdlib.h>
 // #include <manifold/manifoldc.h>
 import "C"
@@ -197,9 +191,7 @@ func Transform(h *handle.Manifold,
 	return handle.NewManifold(unsafe.Pointer(p))
 }
 
-func DeleteManifold(h *handle.Manifold) {
-	C.manifold_delete_manifold((*C.ManifoldManifold)(h.Ptr()))
-}
+// DeleteManifold is defined in bridge.go (same cppref package).
 
 // Translate is the C++-side reference implementation: a direct call to
 // manifold_translate. Used as the oracle that the Go-side Translate is
