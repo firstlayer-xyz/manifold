@@ -6,24 +6,22 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 )
 
 // writeOBJWithEpsilon mirrors the C++ static
 // WriteOBJWithEpsilon(stream, mesh, epsilon) helper in
 // src/impl.cpp. Output format is the same:
-//   "# ======= begin mesh ======"
-//   "# float_format = fixed" | "hexfloat"
-//   "# tolerance = <X>"
-//   ["# epsilon = <X>" — only when epsilon != nil]
-//   "v <x> <y> <z>" — one per vertex
-//   "f <i> <j> <k>" — one per triangle, 1-indexed, sorted lexicographically
-//   "# ======== end mesh ======="
+//
+//	"# ======= begin mesh ======"
+//	"# float_format = fixed" | "hexfloat"
+//	"# tolerance = <X>"
+//	["# epsilon = <X>" — only when epsilon != nil]
+//	"v <x> <y> <z>" — one per vertex
+//	"f <i> <j> <k>" — one per triangle, 1-indexed, sorted lexicographically
+//	"# ======== end mesh ======="
 //
 // hexFloat output activates when the MANIFOLD_OBJ_HEX_FLOAT env var is
 // "1", "true", "TRUE", "on", or "ON". Hex output mirrors C printf
@@ -158,10 +156,12 @@ func formatHexFloatLikeCPrintf(v float64) string {
 // readOBJWithEpsilon mirrors the C++ static ReadOBJWithEpsilon helper
 // in src/impl.cpp. It reads lines from r and matches them against four
 // patterns:
-//   "# tolerance = <X>"   → mesh.Tolerance
-//   "# epsilon = <X>"     → out epsilon
-//   "v <x> <y> <z>"       → append to mesh.VertProperties
-//   "f <i>(/...) <j>(/...) <k>(/...)" → append to mesh.TriVerts (0-indexed)
+//
+//	"# tolerance = <X>"   → mesh.Tolerance
+//	"# epsilon = <X>"     → out epsilon
+//	"v <x> <y> <z>"       → append to mesh.VertProperties
+//	"f <i>(/...) <j>(/...) <k>(/...)" → append to mesh.TriVerts (0-indexed)
+//
 // Lines longer than BUFFER_SIZE (1000 chars) are skipped, matching C++.
 // Returns the parsed mesh and an optional epsilon (nil if absent).
 func readOBJWithEpsilon(r io.Reader) (MeshGL64, *float64) {
@@ -247,13 +247,14 @@ var (
 // WriteOBJ are honored.
 //
 // Ported top-down from C++:
-//   Manifold Manifold::ReadOBJ(std::istream& stream) {
-//     if (!stream.good()) return Invalid();
-//     auto [mesh, epsilon] = ReadOBJWithEpsilon(stream);
-//     auto impl = std::make_shared<Impl>(mesh);
-//     if (epsilon) impl->SetEpsilon(epsilon.value());
-//     return Manifold(impl);
-//   }
+//
+//	Manifold Manifold::ReadOBJ(std::istream& stream) {
+//	  if (!stream.good()) return Invalid();
+//	  auto [mesh, epsilon] = ReadOBJWithEpsilon(stream);
+//	  auto impl = std::make_shared<Impl>(mesh);
+//	  if (epsilon) impl->SetEpsilon(epsilon.value());
+//	  return Manifold(impl);
+//	}
 func ReadOBJ(r io.Reader) *Manifold {
 	if r == nil {
 		return invalidManifold()
@@ -264,14 +265,13 @@ func ReadOBJ(r io.Reader) *Manifold {
 	m := NewManifoldFromMeshGL64(mesh)
 	if epsilon != nil {
 		// Mirror impl->SetEpsilon(epsilon.value()). We need a mutable
-		// view: copy the impl, set epsilon, re-wrap.
-		impl := bridge.GetImpl(m.h)
+		// view: copy the impl, set epsilon, re-seal.
+		impl := getImpl(m)
 		defer impl.Delete()
 		mut := impl.Copy()
 		defer mut.Delete()
-		mut.SetEpsilonMin(*epsilon)
-		runtime.KeepAlive(m)
-		return wrap(mut.ToManifold())
+		mut.SetEpsilon(*epsilon, false)
+		return mut.ToManifold()
 	}
 	return m
 }
@@ -280,11 +280,12 @@ func ReadOBJ(r io.Reader) *Manifold {
 // recording tolerance and epsilon so that ReadOBJ can round-trip.
 //
 // Ported top-down from C++:
-//   bool Manifold::WriteOBJ(std::ostream& stream) const {
-//     if (!stream.good()) return false;
-//     stream << *this->GetCsgLeafNode().GetImpl();   // == WriteOBJWithEpsilon(stream, GetMeshGL64(-1), {epsilon})
-//     return true;
-//   }
+//
+//	bool Manifold::WriteOBJ(std::ostream& stream) const {
+//	  if (!stream.good()) return false;
+//	  stream << *this->GetCsgLeafNode().GetImpl();   // == WriteOBJWithEpsilon(stream, GetMeshGL64(-1), {epsilon})
+//	  return true;
+//	}
 func (m *Manifold) WriteOBJ(w io.Writer) bool {
 	if w == nil {
 		return false

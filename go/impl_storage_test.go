@@ -2,24 +2,28 @@ package manifold
 
 import (
 	"math"
-	"runtime"
 	"sort"
 	"testing"
+
+	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
-// TestImplStorageRoundTrip validates the marshalling seam: a C++ Impl marshalled
-// into native implStorage and back must reproduce the same mesh (geometry +
+// TestImplStorageRoundTrip validates the marshalling seam: native implStorage
+// marshalled out to a C++ Impl and back must reproduce the same mesh (geometry +
 // properties + counts). Exercises a property-carrying, transformed mesh.
 func TestImplStorageRoundTrip(t *testing.T) {
 	m := Sphere(1.0, 20).CalculateNormals(3, 60).Translate(Vec3{X: 0.3, Y: 0.2})
-	defer runtime.KeepAlive(m)
 
-	v := getImpl(m)
-	defer v.Delete()
-	s := marshalImplStorageFromBridge(v.h)
+	// refHandle marshals s -> a C++ handle (marshalImplStorageToBridge); reading it
+	// back via marshalImplStorageFromBridge round-trips through the full bridge seam.
+	rh := m.refHandle()
+	defer reference.DeleteManifold(rh)
+	bi := bridge.GetImpl(rh)
+	defer bi.Delete()
+	s := marshalImplStorageFromBridge(bi)
 
-	// Adopt s as the mutable impl's native storage; ToManifold marshals it back
-	// into the bridge handle (exercising marshalImplStorageToBridge) and seals.
+	// Adopt s as the mutable impl's native storage; ToManifold publishes it.
 	mi := newImpl()
 	defer mi.Delete()
 	mi.s = s

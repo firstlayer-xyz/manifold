@@ -2,13 +2,14 @@ package manifold
 
 import (
 	"math"
-	"runtime"
 	"sort"
 	"testing"
 
+	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestRayCast_VsCpp validates the entire native Boolean3 kernel cascade
@@ -47,17 +48,22 @@ func TestRayCast_VsCpp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := tc.mk()
-			defer runtime.KeepAlive(m)
 			view := getImpl(m)
 			defer view.Delete()
 			faceBox, faceMorton := view.GetFaceBoxMorton()
 			col := collider.New(faceBox, faceMorton)
 
+			// C++ oracle: seal the native mesh into a bridge handle and read its Impl.
+			rh := m.refHandle()
+			defer reference.DeleteManifold(rh)
+			bimpl := bridge.GetImpl(rh)
+			defer bimpl.Delete()
+
 			for ri, r := range rays {
 				native := canon(boolean.RayCast(view.Verts(), view.VertNormals(),
 					view.FaceNormals(), view.HalfedgeStarts(), view.HalfedgePairs(),
 					col, r.o, r.e))
-				refRaw := view.h.RayCast(r.o, r.e)
+				refRaw := bimpl.RayCast(r.o, r.e)
 				ref := make([]boolean.RayHit, len(refRaw))
 				for i, h := range refRaw {
 					ref[i] = boolean.RayHit{FaceID: h.FaceID, Distance: h.Distance, Position: h.Position, Normal: h.Normal}

@@ -5,9 +5,12 @@
 // only one class, but two reference flavours with different sets of
 // callable methods (const vs non-const).
 //
-// During the port, both wrap bridge handles that hold the underlying
-// C++ Impl. Once everything is ported, Impl/MutableImpl become plain
-// Go structs and the bridge package goes away.
+// Both are now backed by native Go storage (implStorage). MutableImpl still keeps
+// a transient bridge handle for the last two C++ algorithms (Subdivide/Refine via
+// runBridgeAlgo); the const Impl is pure Go. The bridge is not discarded at the end
+// of the port — it is retained as the permanent C++ differential-test oracle (it
+// relocates to a test-only package), so regressions, performance changes, and
+// upstream merges can always be validated against the reference implementation.
 package manifold
 
 import (
@@ -31,13 +34,11 @@ import (
 // the shared_ptr reference; the underlying Impl lives on inside the
 // Manifold).
 type Impl struct {
-	// s is the native storage, marshalled out of the bridge handle once by getImpl
-	// (oracle-migration step 2: the const view is now native-backed — every read
-	// accessor reads s, mirroring MutableImpl). h is retained only so Delete can
-	// release the shared_ptr reference and Copy can fork a mutable bridge handle
-	// (which preserves the C++ collider_ the test oracle still needs).
+	// s is the native storage. getImpl aliases the owning Manifold's storage
+	// directly (oracle-migration step 3: no cgo read — the const view reads s,
+	// mirroring MutableImpl). The const Impl is read-only by contract, so the
+	// alias is safe; mutating paths go through Copy, which clones s.
 	s *implStorage
-	h *bridge.Impl
 	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
 	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
 	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
@@ -64,8 +65,7 @@ type MutableImpl struct {
 // Impl (releases the shared_ptr reference held by this view). The native
 // collider, if the Manifold carries one, comes along (set by Transform/ToManifold).
 func getImpl(m *Manifold) *Impl {
-	h := bridge.GetImpl(m.h)
-	return &Impl{s: marshalImplStorageFromBridge(h), h: h, coll: m.coll}
+	return &Impl{s: m.s, coll: m.coll}
 }
 
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
@@ -74,36 +74,45 @@ func newImpl() *MutableImpl {
 	return &MutableImpl{h: bridge.NewMutableImpl(), s: newImplStorage()}
 }
 
-// Delete releases this const view's shared_ptr reference.
-func (i *Impl) Delete() { i.h.Delete() }
+// Delete releases this const view. The const Impl aliases the owning Manifold's
+// native storage (getImpl), so there is nothing of its own to free; the method is
+// kept because callers `defer impl.Delete()` by convention.
+func (i *Impl) Delete() {}
 
-// Delete releases this mutable Impl's shared_ptr reference.
-func (mi *MutableImpl) Delete() { mi.h.Delete() }
+// Delete releases this mutable Impl's transient bridge handle (the only resource
+// it owns — the native storage is shared with whatever consumed it via ToManifold).
+// Guarded against the nil h that ToManifold leaves behind.
+func (mi *MutableImpl) Delete() {
+	if mi.h != nil {
+		mi.h.Delete()
+		mi.h = nil
+	}
+}
 
 // Copy returns a fresh mutable Impl initialized from this const view.
 // Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
 // of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	// Clone the native storage directly (no bridge re-read). i.h.Copy() still forks
-	// the mutable bridge handle ToManifold marshals s back into — and crucially it
-	// preserves the source's C++ collider_, which the test oracle reads when it runs
-	// C++ booleans on Go-built meshes.
-	mi := &MutableImpl{h: i.h.Copy(), s: i.s.clone()}
+	// Clone the native storage; allocate a fresh transient bridge handle only so the
+	// still-C++ Subdivide/Refine (runBridgeAlgo) have somewhere to marshal into.
+	mi := &MutableImpl{h: bridge.NewMutableImpl(), s: i.s.clone()}
 	if i.coll != nil {
 		mi.coll = i.coll.Copy()
 	}
 	return mi
 }
 
-// ToManifold seals this MutableImpl into a published Manifold,
-// mirroring C++ `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native
-// storage is marshalled back into the bridge handle first (the transitional
-// seam), then sealed. The native collider travels with the published Manifold
-// so a later getImpl recovers it.
+// ToManifold seals this MutableImpl into a published Manifold, mirroring C++
+// `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native storage is published
+// directly (oracle-migration step 3: no bridge round-trip); the native collider
+// travels with the Manifold. The transient bridge handle (used only by the still-C++
+// Subdivide/Refine) is released here.
 func (mi *MutableImpl) ToManifold() *Manifold {
-	marshalImplStorageToBridge(mi.s, mi.h)
-	m := wrap(mi.h.ToManifold())
-	m.coll = mi.coll
+	m := &Manifold{s: mi.s, coll: mi.coll}
+	if mi.h != nil {
+		mi.h.Delete()
+		mi.h = nil
+	}
 	return m
 }
 

@@ -487,6 +487,12 @@ kept as a record of what was ported and how it's differential-tested.
   build becomes a test-only dependency. Algorithm oracles can migrate to
   `cppref` incrementally as drilled (compiler-enforced separation), but the
   custom cgo glue makes it cheapest to batch at the storage-lever endgame.
+  **The oracle is KEPT PERMANENTLY, not deleted.** "cgo is throwaway" applies to
+  the PRODUCTION dependency (which shrinks to zero), NOT to the bridge/reference
+  packages themselves. The C++ reference is the durable differential-test harness:
+  it catches regressions when fixing bugs, proves performance work doesn't change
+  results, and re-validates the port when upstream C++ changes are pulled in.
+  Re-deriving it from scratch later would be costly, so it stays as a test-only dep.
   ORACLE-MIGRATION PLAN (in progress — algorithms (b) are ALL drilled; only the
   storage facade (a) + the collider oracle remain). Ordered green commits:
   - 1a DONE: decouple value-type leaks (ImplScalars, RayHit) from the accessor API.
@@ -506,17 +512,30 @@ kept as a record of what was ported and how it's differential-tested.
     collider_ for the oracle; storage is cloned natively via implStorage.clone()).
     The two dead read-path converters (bridgeTriRefsToMesh/bridgeMeshIDRelsToNative)
     were deleted. Production now has ZERO bridge.TriRef/bridge.MeshIDRelation uses.
-  - 3: Manifold holds native `s` (not `h *handle.Manifold`); ToManifold publishes
-    s; getImpl wraps m.s (no cgo read). Rewire the test-oracle interaction: the
-    pervasive `&Manifold{h: refHandle}` pattern + `reference.X(m.h)` need a
-    test-only helper that marshals native storage <-> a bridge handle for the
-    oracle. After this, production reads NO storage from the bridge.
+  - 3 DONE: Manifold holds native `s` (dropped `h *handle.Manifold`); ToManifold
+    publishes s directly (no bridge round-trip); getImpl aliases m.s (no cgo read);
+    Copy clones s + allocates a fresh transient bridge handle only for Subdivide/
+    Refine. SortGeometry + Transform refresh the collider natively (collider.New /
+    coll.Transform / coll.UpdateBoxes), dropping their bridge BuildCollider/Collider*
+    calls; SortGeometry's bBox is now the native union of the post-sort face boxes.
+    WithContext is native (shallow copy + ctx, currently unobserved — faithful to the
+    not-yet-ported ctx_); the `wrap(bridge.Empty())` empty-result fallbacks became
+    native `emptyManifold(NoError)`; ReadOBJ's epsilon branch is native. Production
+    no longer imports `internal/handle` and holds NO bridge handle on a Manifold.
+    Test-oracle seam: oracle_test.go provides `wrap`/`fromRefHandle` (bridge handle ->
+    native s) and `(m *Manifold).refHandle()` (native s -> a fresh, fully-valid C++
+    handle via the MeshGL ingest round-trip, so the C++ side re-finalizes — Morton
+    sort + collider build — and the handle is valid even for transformed/unsorted
+    meshes). All `&Manifold{h: ref}` -> `fromRefHandle(ref)`, all `m.h` -> `m.refHandle()`.
   - 4: native `ReserveIDs` (a Go atomic; see the ReserveIDs note below — MUST be
     last: while native production and bridge-handle manifolds coexist and can be
     native-booleaned together, a split counter risks UpdateReference's offsetQ
-    colliding meshIDs; step 3 removes that mixing, making the split safe) + native
-    Empty/Invalid/PropagateStatus/WithContext/ManifoldFromMeshGL; then relocate
-    bridge -> internal/cppref (production bridge-free; cgo becomes a test-only dep).
+    colliding meshIDs; step 3 removes that mixing, making the split safe) +
+    ExecutionContext (the last bridge object manifold.go touches); then relocate
+    bridge + reference -> internal/cppref (production bridge-free; cgo becomes a
+    test-only dep — KEPT PERMANENTLY as the differential-test oracle, not deleted).
+    Invalid/PropagateStatus/Empty/ManifoldFromMeshGL are ALREADY native (newImpl ->
+    MakeEmpty/ingest -> ToManifold), so step 4 is just ReserveIDs + ctx + relocation.
 - **`Quality` and `DisjointSets` are independent Go state.** They
   do not share with the C++ side. Fine while the C++ Manifold is
   the black box; revisit only if we ever want one process to

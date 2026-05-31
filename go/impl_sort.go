@@ -3,6 +3,7 @@ package manifold
 import (
 	"math"
 
+	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -300,37 +301,28 @@ func (mi *MutableImpl) SortFaces(faceBox []geom.Box, faceMorton []uint32) ([]geo
 }
 
 // SortGeometry is the Go port of C++ Manifold::Impl::SortGeometry.
-// SortVerts, GetFaceBoxMorton, SortFaces (with in-place GatherFaces),
-// and CompactProps all run in Go. Only the Collider AABB-tree build
-// + bBox refresh remain in C++ via the BuildCollider bridge.
+// SortVerts, GetFaceBoxMorton, SortFaces (with in-place GatherFaces), the
+// Collider AABB-tree build, the bBox refresh, and CompactProps all run in Go.
 func (mi *MutableImpl) SortGeometry() {
 	if len(mi.HalfedgeStarts()) == 0 {
-		mi.h.BuildCollider(nil, nil)
+		mi.coll = nil // collider_ = Collider{}
 		return
 	}
 	mi.SortVerts()
 	faceBox, faceMorton := mi.GetFaceBoxMorton()
 	box, morton := mi.SortFaces(faceBox, faceMorton)
 	if len(mi.HalfedgeStarts()) == 0 {
-		mi.h.BuildCollider(nil, nil)
+		mi.coll = nil // collider_ = Collider{}
 		return
 	}
-	flat := make([]float64, 6*len(box))
-	policy := parallel.AutoPolicy(len(box), 100000)
-	parallel.ForEachN(policy, len(box), func(i int) {
-		b := box[i]
-		flat[6*i+0] = b.Min.X
-		flat[6*i+1] = b.Min.Y
-		flat[6*i+2] = b.Min.Z
-		flat[6*i+3] = b.Max.X
-		flat[6*i+4] = b.Max.Y
-		flat[6*i+5] = b.Max.Z
-	})
-	mi.h.BuildCollider(flat, morton)
-	// BuildCollider refreshed the bridge bBox_ from the new collider's bounding
-	// box (C++ SortGeometry: bBox_ = collider_.GetBoundingBox()); SortVerts may
-	// have trimmed NaN verts, so pull the refreshed box back into native storage.
-	minB, maxB := mi.h.GetBBox()
-	mi.SetBBox(minB, maxB)
+	// collider_ = Collider(faceBox, faceMorton); bBox_ = collider_.GetBoundingBox().
+	// The collider's bounding box is the union of all leaf (face) boxes; SortVerts
+	// may have trimmed NaN verts, so recompute from the post-sort boxes.
+	mi.coll = collider.New(box, morton)
+	bb := geom.EmptyBox()
+	for _, b := range box {
+		bb = bb.Union(b)
+	}
+	mi.SetBBox(bb.Min, bb.Max)
 	mi.CompactProps()
 }

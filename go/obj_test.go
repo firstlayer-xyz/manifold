@@ -15,7 +15,7 @@ import (
 func TestWriteOBJ_Tetrahedron_FormatSpotCheck(t *testing.T) {
 	hRef := reference.Tetrahedron()
 	defer reference.DeleteManifold(hRef)
-	m := &Manifold{h: hRef}
+	m := fromRefHandle(hRef)
 
 	var buf bytes.Buffer
 	if !m.WriteOBJ(&buf) {
@@ -48,7 +48,7 @@ func TestWriteOBJ_Tetrahedron_FormatSpotCheck(t *testing.T) {
 func TestReadOBJ_RoundTrip_Tetrahedron(t *testing.T) {
 	hRef := reference.Tetrahedron()
 	defer reference.DeleteManifold(hRef)
-	src := &Manifold{h: hRef}
+	src := fromRefHandle(hRef)
 	defer runtime.KeepAlive(src)
 
 	var buf bytes.Buffer
@@ -74,7 +74,7 @@ func TestReadOBJ_RoundTrip_Tetrahedron(t *testing.T) {
 		t.Errorf("GetEpsilon round-trip: got %v, want %v",
 			dst.GetEpsilon(), src.GetEpsilon())
 	}
-	assertSameBoundingBox(t, dst.h, src.h, 1e-15)
+	assertSameBoundingBox(t, dst.refHandle(), src.refHandle(), 1e-15)
 }
 
 // TestReadOBJ_IgnoresOverlongLines_AndComments mirrors the C++ skip
@@ -115,7 +115,7 @@ func TestReadOBJ_IgnoresOverlongLines_AndComments(t *testing.T) {
 func TestWriteOBJ_GoToCppRead_Differential(t *testing.T) {
 	hRef := reference.Tetrahedron()
 	defer reference.DeleteManifold(hRef)
-	src := &Manifold{h: hRef}
+	src := fromRefHandle(hRef)
 
 	var buf bytes.Buffer
 	if !src.WriteOBJ(&buf) {
@@ -135,7 +135,7 @@ func TestWriteOBJ_GoToCppRead_Differential(t *testing.T) {
 		t.Errorf("C++-read Volume: got %v, want %v",
 			reference.Volume(hRoundTrip), src.Volume())
 	}
-	assertSameBoundingBox(t, src.h, hRoundTrip, 1e-15)
+	assertSameBoundingBox(t, src.refHandle(), hRoundTrip, 1e-15)
 }
 
 // TestReadOBJ_FacesWithSlashes mirrors the C++ FACE_ELEMENT pattern,

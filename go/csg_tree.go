@@ -227,7 +227,7 @@ func leafBBox(m *Manifold) geom.Box {
 // internals. SEQ path (serials assigned in pop order).
 func batchBoolean(op OpType, results []*Manifold) *Manifold {
 	if len(results) == 0 {
-		return wrap(bridge.Empty())
+		return emptyManifold(NoError)
 	}
 	if len(results) == 1 {
 		return results[0]

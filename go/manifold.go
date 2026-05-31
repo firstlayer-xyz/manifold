@@ -8,13 +8,11 @@ package manifold
 
 import (
 	"math"
-	"runtime"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/disjointsets"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
-	"github.com/firstlayer-xyz/manifold/go/internal/handle"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
@@ -50,14 +48,19 @@ type Box = geom.Box
 
 // Manifold is a watertight 3D mesh with manifold topology.
 type Manifold struct {
-	h *handle.Manifold
-	// coll is the native Go collider that travels with this Manifold
-	// (native-Impl-storage Phase 1). Set when a Manifold is produced by a native
-	// path that built/refitted one (Transform via ToManifold); nil otherwise, in
-	// which case getImpl's Impl lazily rebuilds from the Morton-sorted faces.
-	// Transitional until the Impl owns its storage outright (then it lives on the
-	// Impl struct, impl.h:89).
+	// s is the native storage (oracle-migration step 3: a Manifold no longer holds
+	// a cgo bridge handle — production is bridge-free for storage). Published by
+	// MutableImpl.ToManifold; read via getImpl, which aliases s into a const Impl.
+	s *implStorage
+	// coll is the native Go collider that travels with this Manifold. Set when a
+	// Manifold is produced by a path that built/refitted one (SortGeometry, Transform);
+	// nil otherwise, in which case getImpl's Impl lazily rebuilds from the
+	// Morton-sorted faces. Mirrors C++ Impl::collider_.
 	coll *collider.Collider
+	// ctx is the attached ExecutionContext (Manifold::WithContext). The Go port does
+	// not yet observe ctx_ during ops (see Status/Refine notes), so it is carried but
+	// currently unread — faithful to the C++ field that WithContext sets.
+	ctx *ExecutionContext
 }
 
 // Mat3x4 is a 3-row, 4-column affine transform in column-major order.
@@ -785,7 +788,7 @@ func HullPts(pts []Vec3) *Manifold {
 // Ported top-down from C++ Manifold::BatchBoolean.
 func BatchBoolean(manifolds []*Manifold, op OpType) *Manifold {
 	if len(manifolds) == 0 {
-		return wrap(bridge.Empty())
+		return emptyManifold(NoError)
 	}
 	if len(manifolds) == 1 {
 		return manifolds[0]
@@ -804,7 +807,7 @@ func BatchBoolean(manifolds []*Manifold, op OpType) *Manifold {
 		negative := batchUnion(manifolds[1:])
 		return simpleBoolean(positive, negative, OpSubtract)
 	}
-	return wrap(bridge.Empty()) // unreachable: op is one of the three OpTypes
+	return emptyManifold(NoError) // unreachable: op is one of the three OpTypes
 }
 
 // Compose unions a list of manifolds — equivalent to BatchBoolean(OpAdd).
@@ -828,7 +831,7 @@ func BatchHull(manifolds []*Manifold) *Manifold {
 		total += m.NumVert()
 	}
 	if total == 0 {
-		return wrap(bridge.Empty())
+		return emptyManifold(NoError)
 	}
 	vertPos := make([]Vec3, 0, total)
 	for _, m := range manifolds {
@@ -1081,7 +1084,12 @@ func (ctx *ExecutionContext) Delete() { ctx.c.Delete() }
 //	std::atomic_store(&result.ctx_, ctx.impl_);
 //	return result;
 func (m *Manifold) WithContext(ctx *ExecutionContext) *Manifold {
-	return wrap(bridge.WithContext(m.h, ctx.c))
+	// C++: `Manifold result = *this; std::atomic_store(&result.ctx_, ctx.impl_);`
+	// A shallow copy sharing the same native storage, with ctx attached. (The Go
+	// port does not yet observe ctx_ during ops, so this only records it.)
+	cp := *m
+	cp.ctx = ctx
+	return &cp
 }
 
 // SetProperties returns a copy of m with numProp properties per
@@ -1887,7 +1895,7 @@ func (m *Manifold) Mirror(normal Vec3) *Manifold {
 	}
 	lenSq := normal.X*normal.X + normal.Y*normal.Y + normal.Z*normal.Z
 	if lenSq == 0 {
-		return wrap(bridge.Empty())
+		return emptyManifold(NoError)
 	}
 	invLen := 1.0 / math.Sqrt(lenSq)
 	n := Vec3{X: normal.X * invLen, Y: normal.Y * invLen, Z: normal.Z * invLen}
@@ -1938,13 +1946,4 @@ func (m *Manifold) Rotate(xDeg, yDeg, zDeg float64) *Manifold {
 		{r[2][0], r[2][1], r[2][2]},
 		{0, 0, 0},
 	})
-}
-
-// wrap takes ownership of a raw handle and attaches a finalizer that releases
-// the underlying C++ Manifold when the wrapper is garbage-collected. Callers
-// must not delete the handle themselves once it has been wrapped.
-func wrap(h *handle.Manifold) *Manifold {
-	m := &Manifold{h: h}
-	runtime.SetFinalizer(m, func(m *Manifold) { bridge.DeleteManifold(m.h) })
-	return m
 }

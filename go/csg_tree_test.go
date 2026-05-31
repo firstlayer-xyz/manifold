@@ -95,7 +95,7 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 	handlesOf := func(ms []*Manifold) []*handle.Manifold {
 		hs := make([]*handle.Manifold, len(ms))
 		for i, m := range ms {
-			hs[i] = m.h
+			hs[i] = m.refHandle()
 		}
 		return hs
 	}
@@ -119,8 +119,8 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 			Cube(Vec3{X: 1, Y: 1, Z: 1}, true),
 			Cube(Vec3{X: 1, Y: 1, Z: 1}, true).Translate(Vec3{X: 0.5}),
 			Sphere(0.7, 24).Translate(Vec3{X: 0.3, Y: 0.3}),
-			Cube(Vec3{X: 1, Y: 1, Z: 1}, true).Translate(Vec3{X: 8}),       // disjoint
-			Sphere(0.6, 20).Translate(Vec3{X: 8.2, Y: 0.2, Z: 0.2}),        // overlaps #4
+			Cube(Vec3{X: 1, Y: 1, Z: 1}, true).Translate(Vec3{X: 8}), // disjoint
+			Sphere(0.6, 20).Translate(Vec3{X: 8.2, Y: 0.2, Z: 0.2}),  // overlaps #4
 		}
 		for _, m := range ms {
 			defer runtime.KeepAlive(m)
@@ -158,9 +158,9 @@ func TestBatchBoolean_Native_VsReference(t *testing.T) {
 		got := BatchBoolean([]*Manifold{a, b, c}, OpSubtract)
 		defer runtime.KeepAlive(got)
 		// a - b - c == a - (b ∪ c)
-		bc := reference.Union(b.h, c.h)
+		bc := reference.Union(b.refHandle(), c.refHandle())
 		defer reference.DeleteManifold(bc)
-		oracle := reference.Difference(a.h, bc)
+		oracle := reference.Difference(a.refHandle(), bc)
 		defer reference.DeleteManifold(oracle)
 		assertGeom(t, got, oracle)
 	})

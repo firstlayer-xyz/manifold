@@ -162,21 +162,9 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 		result.coll = i.ensureCollider().Copy()
 		if collider.IsAxisAligned(t) {
 			result.coll.Transform(t)
-			result.h.ColliderTransform([4][3]float64(t)) // bridge oracle (transitional)
 		} else {
 			faceBox, _ := result.GetFaceBoxMorton()
 			result.coll.UpdateBoxes(faceBox)
-			flat := make([]float64, 6*len(faceBox))
-			parallel.ForEachN(policy, len(faceBox), func(idx int) {
-				b := faceBox[idx]
-				flat[6*idx+0] = b.Min.X
-				flat[6*idx+1] = b.Min.Y
-				flat[6*idx+2] = b.Min.Z
-				flat[6*idx+3] = b.Max.X
-				flat[6*idx+4] = b.Max.Y
-				flat[6*idx+5] = b.Max.Z
-			})
-			result.h.ColliderUpdateBoxes(flat) // bridge oracle (transitional)
 		}
 	}
 	return result

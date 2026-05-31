@@ -25,7 +25,7 @@ func TestCreateHalfedges_Tetrahedron_VsCpp(t *testing.T) {
 	// createHalfedges internally).
 	mGo := Tetrahedron()
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.h)
+	goImpl := bridge.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 	goStarts := append([]int32(nil), goImpl.HalfedgeStarts()...)
 	goPairs := append([]int32(nil), goImpl.HalfedgePairs()...)
@@ -68,7 +68,7 @@ func TestCreateHalfedges_Tetrahedron_VsCpp(t *testing.T) {
 func TestSetNormalsAndCoplanar_Tetrahedron_VsCpp(t *testing.T) {
 	mGo := Tetrahedron()
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.h)
+	goImpl := bridge.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 
 	hRef := reference.Tetrahedron()
@@ -128,7 +128,7 @@ func sameVec3Set(a, b []Vec3, eps float64) bool {
 func TestCreateHalfedges_Cube_VsCpp(t *testing.T) {
 	mGo := Cube(Vec3{X: 1, Y: 1, Z: 1}, false)
 	defer runtime.KeepAlive(mGo)
-	goImpl := bridge.GetImpl(mGo.h)
+	goImpl := bridge.GetImpl(mGo.refHandle())
 	defer goImpl.Delete()
 	goStarts := append([]int32(nil), goImpl.HalfedgeStarts()...)
 	goPairs := append([]int32(nil), goImpl.HalfedgePairs()...)
