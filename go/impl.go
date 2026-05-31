@@ -413,7 +413,13 @@ func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform [4][
 // impl_simplify.go / impl_smoothing_tangents.go.
 
 // Subdivide calls C++ Impl::Subdivide with the constant-n splits lambda.
-func (mi *MutableImpl) SubdivideN(n int) { mi.runBridgeAlgo(func() { mi.h.SubdivideN(n) }) }
+func (mi *MutableImpl) SubdivideN(n int) {
+	// Native topological subdivision (no smoothing): Subdivide([n]{n-1}, false).
+	// Subdivide rebuilds the halfedges but does not finalize; the geometry changed,
+	// so any cached collider is stale.
+	mi.Subdivide(func(geom.Vec3, geom.Vec4, geom.Vec4) int { return n - 1 }, false)
+	mi.coll = nil
+}
 
 // RefineN calls C++ Impl::Refine with constant n-1 splits.
 func (mi *MutableImpl) RefineN(n int) { mi.runBridgeAlgo(func() { mi.h.RefineN(n) }) }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
+	"github.com/firstlayer-xyz/manifold/go/reference"
 )
 
 // TestSubdivideHelpers_Cube validates the subdivision topology helpers on a cube
@@ -53,5 +54,53 @@ func TestSubdivideHelpers_Cube(t *testing.T) {
 		if !mi.s.halfedge.IsForward(e.HalfedgeIdx) {
 			t.Errorf("CreateTmpEdges edge %+v references a non-forward halfedge", e)
 		}
+	}
+}
+
+// TestSubdivide_VsBridge differential-tests the native topological Subdivide (via
+// SubdivideN) against the C++ bridge on the same inputs. Subdivision is fully
+// deterministic (the Partition triangulation is purely topological), so the
+// output vert/tri counts must match exactly and the geometry to fp precision.
+func TestSubdivide_VsBridge(t *testing.T) {
+	cases := []struct {
+		name string
+		mk   func() *Manifold
+		n    int
+	}{
+		{"cube_n2", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, true) }, 2},
+		{"cube_n5", func() *Manifold { return Cube(Vec3{X: 1, Y: 1, Z: 1}, true) }, 5},
+		{"tetra_n4", func() *Manifold { return &Manifold{h: reference.Tetrahedron()} }, 4},
+		{"sphere_n3", func() *Manifold { return Sphere(1, 8) }, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := tc.mk()
+			defer runtime.KeepAlive(m)
+
+			nv := getImpl(m).Copy()
+			defer nv.Delete()
+			nv.SubdivideN(tc.n)
+			got := nv.ToManifold()
+			defer runtime.KeepAlive(got)
+
+			bv := getImpl(m).Copy()
+			defer bv.Delete()
+			bv.runBridgeAlgo(func() { bv.h.SubdivideN(tc.n) })
+			want := bv.ToManifold()
+			defer runtime.KeepAlive(want)
+
+			if g, w := got.NumVert(), want.NumVert(); g != w {
+				t.Errorf("NumVert: native=%d bridge=%d", g, w)
+			}
+			if g, w := got.NumTri(), want.NumTri(); g != w {
+				t.Errorf("NumTri: native=%d bridge=%d", g, w)
+			}
+			if !floatClose(got.Volume(), want.Volume(), 1e-9, 1e-9) {
+				t.Errorf("Volume: native=%v bridge=%v", got.Volume(), want.Volume())
+			}
+			if !floatClose(got.SurfaceArea(), want.SurfaceArea(), 1e-9, 1e-9) {
+				t.Errorf("SurfaceArea: native=%v bridge=%v", got.SurfaceArea(), want.SurfaceArea())
+			}
+		})
 	}
 }
