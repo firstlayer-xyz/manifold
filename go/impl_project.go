@@ -2,7 +2,7 @@ package manifold
 
 import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
-	"github.com/firstlayer-xyz/manifold/go/internal/orderedmap"
+	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/orderedmap"
 )
 
 // Project is the Go port of C++ Manifold::Impl::Project
