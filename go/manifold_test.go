@@ -1151,6 +1151,54 @@ func TestHull_Differential(t *testing.T) {
 
 // TestRefine_Differential checks the three refine flavors all change the
 // vertex count consistently with the C++ reference.
+// TestRefine_Smoothed_VsReference differential-tests the native Refine SMOOTHING
+// path (Impl::Refine + the InterpTri cubic-Bezier surface interpolation, incl. the
+// quaternion machinery) against the C++ bridge. The input must carry halfedge
+// tangents (else InterpTri is skipped), so each case smooths first, then Refines
+// the SAME smoothed manifold both ways. Topology is deterministic (exact vert/tri
+// counts); positions go through acos/sin/cos (Go stdlib vs C++ musl), so volume/
+// area match semantically (~1e-6), not bit-for-bit.
+func TestRefine_Smoothed_VsReference(t *testing.T) {
+	cases := []struct {
+		name string
+		mk   func() *Manifold
+	}{
+		{"smoothbynormals_sphere", func() *Manifold {
+			return Sphere(1, 16).CalculateNormals(0, 0).SmoothByNormals(0)
+		}},
+		{"smoothout_sphere", func() *Manifold {
+			return Sphere(1, 12).SmoothOut(60, 0)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sm := tc.mk()
+			defer runtime.KeepAlive(sm)
+			if sm.IsEmpty() || sm.Status() != NoError {
+				t.Fatalf("smoothing produced empty/errored input: empty=%v status=%v", sm.IsEmpty(), sm.Status())
+			}
+
+			got := sm.Refine(3) // native: Impl::Refine + InterpTri
+			defer runtime.KeepAlive(got)
+			ref := reference.Refine(sm.h, 3) // C++ bridge on the identical smoothed input
+			defer reference.DeleteManifold(ref)
+
+			if g, w := got.NumVert(), reference.NumVert(ref); g != w {
+				t.Errorf("NumVert: native=%d ref=%d", g, w)
+			}
+			if g, w := got.NumTri(), reference.NumTri(ref); g != w {
+				t.Errorf("NumTri: native=%d ref=%d", g, w)
+			}
+			if !floatClose(got.Volume(), reference.Volume(ref), 1e-6, 1e-6) {
+				t.Errorf("Volume: native=%v ref=%v", got.Volume(), reference.Volume(ref))
+			}
+			if !floatClose(got.SurfaceArea(), reference.SurfaceArea(ref), 1e-6, 1e-6) {
+				t.Errorf("SurfaceArea: native=%v ref=%v", got.SurfaceArea(), reference.SurfaceArea(ref))
+			}
+		})
+	}
+}
+
 func TestRefine_Differential(t *testing.T) {
 	t.Run("refine(2)", func(t *testing.T) {
 		hOrig := reference.Tetrahedron()

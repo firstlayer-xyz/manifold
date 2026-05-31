@@ -11,6 +11,8 @@
 package manifold
 
 import (
+	"math"
+
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
@@ -421,17 +423,32 @@ func (mi *MutableImpl) SubdivideN(n int) {
 	mi.coll = nil
 }
 
-// RefineN calls C++ Impl::Refine with constant n-1 splits.
-func (mi *MutableImpl) RefineN(n int) { mi.runBridgeAlgo(func() { mi.h.RefineN(n) }) }
-
-// RefineToLength calls C++ Impl::Refine with edge-length-based splits.
-func (mi *MutableImpl) RefineToLength(length float64) {
-	mi.runBridgeAlgo(func() { mi.h.RefineToLength(length) })
+// RefineN is the native Refine with constant n-1 splits (Manifold::Refine).
+func (mi *MutableImpl) RefineN(n int) {
+	mi.Refine(func(geom.Vec3, geom.Vec4, geom.Vec4) int { return n - 1 }, false)
 }
 
-// RefineToTolerance calls C++ Impl::Refine with tolerance-based splits.
+// RefineToLength is the native Refine splitting each edge into |edge|/length
+// pieces (Manifold::RefineToLength).
+func (mi *MutableImpl) RefineToLength(length float64) {
+	mi.Refine(func(edge geom.Vec3, _, _ geom.Vec4) int {
+		return int(edge.Length() / length)
+	}, false)
+}
+
+// RefineToTolerance is the native Refine splitting each edge by a tolerance-driven
+// arc heuristic (Manifold::RefineToTolerance); keepInterior thickens strip-like
+// triangulations.
 func (mi *MutableImpl) RefineToTolerance(tol float64) {
-	mi.runBridgeAlgo(func() { mi.h.RefineToTolerance(tol) })
+	mi.Refine(func(edge geom.Vec3, tangentStart, tangentEnd geom.Vec4) int {
+		edgeNorm := edge.Normalize()
+		tStart := tangentStart.Vec3()
+		tEnd := tangentEnd.Vec3()
+		start := tStart.Sub(edgeNorm.Scale(edgeNorm.Dot(tStart)))
+		end := tEnd.Sub(edgeNorm.Scale(edgeNorm.Dot(tEnd)))
+		d := 0.5*(start.Length()+end.Length()) + start.Sub(end).Length()
+		return int(math.Sqrt(3 * d / (4 * tol)))
+	}, true)
 }
 
 // runBridgeAlgo runs a still-C++ storage-mutating algorithm against the bridge
