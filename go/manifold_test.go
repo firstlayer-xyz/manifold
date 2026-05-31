@@ -1791,6 +1791,62 @@ func TestLevelSet_Sphere_Parallel(t *testing.T) {
 
 // TestSmoothFromMeshGL_SmokeRun is the float32/uint32 analog of
 // TestSmoothFromMeshGL64_SmokeRun.
+// TestSmoothFromMeshGL_VsBridge differential-tests the native Smooth(MeshGL)
+// (UpdateSharpenedEdges + the faceID iota/restore + CreateTangentsFromSmoothness)
+// against the C++ bridge on identical input, including a couple of sharpened
+// edges. Smooth doesn't move verts, so geometry is identical; the meaningful
+// output is the halfedge tangents, compared within acos/sin noise (1e-7).
+func TestSmoothFromMeshGL_VsBridge(t *testing.T) {
+	cube := Cube(Vec3{X: 1, Y: 1, Z: 1}, true)
+	defer runtime.KeepAlive(cube)
+	mesh := cube.GetMeshGL(-1)
+	mesh.HalfedgeTangent = nil
+	edges := []Smoothness{{Halfedge: 0, Smoothness: 0}, {Halfedge: 3, Smoothness: 0.5}}
+
+	got := SmoothFromMeshGL(mesh, edges)
+	defer runtime.KeepAlive(got)
+
+	bridgeEdges := make([]bridge.Smoothness, len(edges))
+	for i, e := range edges {
+		bridgeEdges[i] = bridge.Smoothness{Halfedge: e.Halfedge, Smoothness: e.Smoothness}
+	}
+	want := wrap(bridge.SmoothFromMeshGL(
+		mesh.NumProp, mesh.VertProperties, mesh.TriVerts,
+		mesh.MergeFromVert, mesh.MergeToVert,
+		mesh.RunIndex, mesh.RunOriginalID, mesh.RunTransform, mesh.RunFlags,
+		mesh.FaceID, mesh.HalfedgeTangent, mesh.Tolerance, bridgeEdges))
+	defer runtime.KeepAlive(want)
+
+	if got.Status() != NoError || want.Status() != NoError {
+		t.Fatalf("status: native=%v bridge=%v", got.Status(), want.Status())
+	}
+	if g, w := got.NumVert(), want.NumVert(); g != w {
+		t.Errorf("NumVert: native=%d bridge=%d", g, w)
+	}
+	if g, w := got.NumTri(), want.NumTri(); g != w {
+		t.Errorf("NumTri: native=%d bridge=%d", g, w)
+	}
+	// Halfedge tangents: same mesh order (both sort identically), compare values.
+	gi := getImpl(got)
+	defer gi.Delete()
+	wi := getImpl(want)
+	defer wi.Delete()
+	gt := gi.HalfedgeTangents()
+	wt := wi.HalfedgeTangents()
+	if len(gt) != len(wt) {
+		t.Fatalf("tangent len: native=%d bridge=%d", len(gt), len(wt))
+	}
+	maxDiff := 0.0
+	for i := range gt {
+		if d := math.Abs(gt[i] - wt[i]); d > maxDiff {
+			maxDiff = d
+		}
+	}
+	if maxDiff > 1e-7 {
+		t.Errorf("max halfedge-tangent diff %g exceeds 1e-7", maxDiff)
+	}
+}
+
 func TestSmoothFromMeshGL_SmokeRun(t *testing.T) {
 	hRef := reference.Tetrahedron()
 	defer reference.DeleteManifold(hRef)

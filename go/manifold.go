@@ -972,19 +972,14 @@ type Smoothness struct {
 //
 //	return Manifold(SmoothImpl(meshGL64, sharpenedEdges));
 func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
-	edges := make([]bridge.Smoothness, len(sharpenedEdges))
-	for i, s := range sharpenedEdges {
-		edges[i] = bridge.Smoothness{Halfedge: s.Halfedge, Smoothness: s.Smoothness}
+	numTri := len(m.TriVerts) / 3
+	meshTmp := m
+	meshTmp.FaceID = make([]uint64, numTri)
+	for i := range meshTmp.FaceID {
+		meshTmp.FaceID[i] = uint64(i)
 	}
-	return wrap(bridge.SmoothFromMeshGL64(
-		m.NumProp,
-		m.VertProperties, m.TriVerts,
-		m.MergeFromVert, m.MergeToVert,
-		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
-		m.FaceID, m.HalfedgeTangent,
-		m.Tolerance,
-		edges,
-	))
+	base := NewManifoldFromMeshGL64(meshTmp)
+	return applySmoothing(base, faceIDsToInt64(m.FaceID), sharpenedEdges)
 }
 
 // invalidManifold mirrors C++ Manifold::Invalid — an empty Manifold
@@ -1169,19 +1164,66 @@ func (m *Manifold) SetProperties(
 //
 //	return Manifold(SmoothImpl(meshGL, sharpenedEdges));
 func SmoothFromMeshGL(m MeshGL, sharpenedEdges []Smoothness) *Manifold {
-	edges := make([]bridge.Smoothness, len(sharpenedEdges))
-	for i, s := range sharpenedEdges {
-		edges[i] = bridge.Smoothness{Halfedge: s.Halfedge, Smoothness: s.Smoothness}
+	numTri := len(m.TriVerts) / 3
+	meshTmp := m
+	meshTmp.FaceID = make([]uint32, numTri)
+	for i := range meshTmp.FaceID {
+		meshTmp.FaceID[i] = uint32(i)
 	}
-	return wrap(bridge.SmoothFromMeshGL(
-		m.NumProp,
-		m.VertProperties, m.TriVerts,
-		m.MergeFromVert, m.MergeToVert,
-		m.RunIndex, m.RunOriginalID, m.RunTransform, m.RunFlags,
-		m.FaceID, m.HalfedgeTangent,
-		m.Tolerance,
-		edges,
-	))
+	base := NewManifoldFromMeshGL(meshTmp)
+	return applySmoothing(base, faceIDsToInt32(m.FaceID), sharpenedEdges)
+}
+
+// applySmoothing is the shared tail of SmoothImpl (src/constructors.cpp:26): on
+// a freshly-ingested manifold whose triRef.faceID is the iota input-tri index,
+// create tangents from the remapped sharpened edges, then restore the user's
+// original faceIDs (or -1 if none were supplied / the count changed). Mirrors
+// Manifold::Smooth(MeshGL).
+func applySmoothing(base *Manifold, origFaceID []int, sharpenedEdges []Smoothness) *Manifold {
+	if base.Status() != NoError {
+		return base
+	}
+	impl := getImpl(base)
+	defer impl.Delete()
+	mi := impl.Copy()
+	defer mi.Delete()
+
+	mi.CreateTangentsFromSmoothness(mi.UpdateSharpenedEdges(sharpenedEdges))
+
+	numTri := mi.NumTri()
+	refs := mi.TriRefs()
+	meshIDs := make([]int32, numTri)
+	originalIDs := make([]int32, numTri)
+	faceIDs := make([]int32, numTri)
+	coplanarIDs := make([]int32, numTri)
+	for i, r := range refs {
+		meshIDs[i] = r.MeshID
+		originalIDs[i] = r.OriginalID
+		coplanarIDs[i] = r.CoplanarID
+		if len(origFaceID) == numTri {
+			faceIDs[i] = int32(origFaceID[r.FaceID])
+		} else {
+			faceIDs[i] = -1
+		}
+	}
+	mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
+	return mi.ToManifold()
+}
+
+func faceIDsToInt32(ids []uint32) []int {
+	out := make([]int, len(ids))
+	for i, v := range ids {
+		out[i] = int(v)
+	}
+	return out
+}
+
+func faceIDsToInt64(ids []uint64) []int {
+	out := make([]int, len(ids))
+	for i, v := range ids {
+		out[i] = int(v)
+	}
+	return out
 }
 
 // GetMeshGL64 exports the mesh as a MeshGL64. normalIdx selects which

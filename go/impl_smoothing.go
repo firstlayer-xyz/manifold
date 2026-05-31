@@ -12,6 +12,29 @@ import (
 // caller-supplied angle at this value.
 const kMinSharpAngle = 5.0
 
+// UpdateSharpenedEdges is the Go port of Manifold::Impl::UpdateSharpenedEdges
+// (src/smoothing.cpp:346): remap user-supplied sharpened-edge halfedge indices
+// (referenced to the input MeshGL's triangles, recorded as triRef.faceID) onto
+// this Impl's post-sort halfedge indices. Used by Smooth(MeshGL).
+func (mi *MutableImpl) UpdateSharpenedEdges(sharpenedEdges []Smoothness) []bridge.Smoothness {
+	oldHalfedge2New := make(map[int]int)
+	refs := mi.TriRefs()
+	for tri := 0; tri < mi.NumTri(); tri++ {
+		oldTri := int(refs[tri].FaceID)
+		for i := 0; i < 3; i++ {
+			oldHalfedge2New[3*oldTri+i] = 3*tri + i
+		}
+	}
+	newSharp := make([]bridge.Smoothness, len(sharpenedEdges))
+	for k, edge := range sharpenedEdges {
+		newSharp[k] = bridge.Smoothness{
+			Halfedge:   uint64(oldHalfedge2New[int(edge.Halfedge)]),
+			Smoothness: edge.Smoothness,
+		}
+	}
+	return newSharp
+}
+
 // SharpenEdges is the Go port of C++ Manifold::Impl::SharpenEdges
 // (src/smoothing.cpp). Returns a list of (halfedge, smoothness)
 // entries for every halfedge whose dihedral (the angle between its
