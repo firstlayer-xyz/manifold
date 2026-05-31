@@ -487,6 +487,27 @@ kept as a record of what was ported and how it's differential-tested.
   build becomes a test-only dependency. Algorithm oracles can migrate to
   `cppref` incrementally as drilled (compiler-enforced separation), but the
   custom cgo glue makes it cheapest to batch at the storage-lever endgame.
+  ORACLE-MIGRATION PLAN (in progress — algorithms (b) are ALL drilled; only the
+  storage facade (a) + the collider oracle remain). Ordered green commits:
+  - 1a DONE: decouple value-type leaks (ImplScalars, RayHit) from the accessor API.
+  - 1b: decouple the remaining type leaks — `bridge.TriRef` -> `mesh.TriRef`,
+    `bridge.MeshIDRelation` -> a native meshIDRelation, `bridge.Smoothness` ->
+    manifold.Smoothness (in TriRefs()/MeshIDTransforms()/SharpenEdges/
+    CreateTangentsFromSmoothness/UpdateSharpenedEdges signatures + callers).
+  - 2: const-Impl native storage — add `s` to Impl, flip its accessors to read s
+    (mirror the MutableImpl Step B), getImpl marshals the bridge handle -> s ONCE,
+    Copy clones s. (Still reads the bridge at getImpl; const Impl is native-backed.)
+  - 3: Manifold holds native `s` (not `h *handle.Manifold`); ToManifold publishes
+    s; getImpl wraps m.s (no cgo read). Rewire the test-oracle interaction: the
+    pervasive `&Manifold{h: refHandle}` pattern + `reference.X(m.h)` need a
+    test-only helper that marshals native storage <-> a bridge handle for the
+    oracle. After this, production reads NO storage from the bridge.
+  - 4: native `ReserveIDs` (a Go atomic; see the ReserveIDs note below — MUST be
+    last: while native production and bridge-handle manifolds coexist and can be
+    native-booleaned together, a split counter risks UpdateReference's offsetQ
+    colliding meshIDs; step 3 removes that mixing, making the split safe) + native
+    Empty/Invalid/PropagateStatus/WithContext/ManifoldFromMeshGL; then relocate
+    bridge -> internal/cppref (production bridge-free; cgo becomes a test-only dep).
 - **`Quality` and `DisjointSets` are independent Go state.** They
   do not share with the C++ side. Fine while the C++ Manifold is
   the black box; revisit only if we ever want one process to
