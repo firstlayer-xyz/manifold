@@ -1,13 +1,19 @@
 // Package bridge is the cgo seam between Go and the C++ manifold library.
 //
-// It is throwaway scaffolding. Every symbol exported from this package
-// represents a piece of the library not yet ported to pure Go. As inner
-// layers get ported, calls into the corresponding C functions disappear and
-// the bridge shrinks. The package is empty at the end of the port.
+// During the port it was production scaffolding: every exported symbol stood for
+// a piece not yet ported to pure Go, and the production dependency shrank toward
+// zero as inner layers were drilled. Production no longer holds C++ storage; what
+// remains is a thin set of entry points used by the differential-test oracle (and
+// a few production holdouts pending step 4: ReserveIDs, ExecutionContext).
 //
-// Bridge functions currently route through the public manifoldc C API.
-// When a port goes deeper than what manifoldc exposes, add a custom shim in
-// bridge.cpp/bridge.h.
+// The bridge is NOT discarded at the end of the port — together with the reference
+// package it is the permanent C++ differential-test oracle, relocating to a
+// test-only location that production never imports.
+//
+// Bridge functions route through the public manifoldc C API where it suffices;
+// deeper access (private Impl internals) goes through the custom shim in
+// bridge.cpp/bridge.h, which is granted access via `friend struct ManifoldBridge`
+// declared on Manifold in include/manifold/manifold.h.
 package bridge
 
 // #cgo CFLAGS: -I${SRCDIR}/../../bindings/c/include

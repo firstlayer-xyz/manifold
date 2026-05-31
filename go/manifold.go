@@ -8,6 +8,7 @@ package manifold
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
@@ -1033,11 +1034,14 @@ func propagateStatus(status Error) *Manifold {
 // evaluation through this context (or any copy) short-circuits to
 // Error::Cancelled. Construct a fresh context to retry.
 //
-// Construction pairs with Delete; the underlying C++ ExecutionContext
-// is freed there. Calling Cancel/Cancelled/Progress on a deleted
-// context is undefined behavior.
+// Always use via pointer (NewExecutionContext) — it holds an atomic and must not
+// be copied. Delete is retained for API symmetry but is a no-op (native Go).
 type ExecutionContext struct {
-	c *bridge.ExecutionContext
+	// cancel mirrors C++ ExecutionContext::Impl::cancel — a sticky atomic flag.
+	// The progress counters (totalPhases/donePhases) are intentionally omitted: no
+	// Go op credits phases yet (cancellable parallelism is not ported), so C++
+	// Progress()'s totalPhases==0 branch applies and Progress() is always 1.0.
+	cancel atomic.Bool
 }
 
 // NewExecutionContext returns a fresh ExecutionContext whose cancel
@@ -1047,32 +1051,34 @@ type ExecutionContext struct {
 //
 //	ExecutionContext ctx;
 func NewExecutionContext() *ExecutionContext {
-	return &ExecutionContext{c: bridge.NewExecutionContext()}
+	return &ExecutionContext{}
 }
 
 // Cancel requests cancellation of any in-progress evaluation using
 // this context. Idempotent. Sticky — future evaluations on the same
 // context (or any copy) will also short-circuit to Error::Cancelled.
 //
-// Ported from ExecutionContext::Cancel.
-func (ctx *ExecutionContext) Cancel() { ctx.c.Cancel() }
+// Ported from ExecutionContext::Cancel (impl_->cancel.store(true, relaxed)).
+func (ctx *ExecutionContext) Cancel() { ctx.cancel.Store(true) }
 
 // Cancelled reports whether Cancel() has ever been called on this
 // context.
 //
 // Ported from ExecutionContext::Cancelled.
-func (ctx *ExecutionContext) Cancelled() bool { return ctx.c.Cancelled() }
+func (ctx *ExecutionContext) Cancelled() bool { return ctx.cancel.Load() }
 
 // Progress returns the normalized [0, 1] progress of the current (or
 // most recent) evaluation through this context. Returns 1.0 when no
 // work has been scheduled.
 //
-// Ported from ExecutionContext::Progress.
-func (ctx *ExecutionContext) Progress() float64 { return ctx.c.Progress() }
+// Ported from ExecutionContext::Progress — the totalPhases==0 branch: the Go port
+// schedules no phases (cancellable parallelism is not ported), so progress is
+// always the "no pending work" value, 1.0.
+func (ctx *ExecutionContext) Progress() float64 { return 1.0 }
 
-// Delete frees the underlying C++ context. Must be called exactly
-// once per NewExecutionContext.
-func (ctx *ExecutionContext) Delete() { ctx.c.Delete() }
+// Delete is a no-op: a native ExecutionContext owns no C++ resource. Retained so
+// callers' `defer ctx.Delete()` keeps compiling across the migration.
+func (ctx *ExecutionContext) Delete() {}
 
 // WithContext returns a copy of m with ctx attached. The next eager
 // op on the result reports progress and observes cancellation through

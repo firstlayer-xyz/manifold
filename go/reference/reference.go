@@ -1,8 +1,13 @@
 // Package reference is the test-only oracle for the Go port.
 //
 // Every function here calls straight into the public C API of libmanifoldc.
-// Tests compare results from the in-progress Go implementation against the
-// equivalent call here. The package is deleted at the end of the port.
+// Tests compare results from the Go implementation against the equivalent call
+// here. This package is KEPT permanently as the differential-test oracle (it is
+// NOT deleted at the end of the port): it catches regressions when fixing bugs,
+// proves performance changes don't alter results, and re-validates the port when
+// upstream C++ changes are pulled in. At the endgame it relocates to a test-only
+// location that production never imports; the cgo/libmanifold build stays a
+// test-only dependency.
 package reference
 
 // #cgo CXXFLAGS: -std=c++17
