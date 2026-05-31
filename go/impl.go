@@ -165,9 +165,30 @@ func (i *Impl) NumTri() int { return i.h.HalfedgeCount() / 3 }
 // NumVert returns NumVert() = vertPos_.size().
 func (i *Impl) NumVert() int { return len(i.h.Verts()) }
 
+// implScalars is the manifold-package value type for Manifold::Impl's small
+// scalar fields. It replaces the bridge.ImplScalars leak in the accessor API
+// (oracle-migration step 1: decouple the public accessor types from the bridge).
+type implScalars struct {
+	NumProp             int
+	PropertiesSize      int
+	HalfedgeTangentSize int
+	Tolerance           float64
+	Epsilon             float64
+	OriginalID          int
+	Status              int
+}
+
 // Scalars returns the small scalar fields (NumProp, Tolerance,
 // Epsilon, OriginalID, Status, PropertiesSize, HalfedgeTangentSize).
-func (i *Impl) Scalars() bridge.ImplScalars { return i.h.Scalars() }
+func (i *Impl) Scalars() implScalars {
+	s := i.h.Scalars()
+	return implScalars{
+		NumProp: s.NumProp, PropertiesSize: s.PropertiesSize,
+		HalfedgeTangentSize: s.HalfedgeTangentSize,
+		Tolerance:           s.Tolerance, Epsilon: s.Epsilon,
+		OriginalID: s.OriginalID, Status: s.Status,
+	}
+}
 
 // AllHaveNormals is the Go port of Impl::AllHaveNormals (src/impl.h):
 // true iff every entry of meshRelation_.meshIDtransform has hasNormals
@@ -216,16 +237,16 @@ func (i *Impl) GetMeshGL64(normalIdx int) meshGLP[float64, uint64] {
 // Boolean3 kernel cascade). Builds an ephemeral face collider, then casts the
 // ray through the native kernel. Differential-tested vs the bridge in
 // TestRayCast_VsCpp.
-func (i *Impl) RayCast(origin, endpoint geom.Vec3) []bridge.RayHit {
+func (i *Impl) RayCast(origin, endpoint geom.Vec3) []RayHit {
 	if i.NumTri() == 0 {
 		return nil
 	}
 	col := i.ensureCollider()
 	hits := boolean.RayCast(i.Verts(), i.VertNormals(), i.FaceNormals(),
 		i.HalfedgeStarts(), i.HalfedgePairs(), col, origin, endpoint)
-	out := make([]bridge.RayHit, len(hits))
+	out := make([]RayHit, len(hits))
 	for j, h := range hits {
-		out[j] = bridge.RayHit{FaceID: h.FaceID, Distance: h.Distance, Position: h.Position, Normal: h.Normal}
+		out[j] = RayHit{FaceID: h.FaceID, Distance: h.Distance, Position: h.Position, Normal: h.Normal}
 	}
 	return out
 }

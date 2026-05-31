@@ -1261,8 +1261,14 @@ func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
 	}
 }
 
-// RayHit mirrors the C++ RayHit struct.
-type RayHit = bridge.RayHit
+// RayHit mirrors the C++ RayHit struct (native value type — no longer a bridge
+// alias, per the oracle-migration type-leak decoupling).
+type RayHit struct {
+	FaceID   uint64
+	Distance float64
+	Position Vec3
+	Normal   Vec3
+}
 
 // RayCast intersects a ray segment from origin to endpoint against the
 // manifold's surface, returning all hits sorted by distance.
