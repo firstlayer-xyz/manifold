@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 	"github.com/firstlayer-xyz/manifold/go/reference"
@@ -85,7 +86,7 @@ func TestSubdivide_VsBridge(t *testing.T) {
 
 			bv := getImpl(m).Copy()
 			defer bv.Delete()
-			bv.runBridgeAlgo(func() { bv.h.SubdivideN(tc.n) })
+			runCppAlgo(bv, func(bm *bridge.MutableImpl) { bm.SubdivideN(tc.n) })
 			want := bv.ToManifold()
 			defer runtime.KeepAlive(want)
 

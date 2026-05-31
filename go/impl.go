@@ -5,19 +5,17 @@
 // only one class, but two reference flavours with different sets of
 // callable methods (const vs non-const).
 //
-// Both are now backed by native Go storage (implStorage). MutableImpl still keeps
-// a transient bridge handle for the last two C++ algorithms (Subdivide/Refine via
-// runBridgeAlgo); the const Impl is pure Go. The bridge is not discarded at the end
-// of the port — it is retained as the permanent C++ differential-test oracle (it
-// relocates to a test-only package), so regressions, performance changes, and
-// upstream merges can always be validated against the reference implementation.
+// Both are now backed entirely by native Go storage (implStorage) — pure Go, no
+// cgo. The C++ bridge is not discarded at the end of the port: it is retained as
+// the permanent differential-test oracle (it relocates to a test-only package), so
+// regressions, performance changes, and upstream merges can always be validated
+// against the reference implementation.
 package manifold
 
 import (
 	"math"
 	"sync/atomic"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -72,8 +70,7 @@ type Impl struct {
 // Construct via newImpl() (fresh empty) or via (*Impl).Copy() (deep
 // copy of a const view). Pair with Delete.
 type MutableImpl struct {
-	h    *bridge.MutableImpl
-	s    *implStorage       // native storage being migrated (see Impl.s)
+	s    *implStorage       // native storage (see Impl.s)
 	coll *collider.Collider // native collider (see Impl.coll)
 }
 
@@ -88,7 +85,7 @@ func getImpl(m *Manifold) *Impl {
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
 // C++ `std::make_shared<Manifold::Impl>()`.
 func newImpl() *MutableImpl {
-	return &MutableImpl{h: bridge.NewMutableImpl(), s: newImplStorage()}
+	return &MutableImpl{s: newImplStorage()}
 }
 
 // Delete releases this const view. The const Impl aliases the owning Manifold's
@@ -96,23 +93,15 @@ func newImpl() *MutableImpl {
 // kept because callers `defer impl.Delete()` by convention.
 func (i *Impl) Delete() {}
 
-// Delete releases this mutable Impl's transient bridge handle (the only resource
-// it owns — the native storage is shared with whatever consumed it via ToManifold).
-// Guarded against the nil h that ToManifold leaves behind.
-func (mi *MutableImpl) Delete() {
-	if mi.h != nil {
-		mi.h.Delete()
-		mi.h = nil
-	}
-}
+// Delete releases this mutable Impl. It owns only native Go storage (no cgo
+// resource), so this is a no-op; kept because callers `defer mi.Delete()`.
+func (mi *MutableImpl) Delete() {}
 
 // Copy returns a fresh mutable Impl initialized from this const view.
 // Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
 // of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	// Clone the native storage; allocate a fresh transient bridge handle only so the
-	// still-C++ Subdivide/Refine (runBridgeAlgo) have somewhere to marshal into.
-	mi := &MutableImpl{h: bridge.NewMutableImpl(), s: i.s.clone()}
+	mi := &MutableImpl{s: i.s.clone()}
 	if i.coll != nil {
 		mi.coll = i.coll.Copy()
 	}
@@ -122,15 +111,9 @@ func (i *Impl) Copy() *MutableImpl {
 // ToManifold seals this MutableImpl into a published Manifold, mirroring C++
 // `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native storage is published
 // directly (oracle-migration step 3: no bridge round-trip); the native collider
-// travels with the Manifold. The transient bridge handle (used only by the still-C++
-// Subdivide/Refine) is released here.
+// travels with the Manifold.
 func (mi *MutableImpl) ToManifold() *Manifold {
-	m := &Manifold{s: mi.s, coll: mi.coll}
-	if mi.h != nil {
-		mi.h.Delete()
-		mi.h = nil
-	}
-	return m
+	return &Manifold{s: mi.s, coll: mi.coll}
 }
 
 // ensureCollider returns the native collider, lazily building it from the
@@ -513,19 +496,6 @@ func (mi *MutableImpl) RefineToTolerance(tol float64) {
 		d := 0.5*(start.Length()+end.Length()) + start.Sub(end).Length()
 		return int(math.Sqrt(3 * d / (4 * tol)))
 	}, true)
-}
-
-// runBridgeAlgo runs a still-C++ storage-mutating algorithm against the bridge
-// handle while keeping the native implStorage as the source of truth: marshal
-// s -> h, run the C++ pass (which mutates h), then reload h -> s.
-func (mi *MutableImpl) runBridgeAlgo(algo func()) {
-	marshalImplStorageToBridge(mi.s, mi.h)
-	algo()
-	mi.reloadFromBridge()
-	// Refine/Subdivide change the geometry, so any collider cloned from the
-	// source (Copy) is now stale. C++ rebuilds collider_ inside Refine; the Go
-	// side invalidates it here so ensureCollider rebuilds from the new geometry.
-	mi.coll = nil
 }
 
 // Hull is the Go port of C++ Manifold::Impl::Hull (src/quickhull.cpp:834).
