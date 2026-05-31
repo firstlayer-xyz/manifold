@@ -31,6 +31,35 @@ geom-math, triangulate. Three findings:
   selection including NaN (both keep `t` when the compare is false). Equivalent — the
   "std::max NaN is implementation-defined" claim is wrong for the 2-arg form. No change.
 
+### Post-port faithfulness audit, pass 2 (2026-05-31) — utility/data-structure packages
+
+8 packages (collider, quickhull, parallel, hashtable, disjointsets, mesh-structs,
+orderedmap, geom-svd/tri-dist) diffed against C++ + adversarial verification. 5 clean
+(collider, quickhull, mesh-structs, orderedmap, geom-svd/tri-dist). **Zero actionable
+bugs** — the 6 findings are all places Go is SAFER than C++ or a deliberate adaptation;
+recorded here so they aren't re-flagged as regressions:
+- **hashtable empty-table (×3): Go adds `if Size()==0 {return}` guards; C++ has none.**
+  C++ ctor (hashtable.h:155) keeps size 0 when asked, and Insert/operator[] then index
+  a zero-length backing store → UB. Go guards it (safe no-op / not-found). Go is correct
+  where C++ is UB; matching the UB is not a goal. KEEP the guards.
+- **parallel CopyIf: C++ has a self-canceling perf bug; Go is correct + efficient.**
+  C++ copy_if (parallel.h:889-900) runs tbb::parallel_scan into d_first, DISCARDS the
+  isolate() return, then unconditionally `return std::copy_if(...)` — the parallel work
+  is overwritten by the sequential pass. Output is still correct (input order). Go's
+  chunked count→offset→scatter CopyIf produces the same stable output without the wasted
+  scan. Same result, no fix (don't replicate the upstream perf bug).
+- **hashtable Lookup/Slot bool return vs C++ operator[] V&.** Deliberate Go API (no
+  operator overloading; the documented two-method Lookup-copies / Slot-pointer design).
+  Same probing; equivalent behavior. KEEP.
+- **disjointsets Same() has no concurrency retry loop vs C++ same()'s for(;;).** The Go
+  package header DELIBERATELY drops the atomic/lock-free machinery (callers are
+  sequential); the C++ retry only matters under concurrent unite, and sequentially it
+  runs exactly once = Find(a)==Find(b). Faithful to the package's documented design. KEEP.
+
+Net across both passes (24 subsystems): 2 real bugs found+fixed (kMinSharpAngle, Slice
+lerp), the rest faithful or justified-deviation. Deferred: a perf pass and an upstream
+sync would each re-run these audits against any changed C++.
+
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 
 A C++ ternary that SELECTS one of two array accesses must be ported as a
