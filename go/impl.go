@@ -31,16 +31,18 @@ import (
 // the shared_ptr reference; the underlying Impl lives on inside the
 // Manifold).
 type Impl struct {
+	// s is the native storage, marshalled out of the bridge handle once by getImpl
+	// (oracle-migration step 2: the const view is now native-backed — every read
+	// accessor reads s, mirroring MutableImpl). h is retained only so Delete can
+	// release the shared_ptr reference and Copy can fork a mutable bridge handle
+	// (which preserves the C++ collider_ the test oracle still needs).
+	s *implStorage
 	h *bridge.Impl
 	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
 	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
 	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
 	// builds it from the Morton-sorted faces on demand. Mirrors C++ Impl::collider_.
 	coll *collider.Collider
-	// NOTE: the const Impl view reads its storage straight from the pristine
-	// bridge handle h (getImpl never mutates it), so it needs no native
-	// implStorage of its own — only MutableImpl owns one (native-Impl-storage
-	// Phase 2b). When the const side migrates (Phase 3+) it will gain an s too.
 }
 
 // MutableImpl is the mutable counterpart of Impl — mirrors C++
@@ -62,7 +64,8 @@ type MutableImpl struct {
 // Impl (releases the shared_ptr reference held by this view). The native
 // collider, if the Manifold carries one, comes along (set by Transform/ToManifold).
 func getImpl(m *Manifold) *Impl {
-	return &Impl{h: bridge.GetImpl(m.h), coll: m.coll}
+	h := bridge.GetImpl(m.h)
+	return &Impl{s: marshalImplStorageFromBridge(h), h: h, coll: m.coll}
 }
 
 // newImpl returns a freshly-allocated, empty MutableImpl. Mirrors
@@ -81,10 +84,11 @@ func (mi *MutableImpl) Delete() { mi.h.Delete() }
 // Mirrors C++ `std::make_shared<Manifold::Impl>(*src)` — including a deep copy
 // of collider_ (impl.cpp:675), so a refit on the copy never mutates the source.
 func (i *Impl) Copy() *MutableImpl {
-	// The const source's bridge handle is pristine (getImpl never mutates it),
-	// so marshal the native storage straight out of it. i.h.Copy() gives the
-	// mutable bridge handle that ToManifold will later marshal s back into.
-	mi := &MutableImpl{h: i.h.Copy(), s: marshalImplStorageFromBridge(i.h)}
+	// Clone the native storage directly (no bridge re-read). i.h.Copy() still forks
+	// the mutable bridge handle ToManifold marshals s back into — and crucially it
+	// preserves the source's C++ collider_, which the test oracle reads when it runs
+	// C++ booleans on Go-built meshes.
+	mi := &MutableImpl{h: i.h.Copy(), s: i.s.clone()}
 	if i.coll != nil {
 		mi.coll = i.coll.Copy()
 	}
@@ -117,33 +121,32 @@ func (i *Impl) ensureCollider() *collider.Collider {
 
 // --- Read-only methods (mirror const members of C++ Manifold::Impl)
 
-// Verts returns the impl's vertPos_ as a read-only Go slice aliasing
-// C++ memory. Mirrors C++ `impl->vertPos_` access.
-func (i *Impl) Verts() []geom.Vec3 { return i.h.Verts() }
+// Verts returns the impl's vertPos_ as a read-only Go slice.
+func (i *Impl) Verts() []geom.Vec3 { return i.s.vertPos }
 
 // HalfedgeStarts returns halfedge_.start_ as a read-only slice.
-func (i *Impl) HalfedgeStarts() []int32 { return i.h.HalfedgeStarts() }
+func (i *Impl) HalfedgeStarts() []int32 { return i.s.halfedge.Starts() }
 
 // HalfedgePairs returns halfedge_.paired_ as a read-only slice.
-func (i *Impl) HalfedgePairs() []int32 { return i.h.HalfedgePairs() }
+func (i *Impl) HalfedgePairs() []int32 { return i.s.halfedge.Paired() }
 
 // HalfedgeProps returns halfedge_.propVert_ as a read-only slice.
-func (i *Impl) HalfedgeProps() []int32 { return i.h.HalfedgeProps() }
+func (i *Impl) HalfedgeProps() []int32 { return i.s.halfedge.PropVert() }
 
 // FaceNormals returns faceNormal_ as a read-only slice. Empty when
 // face normals haven't been cached.
-func (i *Impl) FaceNormals() []geom.Vec3 { return i.h.FaceNormals() }
+func (i *Impl) FaceNormals() []geom.Vec3 { return i.s.faceNormal }
 
 // VertNormals returns vertNormal_ as a read-only slice. Empty when
 // vert normals haven't been cached.
-func (i *Impl) VertNormals() []geom.Vec3 { return i.h.VertNormals() }
+func (i *Impl) VertNormals() []geom.Vec3 { return i.s.vertNormal }
 
-// HalfedgeTangents returns halfedgeTangent_ as a read-only slice
-// (4 doubles per element, packed vec4).
-func (i *Impl) HalfedgeTangents() []float64 { return i.h.HalfedgeTangents() }
+// HalfedgeTangents returns halfedgeTangent_ as a flat 4-per-element slice
+// (a fresh copy of the native Vec4 storage).
+func (i *Impl) HalfedgeTangents() []float64 { return tangentsToFlat(i.s.halfedgeTangent) }
 
 // Properties returns properties_ as a read-only slice.
-func (i *Impl) Properties() []float64 { return i.h.Properties() }
+func (i *Impl) Properties() []float64 { return i.s.properties }
 
 // meshIDRelation is the manifold-package value type for one flattened
 // meshRelation_.meshIDtransform entry (the map key meshID + its Relation). It
@@ -155,27 +158,26 @@ type meshIDRelation struct {
 	HasNormals         bool
 }
 
-// TriRefs returns the meshRelation_.triRef array as a copied Go
-// slice (each TriRef carries meshID/originalID/faceID/coplanarID).
-func (i *Impl) TriRefs() []mesh.TriRef { return bridgeTriRefsToMesh(i.h.TriRefs()) }
+// TriRefs returns the meshRelation_.triRef array (the native backing slice).
+func (i *Impl) TriRefs() []mesh.TriRef { return i.s.meshRelation.TriRef }
 
 // MeshIDTransforms returns the meshRelation_.meshIDtransform map's
 // entries in std::map order (ascending meshID).
 func (i *Impl) MeshIDTransforms() []meshIDRelation {
-	return bridgeMeshIDRelsToNative(i.h.MeshIDTransforms())
+	return meshIDTransformsNative(&i.s.meshRelation)
 }
 
 // BBox returns bBox_'s min/max corners.
-func (i *Impl) BBox() (min, max geom.Vec3) { return i.h.BBox() }
+func (i *Impl) BBox() (min, max geom.Vec3) { return i.s.bBox.Min, i.s.bBox.Max }
 
 // HalfedgeCount returns halfedge_.size().
-func (i *Impl) HalfedgeCount() int { return i.h.HalfedgeCount() }
+func (i *Impl) HalfedgeCount() int { return i.s.halfedge.Size() }
 
 // NumTri returns NumTri() = halfedge_.size() / 3.
-func (i *Impl) NumTri() int { return i.h.HalfedgeCount() / 3 }
+func (i *Impl) NumTri() int { return i.s.halfedge.Size() / 3 }
 
 // NumVert returns NumVert() = vertPos_.size().
-func (i *Impl) NumVert() int { return len(i.h.Verts()) }
+func (i *Impl) NumVert() int { return len(i.s.vertPos) }
 
 // implScalars is the manifold-package value type for Manifold::Impl's small
 // scalar fields. It replaces the bridge.ImplScalars leak in the accessor API
@@ -193,12 +195,15 @@ type implScalars struct {
 // Scalars returns the small scalar fields (NumProp, Tolerance,
 // Epsilon, OriginalID, Status, PropertiesSize, HalfedgeTangentSize).
 func (i *Impl) Scalars() implScalars {
-	s := i.h.Scalars()
+	s := i.s
 	return implScalars{
-		NumProp: s.NumProp, PropertiesSize: s.PropertiesSize,
-		HalfedgeTangentSize: s.HalfedgeTangentSize,
-		Tolerance:           s.Tolerance, Epsilon: s.Epsilon,
-		OriginalID: s.OriginalID, Status: s.Status,
+		NumProp:             s.numProp,
+		PropertiesSize:      len(s.properties),
+		HalfedgeTangentSize: len(s.halfedgeTangent),
+		Tolerance:           s.tolerance,
+		Epsilon:             s.epsilon,
+		OriginalID:          s.meshRelation.OriginalID,
+		Status:              int(s.status),
 	}
 }
 

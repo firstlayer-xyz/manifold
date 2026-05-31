@@ -498,9 +498,14 @@ kept as a record of what was ported and how it's differential-tested.
     `bridge.MeshIDRelation` left in production are the two const-Impl read-side
     converters (bridgeTriRefsToMesh / bridgeMeshIDRelsToNative in impl_storage.go),
     which step 2 removes when const Impl becomes native-backed.
-  - 2: const-Impl native storage — add `s` to Impl, flip its accessors to read s
-    (mirror the MutableImpl Step B), getImpl marshals the bridge handle -> s ONCE,
-    Copy clones s. (Still reads the bridge at getImpl; const Impl is native-backed.)
+  - 2 DONE: const-Impl native storage — Impl gained `s *implStorage`; every read
+    accessor (Verts/Halfedge*/FaceNormals/VertNormals/Tangents/Properties/TriRefs/
+    MeshIDTransforms/BBox/counts/Scalars) reads s, mirroring MutableImpl. getImpl
+    marshals the bridge handle -> s ONCE (eager), retaining h only for Delete (release
+    the shared_ptr) and Copy (i.h.Copy() forks a mutable handle that preserves the C++
+    collider_ for the oracle; storage is cloned natively via implStorage.clone()).
+    The two dead read-path converters (bridgeTriRefsToMesh/bridgeMeshIDRelsToNative)
+    were deleted. Production now has ZERO bridge.TriRef/bridge.MeshIDRelation uses.
   - 3: Manifold holds native `s` (not `h *handle.Manifold`); ToManifold publishes
     s; getImpl wraps m.s (no cgo read). Rewire the test-oracle interaction: the
     pervasive `&Manifold{h: refHandle}` pattern + `reference.X(m.h)` need a

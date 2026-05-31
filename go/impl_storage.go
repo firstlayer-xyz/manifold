@@ -163,6 +163,44 @@ func (mi *MutableImpl) reloadFromBridge() {
 	mi.s.status = keepStatus
 }
 
+// clone returns a deep copy of the storage: every slice and the meshRelation
+// (triRef slice + meshIDtransform map) are copied so mutations on the clone never
+// reach the original. Mirrors the value semantics of the C++ Impl copy-constructor
+// for the storage fields; collider_ is cloned separately by the caller (Impl.Copy).
+func (s *implStorage) clone() *implStorage {
+	starts, paired, propVert := s.halfedge.Raw()
+	return &implStorage{
+		vertPos: append([]geom.Vec3(nil), s.vertPos...),
+		halfedge: mesh.NewHalfedges(
+			append([]int32(nil), starts...),
+			append([]int32(nil), paired...),
+			append([]int32(nil), propVert...),
+		),
+		properties:      append([]float64(nil), s.properties...),
+		vertNormal:      append([]geom.Vec3(nil), s.vertNormal...),
+		faceNormal:      append([]geom.Vec3(nil), s.faceNormal...),
+		halfedgeTangent: append([]geom.Vec4(nil), s.halfedgeTangent...),
+		meshRelation:    cloneMeshRelation(s.meshRelation),
+		numProp:         s.numProp,
+		bBox:            s.bBox,
+		epsilon:         s.epsilon,
+		tolerance:       s.tolerance,
+		status:          s.status,
+	}
+}
+
+// cloneMeshRelation deep-copies a MeshRelationD (triRef slice + the ordered
+// meshIDtransform map, preserving key order).
+func cloneMeshRelation(mr mesh.MeshRelationD) mesh.MeshRelationD {
+	out := mesh.NewMeshRelationD()
+	out.OriginalID = mr.OriginalID
+	out.TriRef = append([]mesh.TriRef(nil), mr.TriRef...)
+	for k, r := range mr.MeshIDTransform.All() {
+		out.MeshIDTransform.Set(k, r)
+	}
+	return out
+}
+
 // resizeVec3 grows/shrinks a []geom.Vec3 to length n (new slots zero-valued),
 // reusing the backing array on shrink — the Vec semantics MutableImpl's
 // Resize{Verts,VertNormals,FaceNormals} accessors need.
@@ -171,16 +209,6 @@ func resizeVec3(s []geom.Vec3, n int) []geom.Vec3 {
 		return s[:n]
 	}
 	return append(s, make([]geom.Vec3, n-len(s))...)
-}
-
-// bridgeTriRefsToMesh converts the bridge's []bridge.TriRef (the const-Impl read
-// path, until the storage flip) into the native []mesh.TriRef the accessor returns.
-func bridgeTriRefsToMesh(refs []bridge.TriRef) []mesh.TriRef {
-	out := make([]mesh.TriRef, len(refs))
-	for i, r := range refs {
-		out[i] = mesh.TriRef{MeshID: int(r.MeshID), OriginalID: int(r.OriginalID), FaceID: int(r.FaceID), CoplanarID: int(r.CoplanarID)}
-	}
-	return out
 }
 
 // meshIDTransformsNative returns the meshIDtransform entries in ascending meshID
@@ -196,19 +224,6 @@ func meshIDTransformsNative(mr *mesh.MeshRelationD) []meshIDRelation {
 			MeshID: k, OriginalID: r.OriginalID,
 			Transform: r.Transform, BackSide: r.BackSide, HasNormals: r.HasNormals,
 		})
-	}
-	return out
-}
-
-// bridgeMeshIDRelsToNative converts the bridge's []bridge.MeshIDRelation (const-Impl
-// read path) into the native []meshIDRelation the accessor returns.
-func bridgeMeshIDRelsToNative(rels []bridge.MeshIDRelation) []meshIDRelation {
-	out := make([]meshIDRelation, len(rels))
-	for i, r := range rels {
-		out[i] = meshIDRelation{
-			MeshID: int(r.MeshID), OriginalID: int(r.OriginalID),
-			Transform: geom.Mat3x4(r.Transform), BackSide: r.BackSide, HasNormals: r.HasNormals,
-		}
 	}
 	return out
 }
