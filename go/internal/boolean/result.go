@@ -7,7 +7,13 @@ import (
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
+	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/vector"
 )
+
+// edgePosPool recycles the scratch []edgePos buffers used while pairing edges
+// (pairUp's stable-partition scratch). These live and die within a single call,
+// so their backing arrays recycle across edges/faces/operations.
+var edgePosPool vector.Pool[edgePos]
 
 // Halfedge mirrors the C++ Halfedge (shared.h:174): a directed half-edge with
 // its start/end verts, paired halfedge, and property vert.
@@ -30,8 +36,9 @@ type TriRef struct {
 // compared semantically.
 func pairUp(positions []edgePos, f func(Halfedge)) {
 	nEdges := len(positions) / 2
-	// Stable partition: starts first, preserving order.
-	parted := make([]edgePos, 0, len(positions))
+	// Stable partition: starts first, preserving order. parted is scratch used only
+	// for the copy below, so its backing recycles through the pool.
+	parted := edgePosPool.Get()
 	for _, e := range positions {
 		if e.isStart {
 			parted = append(parted, e)
@@ -43,6 +50,7 @@ func pairUp(positions []edgePos, f func(Halfedge)) {
 		}
 	}
 	copy(positions, parted)
+	edgePosPool.Put(parted)
 
 	starts, ends := positions[:nEdges], positions[nEdges:]
 	sortEdgePos(starts)
