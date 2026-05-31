@@ -125,6 +125,52 @@ func resizeNoFill(s []int32, n int) []int32 {
 	return append(s, make([]int32, n-len(s))...)
 }
 
+// Barycentric is the Go port of the C++ Barycentric (shared.h:283): a new vert's
+// originating triangle plus its barycentric (uvw, or quad uvwx) coordinates.
+type Barycentric struct {
+	Tri int
+	UVW geom.Vec4
+}
+
+// TmpEdge is the Go port of the C++ TmpEdge (shared.h:315): a forward-only edge
+// record referencing the halfedge it came from. First <= Second always.
+type TmpEdge struct {
+	First, Second, HalfedgeIdx int
+}
+
+// NewTmpEdge mirrors the C++ TmpEdge(start, end, idx) ctor: First/Second are the
+// min/max of start/end.
+func NewTmpEdge(start, end, idx int) TmpEdge {
+	first, second := start, end
+	if end < start {
+		first, second = end, start
+	}
+	return TmpEdge{First: first, Second: second, HalfedgeIdx: idx}
+}
+
+// Less mirrors TmpEdge::operator< (shared.h:325): First, then Second.
+func (e TmpEdge) Less(o TmpEdge) bool {
+	if e.First == o.First {
+		return e.Second < o.Second
+	}
+	return e.First < o.First
+}
+
+// CreateTmpEdges is the Go port of CreateTmpEdges (shared.h:330): one TmpEdge per
+// forward halfedge, in halfedge-index order (the C++ builds one per halfedge then
+// remove_if's the backward ones, which preserves the kept order).
+func CreateTmpEdges(h *Halfedges) []TmpEdge {
+	n := h.Size()
+	edges := make([]TmpEdge, 0, n/2)
+	for idx := 0; idx < n; idx++ {
+		if !h.IsForward(idx) {
+			continue
+		}
+		edges = append(edges, NewTmpEdge(h.Start(idx), h.End(idx), idx))
+	}
+	return edges
+}
+
 // TriRef is the Go port of the C++ TriRef (shared.h:288): the provenance of an
 // output triangle — mesh-instance id, original mesh id, face id, coplanar id.
 type TriRef struct {
