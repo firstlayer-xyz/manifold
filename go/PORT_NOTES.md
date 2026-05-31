@@ -215,14 +215,21 @@ memory model. The C++ relies on word-sized non-atomic reads being
 
 ## Algorithms still in C++ (bridge passes through)
 
-- `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance`
-  — `src/subdivision.cpp` (~800 lines). These are the ONLY storage-mutating
-  algorithms still in C++. Each runs inside `MutableImpl.runBridgeAlgo`
-  (native-storage Phase 2b): marshal the native implStorage into the bridge
-  handle, run the C++ pass, reload the mutated storage back, invalidate the
-  cloned collider. So they compose with native storage transparently until
-  ported. Differential-tested (`TestRefine_Differential`; Sphere ctor exercises
-  SubdivideN via `TestSphere_*_Differential`).
+- `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance` — FULLY DRILLED
+  (native Go). `src/subdivision.cpp` (Subdivide + the file-local Partition
+  triangulation cache: subdivide_partition.go + impl_subdivide.go) and
+  `src/smoothing.cpp`'s `Impl::Refine` + `InterpTri` cubic-Bezier smoothing
+  (impl_refine.go), plus the quaternion infra in internal/geom/quat.go
+  (Qconj/Qmul/Qxdir/RotationQuatFromTo/RotationQuatFromMat3, transcribed from
+  linalg.h, unit-tested). These were the LAST storage-mutating bridge algorithms;
+  with them native, `runBridgeAlgo` has NO production caller left (it survives only
+  as differential-test oracle plumbing). Differential-tested: TestSubdivide_VsBridge
+  (exact vert/tri counts on cube/tetra/sphere), TestRefine_Smoothed_VsReference
+  (InterpTri vs the C++ bridge on SmoothByNormals + SmoothOut spheres, within 1e-6
+  — positions go through acos/sin/cos, Go stdlib vs C++ musl), plus the existing
+  Sphere + tetra Refine differentials. NOTE: InterpTri's QUAD path (marked-quad
+  interiors, negative tangent w) is exercised less than the tri path by these
+  tests — it comes mainly from the Smooth(MeshGL) constructor (still bridge).
 - `SimplifyTopology` — `src/edge_op.cpp`. FULLY DRILLED (native Go,
   `impl_simplify.go`). `RemoveDegenerates` and the whole collapse/swap
   core (`flagStore`, `collapseEdge`+`collapseTri`/`removeIfFolded`/

@@ -1,8 +1,8 @@
-// Subdivision port (src/subdivision.cpp). This file currently holds the topology
-// helpers that Subdivide builds on (GetNeighbor / GetHalfedges / GetIndices /
-// FillRetainedVerts + IsMarkedInsideQuad); the Partition triangulation cache and
-// the Subdivide driver itself land in follow-on increments. Until then, the
-// SubdivideN / Refine* methods still run through the C++ bridge (runBridgeAlgo).
+// Subdivision port (src/subdivision.cpp). This file holds the topology helpers
+// (GetNeighbor / GetHalfedges / GetIndices / FillRetainedVerts + IsMarkedInsideQuad)
+// and the Subdivide driver; the Partition triangulation cache lives in
+// subdivide_partition.go and the Refine smoothing (InterpTri) in impl_refine.go.
+// SubdivideN / Refine* are now fully native — no bridge.
 package manifold
 
 import (
