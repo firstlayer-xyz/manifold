@@ -2,6 +2,7 @@ package boolean
 
 import (
 	"math"
+	"slices"
 	"sort"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -77,9 +78,22 @@ func edgePosLess(a, b edgePos) bool {
 	return a.pos < b.pos || (a.pos == b.pos && a.collisionID < b.collisionID)
 }
 
-// sortEdgePos is std::stable_sort over EdgePos (by EdgePos::operator<).
+// sortEdgePos is std::stable_sort over EdgePos (by EdgePos::operator<). Uses the
+// generic slices.SortStableFunc (in-place, no reflection) rather than sort.SliceStable,
+// which boxes the slice + allocates a reflect.Swapper on every call — this is both the
+// faithful std::stable_sort shape (a template, not a runtime-reflection sort) and the
+// allocation fix (this is called once per edge group, a top boolean allocator).
 func sortEdgePos(s []edgePos) {
-	sort.SliceStable(s, func(i, j int) bool { return edgePosLess(s[i], s[j]) })
+	slices.SortStableFunc(s, func(a, b edgePos) int {
+		switch {
+		case edgePosLess(a, b):
+			return -1
+		case edgePosLess(b, a):
+			return 1
+		default:
+			return 0
+		}
+	})
 }
 
 // addNewEdgeVerts is the Go port of AddNewEdgeVerts (boolean_result.cpp:204):
