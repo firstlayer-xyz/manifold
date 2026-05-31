@@ -1,7 +1,6 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
@@ -337,7 +336,7 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 // offsetting Q's mesh IDs by the current meshIDCounter_; then copy both inputs'
 // meshIDtransform entries into the output (Q offset, backSide XOR invertQ).
 func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
-	offsetQ := int(bridge.ImplReserveIDs(0)) // meshIDCounter_ (fetch_add 0)
+	offsetQ := int(reserveIDs(0)) // meshIDCounter_ (fetch_add 0)
 	triRefP := inP.TriRefs()
 	triRefQ := inQ.TriRefs()
 

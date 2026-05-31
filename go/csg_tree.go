@@ -16,7 +16,6 @@ package manifold
 import (
 	"math"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -98,7 +97,7 @@ func compose(leaves []*Impl) *MutableImpl {
 
 	// meshIDCounter_ snapshot (fetch_add 0): the per-instance meshID offset, so
 	// repeated copies of the same mesh in `leaves` get distinct meshIDs.
-	meshIDCounterSnapshot := int32(bridge.ImplReserveIDs(0))
+	meshIDCounterSnapshot := int32(reserveIDs(0))
 
 	for i, node := range leaves {
 		nextVert := int32(vertIndices[i])

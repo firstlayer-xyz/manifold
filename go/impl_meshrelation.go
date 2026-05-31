@@ -3,7 +3,6 @@ package manifold
 import (
 	"sort"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -20,7 +19,7 @@ import (
 // C++ uses for_each_n(autoPolicy(NumTri(), 1e5), countAt(0),
 // NumTri(), ...). We mirror via parallel.ForEachN.
 func (mi *MutableImpl) InitializeOriginal() {
-	meshID := int(bridge.ImplReserveIDs(1))
+	meshID := int(reserveIDs(1))
 	mi.SetMeshRelationOriginalID(meshID)
 
 	numTri := mi.NumTri()
@@ -69,7 +68,7 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 	old := mi.MeshIDTransforms()
 	// std::map iterates ascending by key; sort the (unordered) bridge readout.
 	sort.Slice(old, func(i, j int) bool { return old[i].MeshID < old[j].MeshID })
-	nextMeshID := int32(bridge.ImplReserveIDs(uint32(len(old))))
+	nextMeshID := int32(reserveIDs(uint32(len(old))))
 
 	old2new := make(map[int]int32, len(old))
 	mi.ClearMeshIDTransforms()

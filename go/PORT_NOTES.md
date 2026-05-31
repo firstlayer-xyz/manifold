@@ -527,15 +527,27 @@ kept as a record of what was ported and how it's differential-tested.
     handle via the MeshGL ingest round-trip, so the C++ side re-finalizes — Morton
     sort + collider build — and the handle is valid even for transformed/unsorted
     meshes). All `&Manifold{h: ref}` -> `fromRefHandle(ref)`, all `m.h` -> `m.refHandle()`.
-  - 4: native `ReserveIDs` (a Go atomic; see the ReserveIDs note below — MUST be
-    last: while native production and bridge-handle manifolds coexist and can be
-    native-booleaned together, a split counter risks UpdateReference's offsetQ
-    colliding meshIDs; step 3 removes that mixing, making the split safe) +
-    ExecutionContext (the last bridge object manifold.go touches); then relocate
-    bridge + reference -> internal/cppref (production bridge-free; cgo becomes a
-    test-only dep — KEPT PERMANENTLY as the differential-test oracle, not deleted).
-    Invalid/PropagateStatus/Empty/ManifoldFromMeshGL are ALREADY native (newImpl ->
-    MakeEmpty/ingest -> ToManifold), so step 4 is just ReserveIDs + ctx + relocation.
+  - 4a DONE: native ExecutionContext — replaced bridge.ExecutionContext with a Go
+    struct (sticky atomic.Bool cancel; Progress() == 1.0, the C++ totalPhases==0
+    branch, since no Go op credits phases). Faithful to the current unobserved ctx_.
+  - 4b DONE: native ReserveIDs — a package-level `meshIDCounter atomic.Uint32`
+    (init 1) + `reserveIDs(n) = Add(n)-n` (fetch_add returning the pre-increment
+    value; reserveIDs(0) = snapshot read), mirroring static Impl::meshIDCounter_.
+    Replaced all 6 bridge.ImplReserveIDs sites. The old "MUST be last / split-counter
+    risk" caveat is MOOT: step 3 made every production manifold native, so native
+    booleans only ever combine native manifolds (one Go counter) and the C++ oracle
+    only combines C++ handles (one C++ counter) — no cross-counter mixing. The split
+    is safe; meshID ABSOLUTE values aren't compared against the oracle (tests check
+    geometric invariants; OriginalID comparisons use fromRefHandle, which COPIES the
+    id). Full differential suite green. Production bridge importers now only impl.go
+    + impl_storage.go (the transient MutableImpl handle + marshal seam — step 4c).
+  - 4c: move the transient bridge handle off the production MutableImpl (only the
+    test runBridgeAlgo uses it now) + relocate bridge + reference into ONE test-only
+    package `internal/cppref` (production bridge-free; cgo becomes a test-only dep —
+    KEPT PERMANENTLY as the differential-test oracle, not deleted; merged into one
+    package so the libmanifold link config lives in one cgo preamble, killing the
+    duplicate-library link warning). Invalid/PropagateStatus/Empty/ManifoldFromMeshGL
+    were ALREADY native (newImpl -> MakeEmpty/ingest -> ToManifold).
 - **`Quality` and `DisjointSets` are independent Go state.** They
   do not share with the C++ side. Fine while the C++ Manifold is
   the black box; revisit only if we ever want one process to

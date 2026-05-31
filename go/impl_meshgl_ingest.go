@@ -3,7 +3,6 @@ package manifold
 import (
 	"math"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -186,7 +185,7 @@ func newImplFromMeshGL[P float32 | float64, I uint32 | uint64](
 	case len(ri) == 1:
 		ri = append(ri, runEnd)
 	}
-	startID := int(bridge.ImplReserveIDs(uint32(max(1, len(runOriginalID)))))
+	startID := int(reserveIDs(uint32(max(1, len(runOriginalID)))))
 	roid := runOriginalID
 	if len(roid) == 0 {
 		roid = []uint32{uint32(startID)}

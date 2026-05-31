@@ -10,7 +10,6 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/collider"
 	"github.com/firstlayer-xyz/manifold/go/internal/disjointsets"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
@@ -349,7 +348,7 @@ func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
 //
 // Ported from C++ static Manifold::ReserveIDs.
 func ReserveIDs(n uint32) uint32 {
-	return bridge.ImplReserveIDs(n)
+	return reserveIDs(n)
 }
 
 // SetTolerance returns a copy of m with the specified geometric tolerance.

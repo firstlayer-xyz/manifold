@@ -15,6 +15,7 @@ package manifold
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
@@ -24,6 +25,22 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 	"github.com/firstlayer-xyz/manifold/go/internal/quickhull"
 )
+
+// meshIDCounter is the Go port of the C++ static std::atomic<uint32_t>
+// Manifold::Impl::meshIDCounter_(1) (impl.cpp:91) — a single process-wide,
+// monotonic source of unique mesh IDs. Initialized to 1 in init() (atomic.Uint32's
+// zero value is 0, so the C++ static initializer's value of 1 is set explicitly).
+var meshIDCounter atomic.Uint32
+
+func init() { meshIDCounter.Store(1) }
+
+// reserveIDs is the Go port of Manifold::Impl::ReserveIDs (impl.cpp:93):
+// meshIDCounter_.fetch_add(n, relaxed), returning the PRE-increment value
+// (atomic.Uint32.Add returns the post-increment value, so subtract n). reserveIDs(0)
+// is a non-incrementing snapshot read of the counter — the direct meshIDCounter_
+// reads in csg_tree.cpp:277 (CsgOpNode meshID snapshot) and boolean_result.cpp:523
+// (UpdateReference offsetQ).
+func reserveIDs(n uint32) uint32 { return meshIDCounter.Add(n) - n }
 
 // Impl is a const view of a Manifold::Impl. Mirrors C++
 // shared_ptr<const Manifold::Impl>: callable methods are exactly the
