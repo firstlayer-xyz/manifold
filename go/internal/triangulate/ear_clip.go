@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/multiset"
 )
 
 // vert is a node of the circularly-linked list representing the polygon(s)
@@ -15,7 +16,7 @@ import (
 type vert struct {
 	meshIdx       int
 	cost          float64
-	ear           msHandle[*vert] // earsQueue_ handle; invalid == earsQueue_.end()
+	ear           multiset.Handle[*vert] // earsQueue_ handle; invalid == earsQueue_.end()
 	pos, rightDir geom.Vec2
 	left, right   *vert
 }
@@ -38,14 +39,14 @@ type earClip struct {
 	polygon []vert
 	// holes is the set of right-most starts (one per negative-area contour),
 	// ordered by pos.x descending (MaxX).
-	holes *orderedMultiset[*vert]
+	holes *multiset.Multiset[*vert]
 	// outers / simples: starts per positive-area contour / per simple polygon.
 	outers  []*vert
 	simples []*vert
 	// hole2BBox maps each hole (by start vert) to its bounding box.
 	hole2BBox map[*vert]geom.Rect
 	// earsQueue is the priority queue of valid ears, ordered by cost (MinCost).
-	earsQueue *orderedMultiset[*vert]
+	earsQueue *multiset.Multiset[*vert]
 	// result is the output triangulation as halfedges.
 	result *HalfedgeTriangulation
 	// bBox is the bounding box of the entire polygon set.
@@ -68,8 +69,8 @@ func newEarClip(polys PolygonsIdx, epsilon float64) *earClip {
 	}
 	ec := &earClip{
 		polygon:   make([]vert, 0, numVert+2*len(polys)),
-		holes:     newOrderedMultiset[*vert](func(a, b *vert) bool { return a.pos.X > b.pos.X }),
-		earsQueue: newOrderedMultiset[*vert](func(a, b *vert) bool { return a.cost < b.cost }),
+		holes:     multiset.New[*vert](func(a, b *vert) bool { return a.pos.X > b.pos.X }),
+		earsQueue: multiset.New[*vert](func(a, b *vert) bool { return a.cost < b.cost }),
 		hole2BBox: map[*vert]geom.Rect{},
 		result:    newHalfedgeTriangulation(),
 		bBox:      geom.EmptyRect(),
@@ -376,7 +377,7 @@ type idxCollider struct {
 func (ec *earClip) processEar(v *vert, collider idxCollider) {
 	if v.ear.Valid() {
 		ec.earsQueue.Erase(v.ear)
-		v.ear = msHandle[*vert]{}
+		v.ear = multiset.Handle[*vert]{}
 	}
 	if v.isShort(ec.epsilon) {
 		v.cost = kBest

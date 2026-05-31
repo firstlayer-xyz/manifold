@@ -1,4 +1,4 @@
-package triangulate
+package multiset
 
 import (
 	"math/rand"
@@ -15,7 +15,7 @@ func ascK(a, b kv) bool { return a.k < b.k }
 // TestMultiset_EqualKeyFIFO: equal keys must pop earliest-inserted first —
 // the std::multiset tie-break that gates byte-identical triangulation.
 func TestMultiset_EqualKeyFIFO(t *testing.T) {
-	ms := newOrderedMultiset[kv](ascK)
+	ms := New[kv](ascK)
 	for id := 0; id < 6; id++ {
 		ms.Insert(kv{k: 1.0, id: id})
 	}
@@ -36,7 +36,7 @@ func TestMultiset_EqualKeyFIFO(t *testing.T) {
 
 // TestMultiset_OrderedPop: ascending key, then FIFO among equal keys.
 func TestMultiset_OrderedPop(t *testing.T) {
-	ms := newOrderedMultiset[kv](ascK)
+	ms := New[kv](ascK)
 	ms.Insert(kv{3, 0})
 	ms.Insert(kv{1, 1})
 	ms.Insert(kv{2, 2})
@@ -55,7 +55,7 @@ func TestMultiset_OrderedPop(t *testing.T) {
 // TestMultiset_HandleStability: a handle erases the right element even after
 // other inserts/erases shuffle the tree.
 func TestMultiset_HandleStability(t *testing.T) {
-	ms := newOrderedMultiset[kv](ascK)
+	ms := New[kv](ascK)
 	ms.Insert(kv{1, 0})
 	hB := ms.Insert(kv{1, 1})
 	ms.Insert(kv{1, 2})
@@ -78,7 +78,7 @@ func TestMultiset_HandleStability(t *testing.T) {
 // TestMultiset_InOrderDescending exercises the holes_ comparator (pos.x
 // descending) and the InOrder iteration used to walk holes.
 func TestMultiset_InOrderDescending(t *testing.T) {
-	ms := newOrderedMultiset[kv](func(a, b kv) bool { return a.k > b.k }) // MaxX
+	ms := New[kv](func(a, b kv) bool { return a.k > b.k }) // MaxX
 	for _, k := range []float64{2, 5, 1, 5, 3} {
 		ms.Insert(kv{k: k})
 	}
@@ -99,9 +99,9 @@ func TestMultiset_InOrderDescending(t *testing.T) {
 // many equal-key collisions — validating the AVL delete + FIFO tie-break.
 func TestMultiset_FuzzAgainstReference(t *testing.T) {
 	rng := rand.New(rand.NewSource(0xC0FFEE))
-	ms := newOrderedMultiset[kv](ascK)
+	ms := New[kv](ascK)
 	type live struct {
-		h msHandle[kv]
+		h Handle[kv]
 		v kv
 	}
 	var lives []live

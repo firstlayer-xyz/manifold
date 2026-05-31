@@ -1,19 +1,19 @@
-package triangulate
+package multiset
 
-// orderedMultiset is a balanced-BST (AVL) multiset that replicates
+// Multiset is a balanced-BST (AVL) multiset that replicates
 // std::multiset semantics for the ear-clipping triangulator: elements are
 // ordered by a `less` comparator, and EQUAL elements are kept in insertion
 // order (FIFO), so Begin() returns the earliest-inserted minimum. That FIFO
 // tie-break among equal keys is exactly what makes the triangulation output
 // match C++ byte-for-byte (libc++/libstdc++ multiset insert at upper_bound).
 //
-// Handles (msHandle) stay valid across other Insert/Erase: Erase locates the
+// Handles (Handle) stay valid across other Insert/Erase: Erase locates the
 // element by the (val, seq) total order rather than by node pointer, so the
 // internal AVL value-copy delete never invalidates a handle.
 //
 // Contract (matches how std::multiset is used in EarClip): an element's key
 // must not change while it is in the set; to re-key, Erase then Insert.
-type orderedMultiset[V any] struct {
+type Multiset[V any] struct {
 	root *msNode[V]
 	less func(a, b V) bool
 	seq  uint64
@@ -27,37 +27,37 @@ type msNode[V any] struct {
 	height      int
 }
 
-// msHandle identifies an inserted element by value + insertion sequence. The
+// Handle identifies an inserted element by value + insertion sequence. The
 // zero value (valid=false) is the "end" / "no element" sentinel.
-type msHandle[V any] struct {
+type Handle[V any] struct {
 	val   V
 	seq   uint64
 	valid bool
 }
 
 // Value returns the element a handle refers to.
-func (h msHandle[V]) Value() V { return h.val }
+func (h Handle[V]) Value() V { return h.val }
 
 // Valid reports whether the handle refers to an element (vs the end sentinel).
-func (h msHandle[V]) Valid() bool { return h.valid }
+func (h Handle[V]) Valid() bool { return h.valid }
 
-func newOrderedMultiset[V any](less func(a, b V) bool) *orderedMultiset[V] {
-	return &orderedMultiset[V]{less: less}
+func New[V any](less func(a, b V) bool) *Multiset[V] {
+	return &Multiset[V]{less: less}
 }
 
 // Len returns the number of elements.
-func (m *orderedMultiset[V]) Len() int { return m.size }
+func (m *Multiset[V]) Len() int { return m.size }
 
 // Clear empties the set. The insertion sequence keeps increasing (harmless;
 // pre-Clear handles are never reused).
-func (m *orderedMultiset[V]) Clear() {
+func (m *Multiset[V]) Clear() {
 	m.root = nil
 	m.size = 0
 }
 
 // before is the total order: by `less`, then by insertion sequence (so equal
 // keys order earliest-inserted first).
-func (m *orderedMultiset[V]) before(av V, as uint64, bv V, bs uint64) bool {
+func (m *Multiset[V]) before(av V, as uint64, bv V, bs uint64) bool {
 	if m.less(av, bv) {
 		return true
 	}
@@ -68,15 +68,15 @@ func (m *orderedMultiset[V]) before(av V, as uint64, bv V, bs uint64) bool {
 }
 
 // Insert adds v and returns its stable handle.
-func (m *orderedMultiset[V]) Insert(v V) msHandle[V] {
+func (m *Multiset[V]) Insert(v V) Handle[V] {
 	m.seq++
 	s := m.seq
 	m.root = m.insert(m.root, v, s)
 	m.size++
-	return msHandle[V]{val: v, seq: s, valid: true}
+	return Handle[V]{val: v, seq: s, valid: true}
 }
 
-func (m *orderedMultiset[V]) insert(n *msNode[V], v V, s uint64) *msNode[V] {
+func (m *Multiset[V]) insert(n *msNode[V], v V, s uint64) *msNode[V] {
 	if n == nil {
 		return &msNode[V]{val: v, seq: s, height: 1}
 	}
@@ -90,7 +90,7 @@ func (m *orderedMultiset[V]) insert(n *msNode[V], v V, s uint64) *msNode[V] {
 
 // Erase removes the element identified by h (a no-op for an invalid handle or
 // an already-removed element).
-func (m *orderedMultiset[V]) Erase(h msHandle[V]) {
+func (m *Multiset[V]) Erase(h Handle[V]) {
 	if !h.valid {
 		return
 	}
@@ -101,7 +101,7 @@ func (m *orderedMultiset[V]) Erase(h msHandle[V]) {
 	}
 }
 
-func (m *orderedMultiset[V]) deleteKey(n *msNode[V], v V, s uint64) (*msNode[V], bool) {
+func (m *Multiset[V]) deleteKey(n *msNode[V], v V, s uint64) (*msNode[V], bool) {
 	if n == nil {
 		return nil, false
 	}
@@ -133,19 +133,19 @@ func (m *orderedMultiset[V]) deleteKey(n *msNode[V], v V, s uint64) (*msNode[V],
 }
 
 // Begin returns the minimum element's handle, and false if the set is empty.
-func (m *orderedMultiset[V]) Begin() (msHandle[V], bool) {
+func (m *Multiset[V]) Begin() (Handle[V], bool) {
 	if m.root == nil {
-		return msHandle[V]{}, false
+		return Handle[V]{}, false
 	}
 	n := m.root
 	for n.left != nil {
 		n = n.left
 	}
-	return msHandle[V]{val: n.val, seq: n.seq, valid: true}, true
+	return Handle[V]{val: n.val, seq: n.seq, valid: true}, true
 }
 
 // InOrder returns all elements in sorted order (used to iterate holes_).
-func (m *orderedMultiset[V]) InOrder() []V {
+func (m *Multiset[V]) InOrder() []V {
 	out := make([]V, 0, m.size)
 	var rec func(n *msNode[V])
 	rec = func(n *msNode[V]) {
