@@ -213,7 +213,14 @@ memory model. The C++ relies on word-sized non-atomic reads being
 - **Fix when:** CSG tree (`CsgNode` / `CsgLeafNode` / `CsgOpNode`)
   is drilled. The C++ Boolean3 engine is the gating dependency.
 
-## Algorithms still in C++ (bridge passes through)
+## Algorithms (all DRILLED — production no longer calls any bridge algorithm)
+
+MILESTONE: every production algorithm is native Go. The bridge's only remaining
+roles are (a) the STORAGE FACADE for the const Impl read-path (getImpl reads
+vertPos/halfedge/etc. from the C++ handle) and (b) the collider_ that the
+`reference` test oracle's C++ booleans/Minkowski need. Both go away in the endgame
+(const-Impl native flip, then bridge -> internal/cppref). The entries below are
+kept as a record of what was ported and how it's differential-tested.
 
 - `SubdivideN`, `RefineN`, `RefineToLength`, `RefineToTolerance` — FULLY DRILLED
   (native Go). `src/subdivision.cpp` (Subdivide + the file-local Partition
@@ -275,9 +282,11 @@ memory model. The C++ relies on word-sized non-atomic reads being
     `geom.Vec2/Vec3.Normalize` used reciprocal-multiply (`x*(1/len)`) where
     `la::normalize` is componentwise division (`x/len`); switched to division
     (strictly more faithful, ~1 ULP, project-wide).
-  - STILL BRIDGE: `Smooth(MeshGL)` — the `SmoothImpl` constructor
-    (constructors.cpp) + `UpdateSharpenedEdges`, a separate constructor-level
-    drill. (InterpTri's Bezier machinery is only needed by Refine.)
+  - `Smooth(MeshGL)` — DRILLED (native). `SmoothFromMeshGL`/`SmoothFromMeshGL64`
+    = SmoothImpl (constructors.cpp:26): set faceID=iota, native ingest,
+    `UpdateSharpenedEdges` (smoothing.cpp:346) + native CreateTangentsFromSmoothness,
+    restore faceID (applySmoothing in manifold.go). Differential-tested
+    (TestSmoothFromMeshGL_VsBridge: tangents within 1e-7, geometry exact).
 - `RayCast` — DRILLED (native). `Impl.RayCast` builds an ephemeral face
   collider and runs the native Boolean3 kernel cascade (`internal/boolean`:
   Shadow01 -> Kernel02 -> Kernel11 -> Kernel12, over a degenerate single-edge
