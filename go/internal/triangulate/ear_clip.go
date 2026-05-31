@@ -5,6 +5,7 @@ import (
 
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/multiset"
+	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/vector"
 )
 
 // vert is a node of the circularly-linked list representing the polygon(s)
@@ -372,6 +373,22 @@ type idxCollider struct {
 	itr    []*vert
 }
 
+// Backing-buffer pools for the per-polygon vertCollider scratch (points + itr). The
+// collider is scratch-disjoint — built per simple polygon, released at the end of
+// triangulatePoly before the next is built — so its storage safely recycles across
+// polygons, faces, and operations (a std::vector with a pool allocator).
+var (
+	polyVertPool vector.Pool[PolyVert]
+	vertPtrPool  vector.Pool[*vert]
+)
+
+// release returns the collider's backing buffers to the pools (called via defer at
+// every triangulatePoly exit).
+func (c idxCollider) release() {
+	polyVertPool.Put(c.points)
+	vertPtrPool.Put(c.itr)
+}
+
 // processEar is the Go port of EarClip::ProcessEar (src/polygon.cpp:802):
 // recompute v's cost and update its position in earsQueue_ (remove + reinsert).
 func (ec *earClip) processEar(v *vert, collider idxCollider) {
@@ -395,8 +412,8 @@ func (ec *earClip) processEar(v *vert, collider idxCollider) {
 // expanded (in EarCost) by epsilon. Each ear uses this tree to quickly find the
 // subset of verts to check for cost.
 func (ec *earClip) vertCollider(start *vert) idxCollider {
-	var itr []*vert
-	var points []PolyVert
+	itr := vertPtrPool.Get()
+	points := polyVertPool.Get()
 	ec.loop(start, func(v *vert) {
 		points = append(points, PolyVert{Pos: v.pos, Idx: len(itr)})
 		itr = append(itr, v)
@@ -409,6 +426,7 @@ func (ec *earClip) vertCollider(start *vert) idxCollider {
 // (src/polygon.cpp:836): the main ear-clipping loop for one simple polygon.
 func (ec *earClip) triangulatePoly(start *vert) {
 	collider := ec.vertCollider(start)
+	defer collider.release() // recycle points/itr backing at every exit
 	if len(collider.itr) == 0 {
 		return
 	}
