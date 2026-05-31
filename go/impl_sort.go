@@ -316,8 +316,16 @@ func (mi *MutableImpl) SortGeometry() {
 		return
 	}
 	// collider_ = Collider(faceBox, faceMorton); bBox_ = collider_.GetBoundingBox().
-	// The collider's bounding box is the union of all leaf (face) boxes; SortVerts
-	// may have trimmed NaN verts, so recompute from the post-sort boxes.
+	// The collider's bounding box is the root node = union of all leaf (face) boxes;
+	// SortVerts may have trimmed NaN verts, so recompute from the post-sort boxes.
+	//
+	// DELIBERATE DEVIATION: we compute the union of the face boxes directly rather
+	// than calling collider_.GetBoundingBox(). For >=2 leaves the two are identical
+	// (the radix-tree root box IS that union). For a single-leaf collider (one
+	// triangle), C++ GetBoundingBox returns nodeBBox_[Internal2Node(0)] = nodeBBox_[1],
+	// which is out-of-bounds (num_nodes==1) — undefined behavior. The direct union is
+	// well-defined there. Unreachable for valid closed manifolds (>=4 triangles); only
+	// the degenerate single-triangle case differs, where Go is the sane choice.
 	mi.coll = collider.New(box, morton)
 	bb := geom.EmptyBox()
 	for _, b := range box {

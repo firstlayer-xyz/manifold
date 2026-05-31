@@ -493,8 +493,9 @@ kept as a record of what was ported and how it's differential-tested.
   it catches regressions when fixing bugs, proves performance work doesn't change
   results, and re-validates the port when upstream C++ changes are pulled in.
   Re-deriving it from scratch later would be costly, so it stays as a test-only dep.
-  ORACLE-MIGRATION PLAN (in progress — algorithms (b) are ALL drilled; only the
-  storage facade (a) + the collider oracle remain). Ordered green commits:
+  ORACLE-MIGRATION PLAN — **COMPLETE**. Production is pure Go (zero cgo imports); the
+  C++ bridge + reference are merged into one test-only package `internal/cppref`, the
+  permanent differential-test oracle. Ordered green commits:
   - 1a DONE: decouple value-type leaks (ImplScalars, RayHit) from the accessor API.
   - 1b DONE: decoupled the remaining type leaks — `bridge.TriRef` -> `mesh.TriRef`,
     `bridge.MeshIDRelation` -> a native meshIDRelation, `bridge.Smoothness` ->
@@ -541,13 +542,26 @@ kept as a record of what was ported and how it's differential-tested.
     geometric invariants; OriginalID comparisons use fromRefHandle, which COPIES the
     id). Full differential suite green. Production bridge importers now only impl.go
     + impl_storage.go (the transient MutableImpl handle + marshal seam — step 4c).
-  - 4c: move the transient bridge handle off the production MutableImpl (only the
-    test runBridgeAlgo uses it now) + relocate bridge + reference into ONE test-only
-    package `internal/cppref` (production bridge-free; cgo becomes a test-only dep —
-    KEPT PERMANENTLY as the differential-test oracle, not deleted; merged into one
-    package so the libmanifold link config lives in one cgo preamble, killing the
-    duplicate-library link warning). Invalid/PropagateStatus/Empty/ManifoldFromMeshGL
-    were ALREADY native (newImpl -> MakeEmpty/ingest -> ToManifold).
+  - 4c DONE: 4c-i moved the transient bridge handle off the production MutableImpl
+    (the h field, newImpl/Copy allocation, runBridgeAlgo, marshal seam → test-only
+    oracle_test.go via a runCppAlgo harness + free reloadFromBridge); production then
+    imported ZERO cgo. 4c-ii relocated bridge + reference into ONE test-only package
+    `internal/cppref` (KEPT PERMANENTLY as the differential-test oracle, not deleted),
+    with the libmanifold link config in a single cgo preamble (reference.go carries no
+    #cgo) — the duplicate-library link warning is GONE. Invalid/PropagateStatus/Empty/
+    ManifoldFromMeshGL were ALREADY native (newImpl -> MakeEmpty/ingest -> ToManifold).
+  - VERIFIED (23-agent adversarial faithfulness workflow over step 4): ReserveIDs
+    faithful; production confirmed cgo-free. Two understood deviations, neither a
+    regression:
+    (1) ExecutionContext.ctx is carried on Manifold + set by WithContext but UNREAD by
+        ops — Status/Refine don't thread it as C++ does (GetCsgLeafNode(ctx_)). Faithful
+        to the not-yet-ported cancellable-parallelism path; cancellation/progress won't
+        actually fire until ops observe ctx. KNOWN LIMITATION (deferred, not a bug).
+    (2) SortGeometry bBox: Go computes union(faceBoxes) directly instead of
+        collider_.GetBoundingBox(). Identical for >=2 leaves; for a single-leaf collider
+        (1 triangle) C++ GetBoundingBox reads nodeBBox_[1] OOB (UB) while Go is
+        well-defined. Unreachable for valid closed manifolds (>=4 tris). DELIBERATE,
+        documented in impl_sort.go — Go is the sane choice; reproducing UB is not.
 - **`Quality` and `DisjointSets` are independent Go state.** They
   do not share with the C++ side. Fine while the C++ Manifold is
   the black box; revisit only if we ever want one process to
