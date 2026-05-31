@@ -194,7 +194,7 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 // counts).
 func eagerTransformPropNormals(mi *MutableImpl, normalTransform geom.Mat3) {
 	rels := mi.MeshIDTransforms()
-	relByID := make(map[int32]bool, len(rels))
+	relByID := make(map[int]bool, len(rels))
 	anyHasNormals := false
 	for _, r := range rels {
 		relByID[r.MeshID] = r.HasNormals

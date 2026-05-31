@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/firstlayer-xyz/manifold/go/bridge"
+	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
@@ -36,7 +37,7 @@ func (mi *MutableImpl) InitializeOriginal() {
 		// Preserve existing coplanarID exactly like C++:
 		// triRef[tri] = {meshID, meshID, -1, triRef[tri].coplanarID};
 		if tri < len(oldTriRefs) {
-			coplanarIDs[tri] = oldTriRefs[tri].CoplanarID
+			coplanarIDs[tri] = int32(oldTriRefs[tri].CoplanarID)
 		} else {
 			coplanarIDs[tri] = 0
 		}
@@ -48,7 +49,7 @@ func (mi *MutableImpl) InitializeOriginal() {
 	// inherited hasNormals state.
 	hadNormals := mi.AllHaveNormals()
 	mi.ClearMeshIDTransforms()
-	identity := [4][3]float64{
+	identity := geom.Mat3x4{
 		{1, 0, 0},
 		{0, 1, 0},
 		{0, 0, 1},
@@ -70,11 +71,11 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 	sort.Slice(old, func(i, j int) bool { return old[i].MeshID < old[j].MeshID })
 	nextMeshID := int32(bridge.ImplReserveIDs(uint32(len(old))))
 
-	old2new := make(map[int32]int32, len(old))
+	old2new := make(map[int]int32, len(old))
 	mi.ClearMeshIDTransforms()
 	for _, r := range old {
 		old2new[r.MeshID] = nextMeshID
-		mi.AddMeshIDTransform(int(nextMeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
+		mi.AddMeshIDTransform(int(nextMeshID), r.OriginalID, r.Transform, r.BackSide, r.HasNormals)
 		nextMeshID++
 	}
 
@@ -85,9 +86,9 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 	coplanarIDs := make([]int32, len(refs))
 	for i, r := range refs {
 		meshIDs[i] = old2new[r.MeshID] // UpdateMeshID: only meshID is remapped
-		originalIDs[i] = r.OriginalID
-		faceIDs[i] = r.FaceID
-		coplanarIDs[i] = r.CoplanarID
+		originalIDs[i] = int32(r.OriginalID)
+		faceIDs[i] = int32(r.FaceID)
+		coplanarIDs[i] = int32(r.CoplanarID)
 	}
 	mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
@@ -103,7 +104,7 @@ func (mi *MutableImpl) MarkAllMeshIDHasNormals() {
 	rels := mi.MeshIDTransforms()
 	mi.ClearMeshIDTransforms()
 	for _, r := range rels {
-		mi.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID),
+		mi.AddMeshIDTransform(r.MeshID, r.OriginalID,
 			r.Transform, r.BackSide, true)
 	}
 }

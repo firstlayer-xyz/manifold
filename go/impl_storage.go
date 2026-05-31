@@ -173,29 +173,42 @@ func resizeVec3(s []geom.Vec3, n int) []geom.Vec3 {
 	return append(s, make([]geom.Vec3, n-len(s))...)
 }
 
-// triRefsToBridge converts the native triRef array to the bridge-shaped slice
-// the (transitional) accessor callers expect.
-func triRefsToBridge(refs []mesh.TriRef) []bridge.TriRef {
-	out := make([]bridge.TriRef, len(refs))
+// bridgeTriRefsToMesh converts the bridge's []bridge.TriRef (the const-Impl read
+// path, until the storage flip) into the native []mesh.TriRef the accessor returns.
+func bridgeTriRefsToMesh(refs []bridge.TriRef) []mesh.TriRef {
+	out := make([]mesh.TriRef, len(refs))
 	for i, r := range refs {
-		out[i] = bridge.TriRef{MeshID: int32(r.MeshID), OriginalID: int32(r.OriginalID), FaceID: int32(r.FaceID), CoplanarID: int32(r.CoplanarID)}
+		out[i] = mesh.TriRef{MeshID: int(r.MeshID), OriginalID: int(r.OriginalID), FaceID: int(r.FaceID), CoplanarID: int(r.CoplanarID)}
 	}
 	return out
 }
 
-// meshIDTransformsToBridge returns the meshIDtransform entries in ascending
-// meshID order — the native map is insertion-ordered, but C++ iterates the
-// std::map by key, so callers must see key order.
-func meshIDTransformsToBridge(mr *mesh.MeshRelationD) []bridge.MeshIDRelation {
+// meshIDTransformsNative returns the meshIDtransform entries in ascending meshID
+// order (the native map is insertion-ordered, but C++ iterates the std::map by
+// key, so callers must see key order).
+func meshIDTransformsNative(mr *mesh.MeshRelationD) []meshIDRelation {
 	keys := append([]int(nil), mr.MeshIDTransform.Keys()...)
 	sort.Ints(keys)
-	out := make([]bridge.MeshIDRelation, 0, len(keys))
+	out := make([]meshIDRelation, 0, len(keys))
 	for _, k := range keys {
 		r, _ := mr.MeshIDTransform.Get(k)
-		out = append(out, bridge.MeshIDRelation{
-			MeshID: int32(k), OriginalID: int32(r.OriginalID),
-			Transform: [4][3]float64(r.Transform), BackSide: r.BackSide, HasNormals: r.HasNormals,
+		out = append(out, meshIDRelation{
+			MeshID: k, OriginalID: r.OriginalID,
+			Transform: r.Transform, BackSide: r.BackSide, HasNormals: r.HasNormals,
 		})
+	}
+	return out
+}
+
+// bridgeMeshIDRelsToNative converts the bridge's []bridge.MeshIDRelation (const-Impl
+// read path) into the native []meshIDRelation the accessor returns.
+func bridgeMeshIDRelsToNative(rels []bridge.MeshIDRelation) []meshIDRelation {
+	out := make([]meshIDRelation, len(rels))
+	for i, r := range rels {
+		out[i] = meshIDRelation{
+			MeshID: int(r.MeshID), OriginalID: int(r.OriginalID),
+			Transform: geom.Mat3x4(r.Transform), BackSide: r.BackSide, HasNormals: r.HasNormals,
+		}
 	}
 	return out
 }

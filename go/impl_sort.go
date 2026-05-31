@@ -192,10 +192,10 @@ func (mi *MutableImpl) GatherFacesInPlace(faceNew2Old []int32) {
 		coplanarIDs := make([]int32, numTri)
 		parallel.ForEachN(policy, numTri, func(i int) {
 			r := permuted[i]
-			meshIDs[i] = r.MeshID
-			originalIDs[i] = r.OriginalID
-			faceIDs[i] = r.FaceID
-			coplanarIDs[i] = r.CoplanarID
+			meshIDs[i] = int32(r.MeshID)
+			originalIDs[i] = int32(r.OriginalID)
+			faceIDs[i] = int32(r.FaceID)
+			coplanarIDs[i] = int32(r.CoplanarID)
 		})
 		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}

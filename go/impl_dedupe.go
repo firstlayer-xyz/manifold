@@ -4,8 +4,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
@@ -22,7 +22,7 @@ type dedupeState struct {
 	starts      []int32
 	pairs       []int32
 	props       []int32
-	triRefs     []bridge.TriRef
+	triRefs     []mesh.TriRef
 	faceNormals []geom.Vec3
 	properties  []float64 // properties_ — property values (numProp per propVert)
 	numProp     int       // numProp_ — gates prop updates in collapse/swap
@@ -37,7 +37,7 @@ func newDedupeState(mi *MutableImpl) *dedupeState {
 		starts:      append([]int32(nil), mi.HalfedgeStarts()...),
 		pairs:       append([]int32(nil), mi.HalfedgePairs()...),
 		props:       append([]int32(nil), mi.HalfedgeProps()...),
-		triRefs:     append([]bridge.TriRef(nil), mi.TriRefs()...),
+		triRefs:     append([]mesh.TriRef(nil), mi.TriRefs()...),
 		faceNormals: append([]geom.Vec3(nil), mi.FaceNormals()...),
 		properties:  append([]float64(nil), mi.Properties()...),
 		numProp:     mi.NumProp(),
@@ -405,10 +405,10 @@ func (s *dedupeState) commit(mi *MutableImpl) {
 		faceIDs := make([]int32, len(s.triRefs))
 		coplanarIDs := make([]int32, len(s.triRefs))
 		for i, r := range s.triRefs {
-			meshIDs[i] = r.MeshID
-			originalIDs[i] = r.OriginalID
-			faceIDs[i] = r.FaceID
-			coplanarIDs[i] = r.CoplanarID
+			meshIDs[i] = int32(r.MeshID)
+			originalIDs[i] = int32(r.OriginalID)
+			faceIDs[i] = int32(r.FaceID)
+			coplanarIDs[i] = int32(r.CoplanarID)
 		}
 		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}

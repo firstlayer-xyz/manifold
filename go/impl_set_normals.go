@@ -1,7 +1,6 @@
 package manifold
 
 import (
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
@@ -99,11 +98,11 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 
 	// Lazy per-meshID inverse-normal-transform cache (used only when
 	// normalIdx != 0). meshIdTransform maps meshID → 3x3 matrix.
-	relByID := make(map[int32]geom.Mat3, len(rels))
+	relByID := make(map[int]geom.Mat3, len(rels))
 	for _, r := range rels {
 		relByID[r.MeshID] = inverseNormalTransformFor(r)
 	}
-	getTransform := func(meshID int32) geom.Mat3 { return relByID[meshID] }
+	getTransform := func(meshID int) geom.Mat3 { return relByID[meshID] }
 
 	// Pass 4: per-vertex assignment.
 	for startEdge := 0; startEdge < numHalfedge; startEdge++ {
@@ -170,7 +169,7 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 		}
 		var groups []int
 		var normals []geom.Vec3
-		var meshIds []int32
+		var meshIds []int
 
 		forVertTransform[faceEdge](endEdge, pairs,
 			func(edge int) faceEdge {
@@ -255,10 +254,10 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 }
 
 // inverseNormalTransformFor returns Relation.GetInverseNormalTransform()
-// for a bridge.MeshIDRelation: InverseNormalTransform(transform) *
+// for a meshIDRelation: InverseNormalTransform(transform) *
 // (backSide ? -1 : 1). Mirrors the C++ Relation::GetInverseNormalTransform.
-func inverseNormalTransformFor(r bridge.MeshIDRelation) geom.Mat3 {
-	m := geom.InverseNormalTransform(geom.Mat3x4(r.Transform))
+func inverseNormalTransformFor(r meshIDRelation) geom.Mat3 {
+	m := geom.InverseNormalTransform(r.Transform)
 	if r.BackSide {
 		for col := 0; col < 3; col++ {
 			for row := 0; row < 3; row++ {

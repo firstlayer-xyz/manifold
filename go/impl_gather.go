@@ -37,10 +37,10 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 		coplanarIDs := make([]int32, numTri)
 		parallel.ForEachN(policy, numTri, func(i int) {
 			r := permuted[i]
-			meshIDs[i] = r.MeshID
-			originalIDs[i] = r.OriginalID
-			faceIDs[i] = r.FaceID
-			coplanarIDs[i] = r.CoplanarID
+			meshIDs[i] = int32(r.MeshID)
+			originalIDs[i] = int32(r.OriginalID)
+			faceIDs[i] = int32(r.FaceID)
+			coplanarIDs[i] = int32(r.CoplanarID)
 		})
 		mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 	}
@@ -48,7 +48,7 @@ func (mi *MutableImpl) GatherFaces(old *Impl, faceNew2Old []int32) {
 	// meshIDtransform copy — serial in C++, std::map iteration.
 	mi.ClearMeshIDTransforms()
 	for _, rel := range old.MeshIDTransforms() {
-		mi.AddMeshIDTransform(int(rel.MeshID), int(rel.OriginalID),
+		mi.AddMeshIDTransform(rel.MeshID, rel.OriginalID,
 			rel.Transform, rel.BackSide, rel.HasNormals)
 	}
 

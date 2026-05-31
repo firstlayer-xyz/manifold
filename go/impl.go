@@ -145,13 +145,25 @@ func (i *Impl) HalfedgeTangents() []float64 { return i.h.HalfedgeTangents() }
 // Properties returns properties_ as a read-only slice.
 func (i *Impl) Properties() []float64 { return i.h.Properties() }
 
+// meshIDRelation is the manifold-package value type for one flattened
+// meshRelation_.meshIDtransform entry (the map key meshID + its Relation). It
+// replaces the bridge.MeshIDRelation leak in the accessor API.
+type meshIDRelation struct {
+	MeshID, OriginalID int
+	Transform          geom.Mat3x4
+	BackSide           bool
+	HasNormals         bool
+}
+
 // TriRefs returns the meshRelation_.triRef array as a copied Go
 // slice (each TriRef carries meshID/originalID/faceID/coplanarID).
-func (i *Impl) TriRefs() []bridge.TriRef { return i.h.TriRefs() }
+func (i *Impl) TriRefs() []mesh.TriRef { return bridgeTriRefsToMesh(i.h.TriRefs()) }
 
 // MeshIDTransforms returns the meshRelation_.meshIDtransform map's
 // entries in std::map order (ascending meshID).
-func (i *Impl) MeshIDTransforms() []bridge.MeshIDRelation { return i.h.MeshIDTransforms() }
+func (i *Impl) MeshIDTransforms() []meshIDRelation {
+	return bridgeMeshIDRelsToNative(i.h.MeshIDTransforms())
+}
 
 // BBox returns bBox_'s min/max corners.
 func (i *Impl) BBox() (min, max geom.Vec3) { return i.h.BBox() }
@@ -282,13 +294,13 @@ func (mi *MutableImpl) HalfedgeTangents() []float64 { return tangentsToFlat(mi.s
 // Properties is the read-write properties_ slice.
 func (mi *MutableImpl) Properties() []float64 { return mi.s.properties }
 
-// TriRefs returns the meshRelation_.triRef array as a copied bridge-shaped slice.
-func (mi *MutableImpl) TriRefs() []bridge.TriRef { return triRefsToBridge(mi.s.meshRelation.TriRef) }
+// TriRefs returns the meshRelation_.triRef array (the native backing slice).
+func (mi *MutableImpl) TriRefs() []mesh.TriRef { return mi.s.meshRelation.TriRef }
 
 // MeshIDTransforms returns the meshIDtransform map entries in ascending
 // meshID order (mirroring std::map iteration).
-func (mi *MutableImpl) MeshIDTransforms() []bridge.MeshIDRelation {
-	return meshIDTransformsToBridge(&mi.s.meshRelation)
+func (mi *MutableImpl) MeshIDTransforms() []meshIDRelation {
+	return meshIDTransformsNative(&mi.s.meshRelation)
 }
 
 // BBox returns bBox_'s corners.
@@ -417,9 +429,9 @@ func (mi *MutableImpl) SetMeshRelationOriginalID(id int) { mi.s.meshRelation.Ori
 func (mi *MutableImpl) ClearMeshIDTransforms() { mi.s.meshRelation.MeshIDTransform.Clear() }
 
 // AddMeshIDTransform inserts one meshRelation_.meshIDtransform entry.
-func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform [4][3]float64, backSide, hasNormals bool) {
+func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform geom.Mat3x4, backSide, hasNormals bool) {
 	mi.s.meshRelation.MeshIDTransform.Set(meshID, mesh.Relation{
-		OriginalID: originalID, Transform: geom.Mat3x4(transform),
+		OriginalID: originalID, Transform: transform,
 		BackSide: backSide, HasNormals: hasNormals,
 	})
 }

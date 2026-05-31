@@ -146,10 +146,10 @@ func compose(leaves []*Impl) *MutableImpl {
 		offset := int32(i) * meshIDCounterSnapshot
 		refs := node.TriRefs()
 		for t, r := range refs {
-			triMeshID[triIndices[i]+t] = r.MeshID + offset
-			triOriginalID[triIndices[i]+t] = r.OriginalID
-			triFaceID[triIndices[i]+t] = r.FaceID
-			triCoplanarID[triIndices[i]+t] = r.CoplanarID
+			triMeshID[triIndices[i]+t] = int32(r.MeshID) + offset
+			triOriginalID[triIndices[i]+t] = int32(r.OriginalID)
+			triFaceID[triIndices[i]+t] = int32(r.FaceID)
+			triCoplanarID[triIndices[i]+t] = int32(r.CoplanarID)
 		}
 	}
 

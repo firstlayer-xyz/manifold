@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
@@ -100,7 +100,7 @@ func (fs *flagStore) runPar(n int, pred func(i int) bool, f func(i int)) {
 // triRefSameFace mirrors C++ TriRef::SameFace (src/shared.h:305): two
 // triangles belong to the same face iff their meshID, coplanarID, and
 // faceID all match.
-func triRefSameFace(a, b bridge.TriRef) bool {
+func triRefSameFace(a, b mesh.TriRef) bool {
 	return a.MeshID == b.MeshID && a.CoplanarID == b.CoplanarID && a.FaceID == b.FaceID
 }
 

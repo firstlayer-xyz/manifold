@@ -4,8 +4,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 )
 
 const (
@@ -26,7 +26,7 @@ type tangentState struct {
 	props       []int32
 	numProp     int
 	properties  []float64
-	triRefs     []bridge.TriRef
+	triRefs     []mesh.TriRef
 	faceNormals []geom.Vec3
 	// halfedgeTangent is the existing member tangent array (flat, 4 floats per
 	// halfedge). Empty while CreateTangents is still computing tangents, in
@@ -34,11 +34,11 @@ type tangentState struct {
 	halfedgeTangent []float64
 	// meshIDtransform mirrors meshRelation_.meshIDtransform (a std::map keyed
 	// by meshID); built once from the relation list for GetNormal lookups.
-	meshIDtransform map[int32]bridge.MeshIDRelation
+	meshIDtransform map[int]meshIDRelation
 }
 
 func newTangentState(mi *MutableImpl) *tangentState {
-	m := make(map[int32]bridge.MeshIDRelation)
+	m := make(map[int]meshIDRelation)
 	for _, rel := range mi.MeshIDTransforms() {
 		m[rel.MeshID] = rel
 	}
@@ -50,7 +50,7 @@ func newTangentState(mi *MutableImpl) *tangentState {
 		props:           append([]int32(nil), mi.HalfedgeProps()...),
 		numProp:         mi.NumProp(),
 		properties:      append([]float64(nil), mi.Properties()...),
-		triRefs:         append([]bridge.TriRef(nil), mi.TriRefs()...),
+		triRefs:         append([]mesh.TriRef(nil), mi.TriRefs()...),
 		faceNormals:     append([]geom.Vec3(nil), mi.FaceNormals()...),
 		halfedgeTangent: append([]float64(nil), mi.HalfedgeTangents()...),
 		meshIDtransform: m,
@@ -139,7 +139,7 @@ func (ts *tangentState) isInsideQuad(halfedge int) bool {
 	if !triRefSameFace(ref, pairRef) {
 		return false
 	}
-	sameFace := func(he int, ref bridge.TriRef) bool {
+	sameFace := func(he int, ref mesh.TriRef) bool {
 		return triRefSameFace(ref, ts.triRefs[int(ts.pairs[he])/3])
 	}
 	neighbor := nextHalfedge(halfedge)
@@ -513,10 +513,10 @@ func (ts *tangentState) flatFaces() []bool {
 func (ts *tangentState) vertFlatFace(flatFaces []bool) []int {
 	numVert := len(ts.verts)
 	vertFlatFace := make([]int, numVert)
-	vertRef := make([]bridge.TriRef, numVert)
+	vertRef := make([]mesh.TriRef, numVert)
 	for i := 0; i < numVert; i++ {
 		vertFlatFace[i] = -1
-		vertRef[i] = bridge.TriRef{MeshID: -1, OriginalID: -1, FaceID: -1, CoplanarID: -1}
+		vertRef[i] = mesh.TriRef{MeshID: -1, OriginalID: -1, FaceID: -1, CoplanarID: -1}
 	}
 	numTri := len(ts.triRefs)
 	for tri := 0; tri < numTri; tri++ {

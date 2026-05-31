@@ -4,6 +4,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
 )
 
 // boolOperand builds the boolean.Operand the native Boolean3 reads from a const
@@ -187,7 +188,7 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 	hPropsP, hPropsQ := inP.HalfedgeProps(), inQ.HalfedgeProps()
 
 	// inQ TriHasNormals lookup (impl.h:77): triRef[tri].meshID -> hasNormals.
-	qHasNormals := map[int32]bool{}
+	qHasNormals := map[int]bool{}
 	for _, r := range inQ.MeshIDTransforms() {
 		qHasNormals[r.MeshID] = r.HasNormals
 	}
@@ -336,7 +337,7 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 // offsetting Q's mesh IDs by the current meshIDCounter_; then copy both inputs'
 // meshIDtransform entries into the output (Q offset, backSide XOR invertQ).
 func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
-	offsetQ := int32(bridge.ImplReserveIDs(0)) // meshIDCounter_ (fetch_add 0)
+	offsetQ := int(bridge.ImplReserveIDs(0)) // meshIDCounter_ (fetch_add 0)
 	triRefP := inP.TriRefs()
 	triRefQ := inQ.TriRefs()
 
@@ -346,31 +347,31 @@ func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 	faceIDs := make([]int32, len(refs))
 	coplanarIDs := make([]int32, len(refs))
 	for i, ref := range refs {
-		tri := int(ref.FaceID)
+		tri := ref.FaceID
 		pq := ref.MeshID == 0
 		// C++ MapTriRef (boolean_result.cpp:510): triRef = PQ ? triRefP[tri] :
 		// triRefQ[tri]. The branch must be conditional, not "index P then maybe
 		// overwrite" — a Q tri's faceID is a Q-local index that can legally exceed
 		// NumTriP, so eagerly evaluating triRefP[tri] would index out of range.
-		var src bridge.TriRef
+		var src mesh.TriRef
 		if pq {
 			src = triRefP[tri]
 		} else {
 			src = triRefQ[tri]
 			src.MeshID += offsetQ
 		}
-		meshIDs[i] = src.MeshID
-		originalIDs[i] = src.OriginalID
-		faceIDs[i] = src.FaceID
-		coplanarIDs[i] = src.CoplanarID
+		meshIDs[i] = int32(src.MeshID)
+		originalIDs[i] = int32(src.OriginalID)
+		faceIDs[i] = int32(src.FaceID)
+		coplanarIDs[i] = int32(src.CoplanarID)
 	}
 	outR.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 
 	for _, r := range inP.MeshIDTransforms() {
-		outR.AddMeshIDTransform(int(r.MeshID), int(r.OriginalID), r.Transform, r.BackSide, r.HasNormals)
+		outR.AddMeshIDTransform(r.MeshID, r.OriginalID, r.Transform, r.BackSide, r.HasNormals)
 	}
 	for _, r := range inQ.MeshIDTransforms() {
 		// meshIDtransform[pair.first + offsetQ] = pair.second; backSide ^= invertQ.
-		outR.AddMeshIDTransform(int(r.MeshID)+int(offsetQ), int(r.OriginalID), r.Transform, r.BackSide != invertQ, r.HasNormals)
+		outR.AddMeshIDTransform(r.MeshID+offsetQ, r.OriginalID, r.Transform, r.BackSide != invertQ, r.HasNormals)
 	}
 }

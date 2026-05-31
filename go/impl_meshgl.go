@@ -4,7 +4,6 @@ import (
 	"math"
 	"sort"
 
-	"github.com/firstlayer-xyz/manifold/go/bridge"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 )
 
@@ -88,12 +87,12 @@ func getMeshGLImpl[P float32 | float64, I uint32 | uint64](
 
 	// Build a meshID → Relation map for lookup. Also track which
 	// relations have been consumed; leftovers get a trailing empty run.
-	relByID := make(map[int32]bridge.MeshIDRelation, len(relations))
+	relByID := make(map[int]meshIDRelation, len(relations))
 	for _, r := range relations {
 		relByID[r.MeshID] = r
 	}
 
-	addRun := func(triIdx int, rel bridge.MeshIDRelation) {
+	addRun := func(triIdx int, rel meshIDRelation) {
 		out.RunIndex = append(out.RunIndex, I(3*triIdx))
 		out.RunOriginalID = append(out.RunOriginalID, uint32(rel.OriginalID))
 		var flags uint8
@@ -113,12 +112,12 @@ func getMeshGLImpl[P float32 | float64, I uint32 | uint64](
 		}
 	}
 
-	lastID := int32(-1)
+	lastID := -1
 	for tri := 0; tri < numTri; tri++ {
 		oldTri := triNew2Old[tri]
 		ref := triRef[oldTri]
 		// faceID: ref.faceID if >= 0 else coplanarID
-		var fid int32
+		var fid int
 		if ref.FaceID >= 0 {
 			fid = ref.FaceID
 		} else {
@@ -138,7 +137,7 @@ func getMeshGLImpl[P float32 | float64, I uint32 | uint64](
 	}
 	// Trailing runs for originals that contributed no faces (std::map
 	// iteration order = ascending meshID; mirror that with a sort).
-	leftoverIDs := make([]int32, 0, len(relByID))
+	leftoverIDs := make([]int, 0, len(relByID))
 	for id := range relByID {
 		leftoverIDs = append(leftoverIDs, id)
 	}

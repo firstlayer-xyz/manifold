@@ -490,10 +490,14 @@ kept as a record of what was ported and how it's differential-tested.
   ORACLE-MIGRATION PLAN (in progress — algorithms (b) are ALL drilled; only the
   storage facade (a) + the collider oracle remain). Ordered green commits:
   - 1a DONE: decouple value-type leaks (ImplScalars, RayHit) from the accessor API.
-  - 1b: decouple the remaining type leaks — `bridge.TriRef` -> `mesh.TriRef`,
+  - 1b DONE: decoupled the remaining type leaks — `bridge.TriRef` -> `mesh.TriRef`,
     `bridge.MeshIDRelation` -> a native meshIDRelation, `bridge.Smoothness` ->
     manifold.Smoothness (in TriRefs()/MeshIDTransforms()/SharpenEdges/
-    CreateTangentsFromSmoothness/UpdateSharpenedEdges signatures + callers).
+    CreateTangentsFromSmoothness/UpdateSharpenedEdges signatures + callers). The
+    accessor API now leaks NO bridge types; the only `bridge.TriRef`/
+    `bridge.MeshIDRelation` left in production are the two const-Impl read-side
+    converters (bridgeTriRefsToMesh / bridgeMeshIDRelsToNative in impl_storage.go),
+    which step 2 removes when const Impl becomes native-backed.
   - 2: const-Impl native storage — add `s` to Impl, flip its accessors to read s
     (mirror the MutableImpl Step B), getImpl marshals the bridge handle -> s ONCE,
     Copy clones s. (Still reads the bridge at getImpl; const Impl is native-backed.)

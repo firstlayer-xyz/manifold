@@ -1197,9 +1197,9 @@ func applySmoothing(base *Manifold, origFaceID []int, sharpenedEdges []Smoothnes
 	faceIDs := make([]int32, numTri)
 	coplanarIDs := make([]int32, numTri)
 	for i, r := range refs {
-		meshIDs[i] = r.MeshID
-		originalIDs[i] = r.OriginalID
-		coplanarIDs[i] = r.CoplanarID
+		meshIDs[i] = int32(r.MeshID)
+		originalIDs[i] = int32(r.OriginalID)
+		coplanarIDs[i] = int32(r.CoplanarID)
 		if len(origFaceID) == numTri {
 			faceIDs[i] = int32(origFaceID[r.FaceID])
 		} else {
