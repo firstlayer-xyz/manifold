@@ -416,12 +416,17 @@ func findSurface(pos0 Vec3, d0 float64, pos1 Vec3, d1 float64,
 	return lerpVec3(pos0, pos1, d0/(d0-d1))
 }
 
-func lerpScalar(a, b, t float64) float64 { return a + (b-a)*t }
+// lerpScalar / lerpVec3 mirror la::lerp exactly: a*(1-t) + b*t (linalg.h:471),
+// NOT the algebraically-equal a + (b-a)*t — the orderings round differently
+// under IEEE-754, and every C++ call site these mirror (sdf.cpp, smoothing.cpp's
+// Refine/InterpTri, subdivision.cpp's PartitionQuad + prop interpolation) uses
+// la::lerp. geom.Vec4.Lerp already matches this form.
+func lerpScalar(a, b, t float64) float64 { return a*(1-t) + b*t }
 func lerpVec3(a, b Vec3, t float64) Vec3 {
 	return Vec3{
-		X: a.X + (b.X-a.X)*t,
-		Y: a.Y + (b.Y-a.Y)*t,
-		Z: a.Z + (b.Z-a.Z)*t,
+		X: a.X*(1-t) + b.X*t,
+		Y: a.Y*(1-t) + b.Y*t,
+		Z: a.Z*(1-t) + b.Z*t,
 	}
 }
 
