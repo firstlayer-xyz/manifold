@@ -169,7 +169,9 @@ func appendPartialEdges(outR *outImpl, halfedgeR []Halfedge, wholeHalfedgeP []bo
 	sort.Ints(edges)
 
 	for _, edgeP := range edges {
-		edgePosP := append([]edgePos(nil), edgesP[edgeP]...)
+		// C++ copies value.second by value; we copy into a pooled buffer that is
+		// released at the end of the iteration (per-edge scratch).
+		edgePosP := append(edgePosPool.Get(), edgesP[edgeP]...)
 		sortEdgePos(edgePosP)
 
 		pairP := halfedgeP.Pair(edgeP)
@@ -231,6 +233,7 @@ func appendPartialEdges(outR *outImpl, halfedgeR []Halfedge, wholeHalfedgeP []bo
 			halfedgeR[backwardEdge] = e
 			halfedgeRef[backwardEdge] = backwardRef
 		})
+		edgePosPool.Put(edgePosP)
 	}
 }
 
