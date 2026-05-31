@@ -68,6 +68,48 @@ func TestSetNormals_VsCpp_Sphere(t *testing.T) {
 	}
 }
 
+// TestKMinSharpAngle_MatchesCpp guards the faithfulness fix for the dihedral floor:
+// src/smoothing.cpp:44 is `constexpr double kMinSharpAngle = 1e-4` (degrees). A prior
+// transcription had 5.0, which silently reclassified all near-coplanar edges (1e-4..5
+// deg) as sharp. Differential tests missed it because they only pass minSharpAngle
+// values (30/60 deg) far above both, where the clamp is identical.
+func TestKMinSharpAngle_MatchesCpp(t *testing.T) {
+	if kMinSharpAngle != 1e-4 {
+		t.Errorf("kMinSharpAngle = %v, want 1e-4 (must mirror src/smoothing.cpp:44)", kMinSharpAngle)
+	}
+}
+
+// TestSetNormals_VsCpp_SmallMinSharpAngle exercises the (1e-4, 5) degree gap that the
+// kMinSharpAngle bug lived in. A 128-segment sphere has equatorial dihedrals ~2.8 deg;
+// with minSharpAngle = 1 deg those edges are SHARP (split propVerts), but a 5-degree
+// floor would clamp minSharpAngle up to 5 and treat them as smooth — producing far
+// fewer propVerts than C++. So NumPropVert is the discriminator and must match the oracle.
+func TestSetNormals_VsCpp_SmallMinSharpAngle(t *testing.T) {
+	for _, minSharp := range []float64{0.5, 1.0, 2.0} {
+		t.Run("", func(t *testing.T) {
+			mGo := Sphere(1.0, 128)
+			defer runtime.KeepAlive(mGo)
+			hRef := cppref.Sphere(1.0, 128)
+			defer cppref.DeleteManifold(hRef)
+
+			nGo := mGo.CalculateNormals(0, minSharp)
+			defer runtime.KeepAlive(nGo)
+			nRef := cppref.CalculateNormals(hRef, 0, minSharp)
+			defer cppref.DeleteManifold(nRef)
+
+			if got, want := nGo.NumPropVert(), cppref.NumPropVert(nRef); got != want {
+				t.Errorf("NumPropVert: go=%d ref=%d (minSharp=%v) — kMinSharpAngle floor regressed?", got, want, minSharp)
+			}
+			// Sanity: the gap angle really does split propVerts (guards against the
+			// test silently passing if both sides took the all-smooth path).
+			if nGo.NumPropVert() <= nGo.NumVert() {
+				t.Errorf("expected sharp-edge splits (NumPropVert > NumVert) at minSharp=%v; got NumPropVert=%d NumVert=%d",
+					minSharp, nGo.NumPropVert(), nGo.NumVert())
+			}
+		})
+	}
+}
+
 // TestSetNormals_PerVertNormalLength: every stored normal must be a
 // unit vector (or zero, for degenerate verts). This is a stronger
 // check than just Volume/SurfaceArea matching.

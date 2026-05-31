@@ -10,6 +10,27 @@ the **algorithm / call-site / threshold / atomic semantics** level.
 `sync/atomic` instead of `std::atomic`) are NOT deviations as long
 as the algorithmic call-site shape matches.
 
+### Post-port faithfulness audit (2026-05-31)
+
+First systematic FORM audit (16 subsystems, each Go file diffed against its cited
+C++ source by an auditor + adversarial verification). 13 subsystems clean:
+sort-pipeline, halfedges, subdivide-refine, edge-ops, properties/normals/curvature,
+transform, csg-boolean, boolean3-kernel, levelset, minkowski, constructors,
+geom-math, triangulate. Three findings:
+- **FIXED (high, observable): `kMinSharpAngle` was 5.0, must be 1e-4** (degrees) per
+  src/smoothing.cpp:44. The clamp `max(minSharpAngle, kMinSharpAngle)` in SetNormals/
+  SharpenEdges treated all 1e-4..5° edges as sharp. Latent: differential tests only
+  passed minSharpAngle 30/60° (≫ both), so the clamp was identical. Regression guard
+  added (TestKMinSharpAngle_MatchesCpp + TestSetNormals_VsCpp_SmallMinSharpAngle on a
+  128-seg sphere with minSharp in the gap — verified to fail on the old value).
+- **FIXED (medium, observable): Slice lerp float-order** (impl_slice.go). Was
+  `below + a*(above-below)`; C++ is `vec2(la::lerp(below, above, a))` = `b*(1-t)+a*t`.
+  Switched to `lerpScalar` (the same fix class as the earlier lerpScalar/lerpVec3 one).
+- **REJECTED (false positive): MeshGL tolerance `std::max` vs Go `if floor > tol`.**
+  `std::max(a,b)` is defined as `(a<b)?b:a`; Go's `if f>t {t=f}` is the identical
+  selection including NaN (both keep `t` when the compare is false). Equivalent — the
+  "std::max NaN is implementation-defined" claim is wrong for the 2-arg form. No change.
+
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 
 A C++ ternary that SELECTS one of two array accesses must be ported as a

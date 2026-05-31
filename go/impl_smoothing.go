@@ -2,11 +2,11 @@ package manifold
 
 import "math"
 
-// kMinSharpAngle mirrors the C++ constexpr in src/smoothing.cpp.
-// Below this dihedral the floating-point noise in the cross/asin
-// computation overwhelms the signal, so SharpenEdges floors the
-// caller-supplied angle at this value.
-const kMinSharpAngle = 5.0
+// kMinSharpAngle mirrors the C++ constexpr in src/smoothing.cpp:44
+// (kMinSharpAngle = 1e-4, in DEGREES). Below this dihedral the floating-point
+// noise in the cross/asin computation overwhelms the signal, so SharpenEdges and
+// SetNormals floor the caller-supplied angle at this value.
+const kMinSharpAngle = 1e-4
 
 // UpdateSharpenedEdges is the Go port of Manifold::Impl::UpdateSharpenedEdges
 // (src/smoothing.cpp:346): remap user-supplied sharpened-edge halfedge indices

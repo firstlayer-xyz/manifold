@@ -92,9 +92,11 @@ func (i *Impl) Slice(height float64) Polygons {
 			below := verts[starts[up]]
 			above := verts[starts[nextHalfedge(up)]]
 			a := (height - below.Z) / (above.Z - below.Z)
+			// C++ vec2(la::lerp(below, above, a)) — match the lerp float-expression
+			// order (b*(1-t)+a*t), not below + a*(above-below), so rounding agrees.
 			poly = append(poly, geom.Vec2{
-				X: below.X + a*(above.X-below.X),
-				Y: below.Y + a*(above.Y-below.Y),
+				X: lerpScalar(below.X, above.X, a),
+				Y: lerpScalar(below.Y, above.Y, a),
 			})
 
 			pair := int(pairs[up])
