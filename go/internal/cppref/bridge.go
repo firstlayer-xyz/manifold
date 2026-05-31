@@ -1,11 +1,8 @@
 // Package cppref is the test-only C++ differential-test oracle for the Go port.
-//
-// It is the merger of the former `bridge` and `reference` packages: production no
-// longer imports any cgo, and these two were the only remaining C++ entry points,
-// both linking the same libmanifold/libmanifoldc. Merging them puts the link
-// configuration in ONE cgo preamble (this file) — reference.go shares these flags
-// package-globally and carries no #cgo of its own, so the binary is linked once
-// (no duplicate-library warning).
+// Production imports no cgo; cppref is the only C++ entry point, linking
+// libmanifold/libmanifoldc. The link configuration lives in ONE cgo preamble (this
+// file) — reference.go shares these flags package-globally and carries no #cgo of
+// its own, so the binary is linked once (no duplicate-library warning).
 //
 // Two layers live here:
 //   - public-API oracle (reference.go): calls the stable manifoldc C API; the
@@ -14,9 +11,8 @@
 //     `friend struct ManifoldBridge` declared on Manifold in
 //     include/manifold/manifold.h, for differential-testing inner layers.
 //
-// KEPT PERMANENTLY (not deleted at the end of the port): the oracle catches
-// regressions, proves performance changes don't alter results, and re-validates the
-// port when upstream C++ changes are pulled in.
+// The oracle catches regressions, proves performance changes don't alter results,
+// and re-validates the port when upstream C++ changes are pulled in.
 package cppref
 
 // #cgo CFLAGS: -I${SRCDIR}/../../../bindings/c/include
@@ -91,9 +87,6 @@ func NewMutableImpl() *MutableImpl {
 	return &MutableImpl{p: C.mb_new_mutable_impl()}
 }
 
-// (bridge.Invalid removed — Invalid is now native Go in
-// manifold.invalidManifold via MakeEmpty.)
-
 // Verts returns a Go slice aliasing the mutable Impl's vertPos_ array.
 // The slice is writable — modifying it modifies the C++ buffer
 // directly. Same layout assumption as Impl.Verts.
@@ -157,9 +150,6 @@ func (mi *MutableImpl) SetNormals(normalIdx int, minSharpAngle float64) {
 		C.int(normalIdx), C.double(minSharpAngle))
 }
 
-// (PolygonsHandle / Impl.Slice / Impl.Project removed — Slice and
-// Project are now native Go; see impl_slice.go and impl_project.go.)
-
 // VertNormals returns a Go slice aliasing the Impl's vertNormal_ buffer.
 // Read-only; valid only while i has not been Deleted. May be empty if
 // the impl has no vertex normals computed.
@@ -197,14 +187,6 @@ func (mi *MutableImpl) ResizeVertNormals(n int) {
 func (mi *MutableImpl) SetEpsilonValue(epsilon float64) {
 	C.mb_mutable_impl_set_epsilon_value(mi.p, C.double(epsilon))
 }
-
-// (bridge.DisjointSets removed — now implemented in pure Go; see
-// disjoint_sets.go in the manifold package.)
-
-// MeshGL64 and MeshGL handle types and per-field cgo accessors have
-// been removed; GetMeshGL/GetMeshGL64 are now implemented natively in
-// Go (see impl_meshgl.go) reading directly from the Impl's exposed
-// buffers.
 
 // Triangulate wraps the public free function manifold::Triangulate.
 // Returns a flat []int32 of triangle indices (3 per triangle).
@@ -989,13 +971,6 @@ func (i *Impl) RayCast(origin, endpoint geom.Vec3) []RayHit {
 	return out
 }
 
-// (MeshGLHandle / MeshGL handle types removed — see comment above the
-// MeshGL64Handle deletion. GetMeshGL is now native Go in
-// impl_meshgl.go.)
-
-// (bridge.Extrude removed — Manifold::Extrude is now native Go;
-// see impl_extrude.go.)
-
 // MutableImpl wraps a non-const shared_ptr<Manifold::Impl>. Returned by
 // Impl.Copy. Mutator methods on MutableImpl mirror the non-const
 // methods on C++ Manifold::Impl.
@@ -1087,9 +1062,6 @@ func (mi *MutableImpl) ToManifold() *handle.Manifold {
 
 // Delete releases the Go-side hold on the C++ shared_ptr<Impl>.
 func (mi *MutableImpl) Delete() { C.mb_delete_mutable_impl(mi.p) }
-
-// (bridge.PropagateStatus removed — propagateStatus is now native
-// Go in the manifold package via MakeEmpty.)
 
 // CsgNode wraps a C++ shared_ptr<CsgNode>. Produced by LoadPNode (mirror
 // of Manifold::LoadPNode) and CsgNode.Transform (mirror of
@@ -1317,7 +1289,6 @@ type ImplScalars struct {
 }
 
 // Scalars reads all the small scalar fields off the Impl in one cgo call.
-// Used by accessor ports that previously each made their own bridge call.
 func (i *Impl) Scalars() ImplScalars {
 	var s C.mb_impl_scalars
 	C.mb_impl_get_scalars(i.p, &s)

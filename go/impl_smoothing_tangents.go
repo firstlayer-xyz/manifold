@@ -17,7 +17,7 @@ const (
 // generation reads, mirroring the const Impl methods GetNormal /
 // TangentFromNormal / IsInsideQuad / ForVert (src/smoothing.cpp, src/impl.h).
 // It holds the data CreateTangents consults; the computed tangents are written
-// back via the MutableImpl by the caller (increments B/C).
+// back via the MutableImpl by the caller.
 type tangentState struct {
 	verts       []geom.Vec3
 	vertNormals []geom.Vec3

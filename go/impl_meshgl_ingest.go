@@ -25,8 +25,7 @@ import (
 //     this is NOT the same as Impl.IsFinite() (which checks vertPos_ after
 //     the copy and only the positions).
 //   - MergeIndexOutOfBounds and VertexOutOfBounds are NOT checked here: C++
-//     performs them later (prop2vert / triVert construction). Until those
-//     steps are drilled the bridge body reports them.
+//     performs them later (prop2vert / triVert construction).
 func validateMeshGL[P float32 | float64, I uint32 | uint64](
 	numProp int,
 	vertProperties []P,

@@ -12,8 +12,7 @@ import (
 // CreateHalfedges is the Go port of the single-arg form of C++
 // Manifold::Impl::CreateHalfedges (src/impl.cpp:381). triVerts is
 // flat: 3 int32 indices per triangle. Builds halfedge_.start_,
-// .propVert_, .paired_ and writes them via the bridge's
-// SetHalfedgesRaw bulk mutator.
+// .propVert_, .paired_ and writes them via SetHalfedgesRaw.
 //
 // Faithful to C++ across both branches:
 //   - vertCount < 1<<18 → sort-based pairing (PrepHalfedges with
@@ -22,15 +21,10 @@ import (
 //     atomic offset counters, exclusive_scan, scatter into entries,
 //     local sort each bucket).
 //
-// The duplicate-triangle detection body (C++ `body` lambda) is also
-// fully ported — when two triangles share the same (start, end,
-// next-end-vert) tuple they get marked `removed` and the `ids`
-// array is shuffled so remaining edges still pair up.
-//
-// The outer body loop is currently SERIAL — the C++ parallel
-// variant partitions ids[] into ranges (keeping duplicate-edge
-// segments contiguous) and runs each range in parallel; I've left
-// that as a known future TODO since the serial result is identical.
+// The duplicate-triangle detection body (C++ `body` lambda) detects
+// when two triangles share the same (start, end, next-end-vert) tuple:
+// they get marked `removed` and the `ids` array is shuffled so
+// remaining edges still pair up.
 func (mi *MutableImpl) CreateHalfedges(triProp []int32, triVert []int32) {
 	numHalfedge := len(triProp)
 	if numHalfedge%3 != 0 {
@@ -267,11 +261,10 @@ func (mi *MutableImpl) CreateHalfedges(triProp []int32, triVert []int32) {
 		return i + 1
 	}
 
-	// Outer body loop: C++ has a parallel variant that partitions
-	// ids into ranges keeping duplicate-edge segments contiguous,
-	// then parallel_for over ranges. The serial variant is one
-	// linear pass; both produce the same output. Mirroring the
-	// parallel variant.
+	// Outer body loop, mirroring the C++ parallel variant: partition
+	// ids into ranges keeping duplicate-edge segments contiguous, then
+	// parallel_for over ranges. The serial variant is one linear pass;
+	// both produce the same output.
 	if numEdge > 10000 {
 		// Build ranges, each ~ numEdge/(2*maxConcurrency) sized,
 		// extended to ensure duplicate edges stay in the same range.

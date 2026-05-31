@@ -101,7 +101,7 @@ func (i *Impl) IsSelfIntersecting() bool {
 	ep := 2 * scalars.Epsilon
 	epsilonSq := ep * ep
 
-	// The Impl's persistent native collider (leaf index == face index), faithful
+	// The Impl's persistent collider (leaf index == face index), faithful
 	// to C++ IsSelfIntersecting using collider_ (properties.cpp:188). faceBox is
 	// the self-collision query argument (Collisions(recorder, faceBox.cview())).
 	faceBox, _ := i.GetFaceBoxMorton()
@@ -188,7 +188,7 @@ func (i *Impl) MinGap(other *Impl, searchLength float64) float64 {
 			return geom.Box{Min: box.Min.Sub(expand), Max: box.Max.Add(expand)}
 		})
 
-	// The Impl's persistent native collider (this Impl's faces), faithful to C++
+	// The Impl's persistent collider (this Impl's faces), faithful to C++
 	// MinGap using collider_ (properties.cpp:457); the query is the expanded
 	// faceBoxOther.
 	c := i.ensureCollider()

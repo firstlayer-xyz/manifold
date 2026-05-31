@@ -20,19 +20,19 @@ func boolOperand(v *Impl) boolean.Operand {
 		Pairs:      v.HalfedgePairs(),
 		PropVert:   v.HalfedgeProps(),
 		BBox:       geom.Box{Min: min, Max: max},
-		// Persistent native collider (native-Impl-storage Phase 1): C++ reuses
-		// the operand's Impl::collider_; a transformed operand carries a refitted
-		// one, a finalized operand lazily builds from its (sorted) faces.
+		// Persistent collider: C++ reuses the operand's Impl::collider_; a
+		// transformed operand carries a refitted one, a finalized operand lazily
+		// builds from its (sorted) faces.
 		Collider:  v.ensureCollider(),
 		Epsilon:   s.Epsilon,
 		Tolerance: s.Tolerance,
 	}
 }
 
-// nativeBoolean3 is the native counterpart of bridge.Boolean3: it holds the
-// computed boolean.Boolean3 plus its two input Impls (the C++ Boolean3 holds
-// const Impl& inP_/inQ_), so Result(op) can build the output Impl and run the
-// finalize tail. A single nativeBoolean3 can serve two Result calls (Split).
+// nativeBoolean3 holds the computed boolean.Boolean3 plus its two input Impls
+// (the C++ Boolean3 holds const Impl& inP_/inQ_), so Result(op) can build the
+// output Impl and run the finalize tail. A single nativeBoolean3 can serve two
+// Result calls (Split).
 type nativeBoolean3 struct {
 	b3       *boolean.Boolean3
 	inP, inQ *Impl
@@ -76,8 +76,7 @@ func (nb *nativeBoolean3) Result(op OpType) *Manifold {
 		return nb.inP.Copy().ToManifold()
 	}
 	if !nb.b3.Valid() {
-		// boolean_result.cpp:770 ResultTooLarge. Status propagation lands with
-		// the production Manifold.Boolean rewire; until then surface it loudly.
+		// boolean_result.cpp:770 ResultTooLarge.
 		panic("nativeBoolean3.Result: ResultTooLarge (INT_MAX crossing overflow)")
 	}
 

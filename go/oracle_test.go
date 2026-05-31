@@ -8,10 +8,9 @@ import (
 )
 
 // This file is the test-only seam between the native Go Manifold (which holds
-// native storage, post oracle-migration step 3) and the C++ reference oracle
-// (the bridge/reference packages, which speak in cgo handle.Manifold). Production
-// no longer stores a bridge handle on a Manifold; tests that compare against the
-// C++ oracle marshal across this seam.
+// native storage) and the C++ reference oracle (the cppref package, which speaks
+// in cgo handle.Manifold). Tests that compare against the C++ oracle marshal
+// across this seam.
 
 // wrap takes ownership of a freshly-created bridge handle, marshals its Impl into
 // native storage, and releases the handle. Used by tests that build a Manifold via
@@ -26,7 +25,7 @@ func wrap(h *handle.Manifold) *Manifold {
 
 // fromRefHandle marshals a reference/bridge handle's Impl into a native Manifold
 // WITHOUT taking ownership of the handle — the caller retains it (and any later
-// cppref.DeleteManifold). Replaces the old `&Manifold{h: refHandle}` pattern.
+// cppref.DeleteManifold).
 func fromRefHandle(h *handle.Manifold) *Manifold {
 	bi := cppref.GetImpl(h)
 	defer bi.Delete()
@@ -39,8 +38,8 @@ func fromRefHandle(h *handle.Manifold) *Manifold {
 // builds collider_ from the sorted leaves), so the handle is valid for ANY native
 // mesh — including transformed meshes whose faces are no longer Morton-sorted, on
 // which a direct Collider rebuild (which assumes sorted input) would corrupt or
-// crash. Replaces the old `m.h` field access. Each call allocates a new handle the
-// caller is responsible for (cppref.DeleteManifold).
+// crash. Each call allocates a new handle the caller is responsible for
+// (cppref.DeleteManifold).
 func (m *Manifold) refHandle() *handle.Manifold {
 	gl := m.GetMeshGL64(-1)
 	return cppref.ManifoldFromMeshGL64(
@@ -57,8 +56,7 @@ func (m *Manifold) refHandle() *handle.Manifold {
 //
 // These move the native implStorage across the cgo boundary for the differential
 // oracle. They live in a _test.go file (package manifold) because they need access
-// to the unexported implStorage AND the test-only bridge package; production no
-// longer marshals storage to/from C++.
+// to the unexported implStorage AND the test-only bridge package.
 
 // marshalImplStorageFromBridge reads a C++ Impl (via the bridge accessors) into a
 // freshly-owned native implStorage. Slices are copied so the storage is independent
@@ -181,10 +179,10 @@ func reloadFromBridge(mi *MutableImpl, h *cppref.MutableImpl) {
 	mi.s.status = keepStatus
 }
 
-// runCppAlgo is the differential-test harness (replacing the old MutableImpl
-// runBridgeAlgo): marshal mi's native storage into a transient bridge handle, run a
-// C++ pass against it, then reload the mutated storage back into mi. The collider is
-// invalidated (Subdivide/Refine change geometry) so a later ensureCollider rebuilds.
+// runCppAlgo is the differential-test harness: marshal mi's native storage into a
+// transient bridge handle, run a C++ pass against it, then reload the mutated
+// storage back into mi. The collider is invalidated (Subdivide/Refine change
+// geometry) so a later ensureCollider rebuilds.
 func runCppAlgo(mi *MutableImpl, algo func(*cppref.MutableImpl)) {
 	bm := cppref.NewMutableImpl()
 	defer bm.Delete()

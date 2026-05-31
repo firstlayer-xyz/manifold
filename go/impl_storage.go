@@ -11,7 +11,7 @@ import (
 // manifold.Impl / MutableImpl are views over one implStorage; their getters/setters
 // route through it, and Manifold publishes it directly (no cgo). The collider is
 // held on the view/Manifold structs, not here. Marshalling implStorage to/from a C++
-// bridge handle is now test-only (the differential oracle seam in oracle_test.go).
+// bridge handle is test-only (the differential oracle seam in oracle_test.go).
 type implStorage struct {
 	vertPos         []geom.Vec3
 	halfedge        mesh.Halfedges

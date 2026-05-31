@@ -5,9 +5,8 @@
 // only one class, but two reference flavours with different sets of
 // callable methods (const vs non-const).
 //
-// Both are now backed entirely by native Go storage (implStorage) — pure Go, no
-// cgo. The C++ bridge is not discarded at the end of the port: it is retained as
-// the permanent differential-test oracle (it relocates to a test-only package), so
+// Both are backed entirely by native Go storage (implStorage) — pure Go, no cgo.
+// The C++ implementation is retained as a test-only differential oracle, so
 // regressions, performance changes, and upstream merges can always be validated
 // against the reference implementation.
 package manifold
@@ -50,14 +49,13 @@ func reserveIDs(n uint32) uint32 { return meshIDCounter.Add(n) - n }
 // Manifold).
 type Impl struct {
 	// s is the native storage. getImpl aliases the owning Manifold's storage
-	// directly (oracle-migration step 3: no cgo read — the const view reads s,
-	// mirroring MutableImpl). The const Impl is read-only by contract, so the
-	// alias is safe; mutating paths go through Copy, which clones s.
+	// directly. The const Impl is read-only by contract, so the alias is safe;
+	// mutating paths go through Copy, which clones s.
 	s *implStorage
-	// coll is the native Go collider (persistent, native-Impl-storage Phase 1).
-	// Carried from the owning Manifold (set by ToManifold / refitted by Transform);
-	// nil for finalized meshes that haven't needed one yet — ensureCollider lazily
-	// builds it from the Morton-sorted faces on demand. Mirrors C++ Impl::collider_.
+	// coll is the native Go collider. Carried from the owning Manifold (set by
+	// ToManifold / refitted by Transform); nil for finalized meshes that haven't
+	// needed one yet — ensureCollider lazily builds it from the Morton-sorted
+	// faces on demand. Mirrors C++ Impl::collider_.
 	coll *collider.Collider
 }
 
@@ -110,8 +108,7 @@ func (i *Impl) Copy() *MutableImpl {
 
 // ToManifold seals this MutableImpl into a published Manifold, mirroring C++
 // `Manifold(std::make_shared<CsgLeafNode>(impl))`. The native storage is published
-// directly (oracle-migration step 3: no bridge round-trip); the native collider
-// travels with the Manifold.
+// directly; the native collider travels with the Manifold.
 func (mi *MutableImpl) ToManifold() *Manifold {
 	return &Manifold{s: mi.s, coll: mi.coll}
 }
@@ -158,8 +155,7 @@ func (i *Impl) HalfedgeTangents() []float64 { return tangentsToFlat(i.s.halfedge
 func (i *Impl) Properties() []float64 { return i.s.properties }
 
 // meshIDRelation is the manifold-package value type for one flattened
-// meshRelation_.meshIDtransform entry (the map key meshID + its Relation). It
-// replaces the bridge.MeshIDRelation leak in the accessor API.
+// meshRelation_.meshIDtransform entry (the map key meshID + its Relation).
 type meshIDRelation struct {
 	MeshID, OriginalID int
 	Transform          geom.Mat3x4
@@ -189,8 +185,7 @@ func (i *Impl) NumTri() int { return i.s.halfedge.Size() / 3 }
 func (i *Impl) NumVert() int { return len(i.s.vertPos) }
 
 // implScalars is the manifold-package value type for Manifold::Impl's small
-// scalar fields. It replaces the bridge.ImplScalars leak in the accessor API
-// (oracle-migration step 1: decouple the public accessor types from the bridge).
+// scalar fields.
 type implScalars struct {
 	NumProp             int
 	PropertiesSize      int
@@ -450,18 +445,7 @@ func (mi *MutableImpl) AddMeshIDTransform(meshID, originalID int, transform geom
 	})
 }
 
-// --- Bridge-only mutators (still C++ algorithms) ---
-//
-// Subdivide / Refine are the last storage-mutating algorithms still running in
-// C++. Each is bracketed by marshalRoundTrip: push the native storage into the
-// bridge handle, run the C++ pass, then re-read the mutated storage back. The
-// native side stays the source of truth so the surrounding native code (e.g.
-// Sphere reading Verts() after SubdivideN, ToManifold) sees the result.
-//
-// SimplifyTopology / RemoveDegenerates / CreateTangents are native Go — see
-// impl_simplify.go / impl_smoothing_tangents.go.
-
-// Subdivide calls C++ Impl::Subdivide with the constant-n splits lambda.
+// SubdivideN runs native Impl::Subdivide with the constant-n splits lambda.
 func (mi *MutableImpl) SubdivideN(n int) {
 	// Native topological subdivision (no smoothing): Subdivide([n]{n-1}, false).
 	// Subdivide rebuilds the halfedges but does not finalize; the geometry changed,

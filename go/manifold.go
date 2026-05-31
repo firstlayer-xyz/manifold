@@ -1,9 +1,4 @@
 // Package manifold is the Go port of the Manifold mesh library.
-//
-// The implementation is being moved from C++ to Go one function at a time,
-// outside in. Functions that haven't been ported yet route through cgo via
-// the internal bridge package. The package presents a cgo-free import
-// surface to callers; over time the bridge dependency shrinks toward zero.
 package manifold
 
 import (
@@ -34,9 +29,7 @@ type Polygons = []SimplePolygon
 // Extrude sweeps a Polygons cross-section along +Z by height, with
 // optional subdivisions, twist, and top scaling.
 //
-// Ported top-down from C++ Manifold::Extrude. Triangulation of the
-// cross-section caps still routes through the bridge (Triangulate);
-// the rest of the algorithm runs in Go (impl_extrude.go).
+// Ported top-down from C++ Manifold::Extrude (impl_extrude.go).
 func Extrude(crossSection Polygons, height float64, nDivisions int,
 	twistDegrees float64, scaleTop Vec2,
 ) *Manifold {
@@ -48,11 +41,10 @@ type Box = geom.Box
 
 // Manifold is a watertight 3D mesh with manifold topology.
 type Manifold struct {
-	// s is the native storage (oracle-migration step 3: a Manifold no longer holds
-	// a cgo bridge handle — production is bridge-free for storage). Published by
-	// MutableImpl.ToManifold; read via getImpl, which aliases s into a const Impl.
+	// s is the native storage. Published by MutableImpl.ToManifold; read
+	// via getImpl, which aliases s into a const Impl.
 	s *implStorage
-	// coll is the native Go collider that travels with this Manifold. Set when a
+	// coll is the Go collider that travels with this Manifold. Set when a
 	// Manifold is produced by a path that built/refitted one (SortGeometry, Transform);
 	// nil otherwise, in which case getImpl's Impl lazily rebuilds from the
 	// Morton-sorted faces. Mirrors C++ Impl::collider_.
@@ -102,9 +94,7 @@ func (m *Manifold) IsEmpty() bool {
 //
 // Ported from C++ Impl::GetProperty(Volume): for each triangle take the
 // signed tetrahedron volume between the triangle and the origin and sum
-// them with Kahan compensation. The data (vertex positions and the
-// halfedge start array) crosses cgo as read-only buffers; the loop runs
-// in Go.
+// them with Kahan compensation.
 func (m *Manifold) Volume() float64 {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -210,16 +200,14 @@ func (m *Manifold) OriginalID() int {
 // AsOriginal forgets the CSG history and returns a copy with a fresh ID.
 //
 // Ported top-down from C++ Manifold::AsOriginal, line for line:
-//   - GetCsgLeafNode().GetImpl()   — bridge.GetImpl
-//   - PropagateStatus on error      — bridge.PropagateStatus
+//   - GetCsgLeafNode().GetImpl()   — getImpl
+//   - PropagateStatus on error      — propagateStatus
 //   - make_shared<Impl>(*oldImpl)   — impl.Copy()  → MutableImpl
 //   - newImpl->InitializeOriginal() — newImpl.InitializeOriginal()
 //   - newImpl->SetNormalsAndCoplanar() — newImpl.SetNormalsAndCoplanar()
 //   - Manifold(make_shared<CsgLeafNode>(newImpl)) — newImpl.ToManifold()
 //
-// Each line of the C++ body has a matching Go statement that calls into
-// the corresponding inner C++ function unchanged. Future drilling will
-// replace InitializeOriginal / SetNormalsAndCoplanar with Go ports.
+// Each line of the C++ body has a matching Go statement.
 func (m *Manifold) AsOriginal() *Manifold {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -334,9 +322,7 @@ func (m *Manifold) SmoothOut(minSharpAngle, minSmoothness float64) *Manifold {
 	newImpl := impl.Copy()
 	defer newImpl.Delete()
 	if !m.IsEmpty() {
-		// SharpenEdges is drilled to Go (impl_smoothing.go). It reads
-		// from the const-Impl view of the same shared_ptr, so we
-		// briefly take a const handle for the read.
+		// SharpenEdges reads from the const Impl view (impl_smoothing.go).
 		edges := impl.SharpenEdges(minSharpAngle, minSmoothness)
 		newImpl.CreateTangentsFromSmoothness(edges)
 	}
@@ -354,8 +340,8 @@ func ReserveIDs(n uint32) uint32 {
 // SetTolerance returns a copy of m with the specified geometric tolerance.
 //
 // Ported top-down from C++ Manifold::SetTolerance, line for line:
-//   - GetCsgLeafNode().GetImpl()    — bridge.GetImpl
-//   - status check / PropagateStatus — bridge.PropagateStatus
+//   - GetCsgLeafNode().GetImpl()    — getImpl
+//   - status check / PropagateStatus — propagateStatus
 //   - make_shared<Impl>(*leafImpl)   — impl.Copy() → MutableImpl
 //   - if tol > impl->tolerance_      — read from source via Scalars()
 //     set tolerance / Normals / SimplifyTopology / SortGeometry
@@ -447,11 +433,10 @@ const (
 //	  return Manifold(LoadPNode()->Boolean(second.LoadPNode(), op));
 //	}
 //
-// The two-operand Boolean is the native Boolean3(*a, *b, op).Result(op) — the
-// same computation the C++ CsgOpNode evaluates for two leaves (BatchBoolean
-// reduces to one Boolean3 for a 2-child node). The Go bridge already materialized
-// the op node eagerly via ToManifold, so this introduces no behavioural change in
-// laziness; n-ary fusion still lives in BatchBoolean (the CSG-tree drill).
+// The two-operand Boolean is Boolean3(*a, *b, op).Result(op) — the same
+// computation the C++ CsgOpNode evaluates for two leaves (BatchBoolean
+// reduces to one Boolean3 for a 2-child node). N-ary fusion lives in
+// BatchBoolean.
 func (m *Manifold) Boolean(other *Manifold, op OpType) *Manifold {
 	impl1 := getImpl(m)
 	defer impl1.Delete()
@@ -592,8 +577,7 @@ func (m *Manifold) IsSelfIntersecting() bool {
 //	  return GetCsgLeafNode().GetImpl()->MatchesTriNormals();
 //	}
 //
-// The inner Impl::MatchesTriNormals is drilled to native Go — see
-// impl_props.go.
+// The inner Impl::MatchesTriNormals is in impl_props.go.
 func (m *Manifold) MatchesTriNormals() bool {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -609,8 +593,7 @@ func (m *Manifold) MatchesTriNormals() bool {
 //	  return GetCsgLeafNode().GetImpl()->NumDegenerateTris();
 //	}
 //
-// The inner Impl::NumDegenerateTris is drilled to native Go — see
-// impl_props.go.
+// The inner Impl::NumDegenerateTris is in impl_props.go.
 func (m *Manifold) NumDegenerateTris() int {
 	impl := getImpl(m)
 	defer impl.Delete()
@@ -676,7 +659,7 @@ func Sphere(radius float64, circularSegments int) *Manifold {
 		}
 	})
 
-	// Finalize — drilled steps mirror C++ Sphere's tail. NumTri is
+	// Finalize, mirroring C++ Sphere's tail.
 	impl.InitializeOriginal()
 	impl.CalculateBBox()
 	impl.SetEpsilon(-1, false)
@@ -987,8 +970,7 @@ func SmoothFromMeshGL64(m MeshGL64, sharpenedEdges []Smoothness) *Manifold {
 
 // invalidManifold mirrors C++ Manifold::Invalid — an empty Manifold
 // whose Impl carries the InvalidConstruction error code. Used by
-// constructors and ops to signal invalid input. Replaces the
-// bridge.Invalid wrapper around C++ Manifold::Invalid.
+// constructors and ops to signal invalid input.
 //
 // Ported top-down from C++:
 //
@@ -1005,8 +987,7 @@ func invalidManifold() *Manifold {
 }
 
 // propagateStatus mirrors C++ Manifold::PropagateStatus — an empty
-// Manifold whose Impl carries the given error status. Replaces the
-// bridge.PropagateStatus wrapper.
+// Manifold whose Impl carries the given error status.
 //
 // Ported top-down from C++:
 //
@@ -1034,7 +1015,7 @@ func propagateStatus(status Error) *Manifold {
 // Error::Cancelled. Construct a fresh context to retry.
 //
 // Always use via pointer (NewExecutionContext) — it holds an atomic and must not
-// be copied. Delete is retained for API symmetry but is a no-op (native Go).
+// be copied.
 type ExecutionContext struct {
 	// cancel mirrors C++ ExecutionContext::Impl::cancel — a sticky atomic flag.
 	// The progress counters (totalPhases/donePhases) are intentionally omitted: no
@@ -1075,8 +1056,7 @@ func (ctx *ExecutionContext) Cancelled() bool { return ctx.cancel.Load() }
 // always the "no pending work" value, 1.0.
 func (ctx *ExecutionContext) Progress() float64 { return 1.0 }
 
-// Delete is a no-op: a native ExecutionContext owns no C++ resource. Retained so
-// callers' `defer ctx.Delete()` keeps compiling across the migration.
+// Delete is a no-op: an ExecutionContext owns no external resource.
 func (ctx *ExecutionContext) Delete() {}
 
 // WithContext returns a copy of m with ctx attached. The next eager
@@ -1274,8 +1254,7 @@ func (m *Manifold) GetMeshGL64(normalIdx int) MeshGL64 {
 	}
 }
 
-// RayHit mirrors the C++ RayHit struct (native value type — no longer a bridge
-// alias, per the oracle-migration type-leak decoupling).
+// RayHit mirrors the C++ RayHit struct.
 type RayHit struct {
 	FaceID   uint64
 	Distance float64
@@ -1593,8 +1572,8 @@ func Revolve(crossSection Polygons, circularSegments int, revolveDegrees float64
 		}
 	}
 
-	// Write into a fresh Impl and finalize — drilled steps mirror the
-	// C++ tail of the algorithm.
+	// Write into a fresh Impl and finalize, mirroring the C++ tail of the
+	// algorithm.
 	newImpl := newImpl()
 	defer newImpl.Delete()
 	newImpl.ResizeVerts(len(verts))
@@ -1795,10 +1774,6 @@ func (m *Manifold) BoundingBox() Box {
 //	Manifold Manifold::Transform(const mat3x4& m) const {
 //	  return Manifold(LoadPNode()->Transform(m));
 //	}
-//
-// Each inner call goes through its own bridge: LoadPNode (private,
-// reached via ManifoldBridge friend), CsgNode::Transform, and the
-// private Manifold(shared_ptr<CsgNode>) constructor.
 func (m *Manifold) Transform(t Mat3x4) *Manifold {
 	impl := getImpl(m)
 	defer impl.Delete()

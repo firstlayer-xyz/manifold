@@ -23,8 +23,7 @@ func (mi *MutableImpl) Warp(fn func(*geom.Vec3)) {
 // check → SetEpsilon → SortGeometry → SetNormalsAndCoplanar) and
 // clears the originalID (warped manifolds are no longer originals).
 //
-// Mirrors C++ step for step. The bridge Warp/WarpBatch calls are
-// gone; everything is Go-native.
+// Mirrors C++ step for step.
 func (mi *MutableImpl) WarpBatch(fn func([]geom.Vec3)) {
 	fn(mi.Verts())
 	mi.CalculateBBox()

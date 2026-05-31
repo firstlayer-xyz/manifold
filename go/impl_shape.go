@@ -78,12 +78,11 @@ var shapeTables = map[shape]struct {
 	},
 }
 
-// newImplFromShape is the Go-orchestrated port of the C++
-// Manifold::Impl(Shape, mat3x4) constructor (src/impl.cpp). The shape
-// table + transform happens in Go; downstream initialization steps
+// newImplFromShape is the Go port of the C++ Manifold::Impl(Shape,
+// mat3x4) constructor (src/impl.cpp). The shape table + transform
+// happens here, followed by the downstream initialization steps
 // (CreateHalfedges, InitializeOriginal, CalculateBBox, SetEpsilon,
-// SortGeometry, SetNormalsAndCoplanar) still call into C++ via the
-// existing bridge mutators.
+// SortGeometry, SetNormalsAndCoplanar).
 //
 // Returns the MutableImpl; the caller is responsible for converting
 // it to a Manifold (via ToManifold) and for Delete'ing it. Returning

@@ -155,10 +155,6 @@ func (i *Impl) Transform(t geom.Mat3x4) *MutableImpl {
 	// via Collider::UpdateBoxes. The radix tree topology (leaf == face)
 	// is preserved because Transform keeps the source's face order.
 	if result.HalfedgeCount() > 0 {
-		// Native collider refit (native-Impl-storage Phase 1): result carries a
-		// deep copy of the source's persistent collider, refitted WITHOUT
-		// reordering the mesh (leaf==face preserved since Transform keeps the
-		// source face order) — faithful to C++ Impl::Transform (impl.cpp:672-685).
 		result.coll = i.ensureCollider().Copy()
 		if collider.IsAxisAligned(t) {
 			result.coll.Transform(t)
