@@ -5,6 +5,15 @@ package manifold
 // where the native port stands. Operands are built once before the timer; the timed
 // loop runs only the operation. C++ result handles are deleted each iteration so the
 // benchmark measures the op, not handle accumulation.
+//
+// REQUIRES a Release (-O3) libmanifold for the _Cpp side to be meaningful — reconfigure
+// with `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release` (the -ffp-contract=off / standard
+// excess-precision determinism flags are manifold's own and survive, so the differential
+// suite still passes). An -O0 build makes C++ look ~15x slower than it is.
+//
+// Observed on Apple M4 (10 cores) against -O3 C++: native Go is ~1.7x (CalculateNormals)
+// to ~3.5x (boolean) slower than C++, the gap tracking allocation intensity — booleans
+// allocate ~9.5k objects/op and spend ~36% of their time in GC/madvise.
 
 import (
 	"testing"

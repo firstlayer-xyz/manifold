@@ -60,6 +60,26 @@ Net across both passes (24 subsystems): 2 real bugs found+fixed (kMinSharpAngle,
 lerp), the rest faithful or justified-deviation. Deferred: a perf pass and an upstream
 sync would each re-run these audits against any changed C++.
 
+### Performance baseline (2026-05-31, Apple M4 / 10 cores)
+
+perf_bench_test.go benchmarks the native Go vs the cppref C++ reference on identical
+inputs (Go is eager; C++ is lazy, so the _Cpp benchmarks call NumTri to force the CSG
+to evaluate). IMPORTANT: a meaningful C++ comparison needs a Release libmanifold —
+`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release` (the repo's default build/ had an empty
+CMAKE_BUILD_TYPE = -O0, which made C++ look ~15x slower than it is; manifold's own
+-ffp-contract=off / standard-excess-precision determinism flags survive Release, so the
+differential suite still passes at -O3 — verified).
+
+Against -O3 C++, native Go is **~1.7x–3.5x slower**, the gap tracking allocation
+intensity: Union 3.4x, Difference 3.5x, Sphere 3.3x, Refine 2.4x, Hull 2.1x, Minkowski
+2.0x, CalculateNormals 1.7x. The dominant Go cost is GC pressure — a Union allocates
+~9.5k objects / 6.3 MB and spends ~36% of its time in runtime madvise + GC stop-the-world.
+Top allocators (by count): internal/triangulate (earClip / HalfedgeTriangulation /
+orderedMultiset / the vertCollider closure), boolean assembly (sortEdgePos /
+assembleHalfedges / appendPartialEdges / pairUp), and the finalize tail (SortGeometry /
+SimplifyTopology / SetTriRefs). Optimization lever = reduce allocations (preallocate,
+reuse buffers, hoist per-iteration closures) — closable without changing results.
+
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 
 A C++ ternary that SELECTS one of two array accesses must be ported as a
