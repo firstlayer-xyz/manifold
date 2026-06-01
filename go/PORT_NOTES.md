@@ -73,44 +73,46 @@ differential suite still passes at -O3 — verified).
 Against -O3 C++, native Go is **~1.7x–3.5x slower**: Union 3.4x, Difference 3.5x, Sphere
 3.3x, Refine 2.4x, Hull 2.1x, Minkowski 2.0x, CalculateNormals 1.7x.
 
-#### Scratch-buffer pooling (stdcpp/vector, 2026-06-01)
+#### Scratch-buffer pooling: built, measured, REVERTED (2026-06-01)
 
-Built internal/stdcpp/vector — a Pool[T] (non-boxing free list; NOT sync.Pool, which
-boxes on Put and gives no count reduction), a push_back-faithful Vector[T], and a
-NestedPool[T]+PushInner for std::vector<std::vector<T>> that recycles inner backings.
-A std::vector with a pool allocator is real C++, so this closes the GC gap without
-diverging. Rolled it through the scratch-disjoint allocators the lifetime analysis
-flagged: the earClip vertCollider, pairUp's parted scratch, appendPartialEdges' per-edge
-edgePos copy, and the nested polys/PolygonsIdx in Face2Tri. **Result: Union allocs/op
-7812 → 5104 (−35%), all faithful + differential-green.**
+Investigated closing the GC gap by pooling scratch buffers, modeled as "a std::vector with
+a pool allocator is real C++." Built internal/stdcpp/vector (Pool[T] non-boxing free list,
+push_back-faithful Vector[T], NestedPool[T]+PushInner for std::vector<std::vector<T>>) and
+wired it through the scratch-disjoint allocators (earClip vertCollider, pairUp's parted
+scratch, appendPartialEdges' edgePos copy, the nested polys/PolygonsIdx in Face2Tri). It cut
+Union allocs/op 7812 → 5104 (−34.6%) and was fully differential-green. **It was then reverted**
+(commits 5da296ce, ecfc1367, 0d740867, dd6e250f; baseline 90a2210b — resurrect from git if
+ever needed) because measurement showed **no runtime payoff**, and a pool that doesn't pay off
+is complexity without benefit.
 
-#### But count is the wrong metric — the real cost is bytes, not objects (key finding)
+#### Why it was reverted — count is the wrong metric; the cost is BYTES, not objects (key finding)
 
-That −35% in alloc COUNT bought only **~3% wall-clock**, because bytes/op barely moved
-(6.28 → 6.17 MB, −1.7%). A CPU profile of Union explains why:
-- **runtime.madvise ~28%** — the GC scavenger returning freed pages to the OS. This
-  tracks allocated **bytes**, not object count. The pooled scratch (tiny edgePos / []int
-  inner slices) was count-heavy but byte-light, so pooling it left madvise untouched. The
-  byte-heavy allocators are entirely different (alloc_space top): Boolean3.assemble,
-  SetTriRefs, face2Tri output, sizeOutput (all **output mesh — escapes, unpoolable**),
-  then newDedupeState / intersect12 / GatherFacesInPlace / collider.New (pipeline scratch
-  spread across the whole op, not the face2tri path). In a tight benchmark loop the
-  output-mesh byte churn dominates madvise and is inherent (it IS the result); a real app
-  that keeps its results churns differently.
-- **runtime.kevent ~24% + pthread_cond/kill ~18% ≈ 42%** — idle worker threads parking,
-  NOT contention: GOMAXPROCS=1 gives the same wall-clock as GOMAXPROCS=10 (7.02 vs
-  7.00 ms), i.e. the parallel package gives ~zero net speedup at these problem sizes and
-  its scheduling churn is off the critical path (the profiler samples parked threads).
+Go triggers GC on heap **growth** (bytes since last GC, governed by GOGC), so −34.6% object
+COUNT with only −2.0% BYTES leaves the GC cadence and wall-clock unchanged. Measured pooled
+vs pre-pooling, same machine, including the realistic **retained-result** workload (not just
+the discard-loop benchmark):
+- **GC cycle count unchanged** for identical work; **per-cycle mark cost flat** (~36.8 vs
+  37.8 µs) — disproving "same cycle count hides cheaper cycles"; total STW pause saving
+  ~0.1% of wall-clock (below thermal noise). Wall-clock ~−1% (in noise) on both multi-core
+  and **GOMAXPROCS=1 (the WASM target)**. The honest claim is *indistinguishable*, not
+  faster and not slower.
+- A CPU profile shows the real costs: **runtime.madvise ~28%** (GC scavenger, BYTES-driven)
+  whose byte-heavy sources are a DISJOINT set from what was pooled — the **output mesh**
+  (Boolean3.assemble, SetTriRefs, face2Tri output, sizeOutput; it *is* the return value, so
+  structurally unpoolable) plus pipeline scratch (newDedupeState, intersect12,
+  GatherFacesInPlace, collider.New). The pooled items were count-heavy but byte-light.
+  **runtime.kevent + pthread ~42%** is idle worker-thread parking, NOT contention:
+  GOMAXPROCS=1 == GOMAXPROCS=10, i.e. the parallel package gives ~zero net speedup at these
+  sizes and its scheduling churn is off the critical path.
 
-GC tuning helps modestly and is the **application's** knob, not the library's: GOGC=400–800
-buys ~7–8% (process-global); GOMEMLIMIT alone (the ballast replacement) does nothing
-unless paired with a high GOGC. The residual gap is byte-churn madvise (much of it the
-unavoidable output mesh) plus genuine -O3-vs-Go codegen — neither closable by faithful
-scratch pooling. **Conclusion: the count-pooling is a real memory-efficiency win (lower
-allocation pressure / GC CPU in steady-state apps) and stays as stdcpp infrastructure, but
-it is NOT the wall-clock lever. The native port's value is purity/portability/WASM, not
-matching -O3 speed; a cgo binding would beat it for coarse ops.** Further pooling for
-count (earClip/HalfedgeTriangulation/multiset structs) is deprioritized as low-ROI.
+**Conclusions:** (1) The wall-clock lever is bytes/madvise + -O3-vs-Go codegen, neither
+closable by faithful scratch pooling — the byte-heavy allocators are the unavoidable output
+mesh. (2) GC tuning (GOGC 400–800, ~7–8%; GOMEMLIMIT only with a high GOGC) is the
+**application's** process-global knob, not the library's — don't carry code to imitate a
+one-line env var. (3) The native port's value is purity/portability/WASM, not matching -O3
+speed; a cgo binding would beat it for coarse ops. (4) Do NOT re-chase alloc count — only a
+platform with per-allocation-dominated cost or non-concurrent count-scaling GC would benefit,
+which this Go target is not.
 
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 

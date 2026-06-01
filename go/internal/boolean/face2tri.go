@@ -3,31 +3,19 @@ package boolean
 import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/multimap"
-	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/vector"
 	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
-)
-
-// polysPool and polygonsPool recycle the nested per-face scratch built by
-// assembleHalfedges (the [][]int edge loops) and projectPolygons (the projected
-// PolygonsIdx). Both die within a single generalTriangulation/quad-face pass --
-// the triangulator copies what it keeps -- so their outer and inner backings
-// recycle across faces. Buffers are released by the caller (see face2Tri).
-var (
-	polysPool    vector.NestedPool[int]
-	polygonsPool vector.NestedPool[triangulate.PolyVert]
 )
 
 // assembleHalfedges is the Go port of AssembleHalfedges (face_op.cpp:41): walk
 // the halfedge range [lo, hi) of one face into vertex-index loops, using the
 // halfedge indices (startHalfedgeIdx + local index) rather than vertex indices.
-// The returned [][]int is drawn from polysPool; the caller must Put it back.
 func assembleHalfedges(faceHalfedge []Halfedge, lo, hi, startHalfedgeIdx int) [][]int {
 	vertEdge := multimap.New[int, int]()
 	for e := lo; e < hi; e++ {
 		vertEdge.Emplace(faceHalfedge[e].StartVert, e-lo)
 	}
 
-	polys := polysPool.Get()
+	var polys [][]int
 	startEdge := 0
 	thisEdge := startEdge
 	for {
@@ -37,7 +25,7 @@ func assembleHalfedges(faceHalfedge []Halfedge, lo, hi, startHalfedgeIdx int) []
 			}
 			startEdge = vertEdge.BeginValue()
 			thisEdge = startEdge
-			polys = vector.PushInner(polys)
+			polys = append(polys, []int{})
 		}
 		polys[len(polys)-1] = append(polys[len(polys)-1], startHalfedgeIdx+thisEdge)
 		key := faceHalfedge[lo+thisEdge].EndVert
@@ -50,12 +38,11 @@ func assembleHalfedges(faceHalfedge []Halfedge, lo, hi, startHalfedgeIdx int) []
 
 // projectPolygons is the Go port of ProjectPolygons (face_op.cpp:72): attach the
 // projected (2D) vertex positions to each indexed polygon, keying each PolyVert
-// by its halfedge index. The returned PolygonsIdx is drawn from polygonsPool; the
-// caller must Put it back.
+// by its halfedge index.
 func projectPolygons(polys [][]int, faceHalfedge []Halfedge, vertPos []geom.Vec3, projection geom.Mat2x3) triangulate.PolygonsIdx {
-	polygons := polygonsPool.Get()
+	var polygons triangulate.PolygonsIdx
 	for _, poly := range polys {
-		polygons = vector.PushInner(polygons)
+		polygons = append(polygons, triangulate.SimplePolygonIdx{})
 		for _, edge := range poly {
 			polygons[len(polygons)-1] = append(polygons[len(polygons)-1], triangulate.PolyVert{
 				Pos: projection.MulVec3(vertPos[faceHalfedge[edge].StartVert]),
@@ -158,12 +145,10 @@ func face2Tri(faceEdge []int, faceHalfedge []Halfedge, halfedgeRef []TriRef, ver
 	generalTriangulation := func(face int) *triangulate.HalfedgeTriangulation {
 		normal := faceNormal[face]
 		projection := geom.GetAxisAlignedProjection(normal)
-		rawPolys := assembleHalfedges(faceHalfedge, faceEdge[face], faceEdge[face+1], faceEdge[face])
-		polygons := projectPolygons(rawPolys, faceHalfedge, vertPos, projection)
-		polysPool.Put(rawPolys)
-		result := triangulate.TriangulateIdxHalfedges(polygons, epsilon, allowConvex)
-		polygonsPool.Put(polygons)
-		return result
+		polys := projectPolygons(
+			assembleHalfedges(faceHalfedge, faceEdge[face], faceEdge[face+1], faceEdge[face]),
+			faceHalfedge, vertPos, projection)
+		return triangulate.TriangulateIdxHalfedges(polys, epsilon, allowConvex)
 	}
 
 	// Precompute the triangle count per face, triangulating complex (>4 edge)
@@ -236,8 +221,7 @@ func face2Tri(faceEdge []int, faceHalfedge []Halfedge, halfedgeRef []TriRef, ver
 					epsilon) >= 0
 			}
 
-			rawQuad := assembleHalfedges(faceHalfedge, faceEdge[face], faceEdge[face+1], faceEdge[face])
-			quad := rawQuad[0]
+			quad := assembleHalfedges(faceHalfedge, faceEdge[face], faceEdge[face+1], faceEdge[face])[0]
 
 			// la::mat<int,3,2>: two columns, each a triangle of quad indices.
 			tris := [2][2][3]int{
@@ -257,7 +241,6 @@ func face2Tri(faceEdge []int, faceHalfedge []Halfedge, halfedgeRef []TriRef, ver
 			}
 
 			writeLocalTriangles(out, contour2Tri, faceHalfedge, firstTri, [][3]int{tris[choice][0], tris[choice][1]}, 2)
-			polysPool.Put(rawQuad)
 		default: // General triangulation
 			// DEBUG_ASSERT(general != nil).
 			numTri = general.NumTri()
