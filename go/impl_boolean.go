@@ -4,6 +4,7 @@ import (
 	"github.com/firstlayer-xyz/manifold/go/internal/boolean"
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
 	"github.com/firstlayer-xyz/manifold/go/internal/mesh"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 )
 
 // boolOperand builds the boolean.Operand the native Boolean3 reads from a const
@@ -195,9 +196,11 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 
 	// Barycentric pass (boolean_result.cpp:584-588): uvw per output halfedge.
 	bary := make([]geom.Vec3, len(starts))
-	for tri := 0; tri < numTri; tri++ {
+	// for_each_n(autoPolicy(numTri), Barycentric) (boolean_result.cpp:585): bary[3*tri+i]
+	// is written disjointly per tri; all other state is read-only.
+	parallel.ForEachN(parallel.AutoPolicy(numTri), numTri, func(tri int) {
 		if starts[3*tri] < 0 {
-			continue
+			return
 		}
 		refPQ := triRefR[tri]
 		triPQ := int(refPQ.FaceID)
@@ -214,7 +217,7 @@ func createProperties(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 			vert := int(starts[3*tri+i])
 			bary[3*tri+i] = geom.GetBarycentric(vertPosR[vert], triPos, epsilon)
 		}
-	}
+	})
 
 	// Dedup state.
 	idMissProp := numVertR
@@ -344,7 +347,10 @@ func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 	originalIDs := make([]int32, len(refs))
 	faceIDs := make([]int32, len(refs))
 	coplanarIDs := make([]int32, len(refs))
-	for i, ref := range refs {
+	// for_each_n(autoPolicy(NumTri,1e5), MapTriRef) (boolean_result.cpp:524): the four
+	// output arrays are written disjointly per tri; refs/triRefP/triRefQ are read-only.
+	parallel.ForEachN(parallel.AutoPolicy(len(refs), 100000), len(refs), func(i int) {
+		ref := refs[i]
 		tri := ref.FaceID
 		pq := ref.MeshID == 0
 		// C++ MapTriRef (boolean_result.cpp:510): triRef = PQ ? triRefP[tri] :
@@ -362,7 +368,7 @@ func updateReference(outR *MutableImpl, inP, inQ *Impl, invertQ bool) {
 		originalIDs[i] = int32(src.OriginalID)
 		faceIDs[i] = int32(src.FaceID)
 		coplanarIDs[i] = int32(src.CoplanarID)
-	}
+	})
 	outR.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 
 	for _, r := range inP.MeshIDTransforms() {

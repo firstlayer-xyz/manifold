@@ -2,6 +2,7 @@ package boolean
 
 import (
 	"github.com/firstlayer-xyz/manifold/go/internal/geom"
+	"github.com/firstlayer-xyz/manifold/go/internal/parallel"
 	"github.com/firstlayer-xyz/manifold/go/internal/stdcpp/multimap"
 	"github.com/firstlayer-xyz/manifold/go/internal/triangulate"
 )
@@ -250,23 +251,29 @@ func face2Tri(faceEdge []int, faceHalfedge []Halfedge, halfedgeRef []TriRef, ver
 		writeTriRefs(triNormal, triRef, firstTri, numTri, normal, halfedgeRef[firstEdge])
 	}
 
-	for face := 0; face < len(faceEdge)-1; face++ {
+	// for_each(autoPolicy(faceEdge.size(),1e4), processFace2) (face_op.cpp:339): each face
+	// writes its own disjoint out/contour2Tri/triNormal/triRef ranges; results is read-only
+	// here (built above), so concurrent map reads are safe. The task-group that BUILDS
+	// results stays serial (concurrent_unordered_map port is a separate, riskier change).
+	parallel.ForEachN(parallel.AutoPolicy(len(faceEdge), 10000), len(faceEdge)-1, func(face int) {
 		outputFace(face, triOffset[face], results[face])
-	}
+	})
 
 	// Pair up the triangulated boundary edges with their neighbours' triangles.
-	for edge := 0; edge < len(faceHalfedge); edge++ {
+	// for_each(autoPolicy(faceHalfedge.size(),1e5), ...) (face_op.cpp:355): each contour
+	// edge maps to a unique triEdge, so SetPair writes are disjoint.
+	parallel.ForEachN(parallel.AutoPolicy(len(faceHalfedge), 100000), len(faceHalfedge), func(edge int) {
 		triEdge := contour2Tri[edge]
 		if triEdge < 0 {
-			continue
+			return
 		}
 		pair := faceHalfedge[edge].PairedHalfedge
 		if pair < 0 {
-			continue
+			return
 		}
 		pairTri := contour2Tri[pair]
 		// DEBUG_ASSERT(pairTri >= 0): boundary edge did not triangulate with its pair.
 		out.SetPair(triEdge, pairTri)
-	}
+	})
 	return out, triNormal, triRef
 }

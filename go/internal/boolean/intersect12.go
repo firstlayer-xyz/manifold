@@ -69,15 +69,18 @@ func intersect12(inP, inQ *mesh, bColl *collider.Collider, expandP, forward bool
 	if !forward {
 		index = 1
 	}
+	// Mirror C++ default policies (boolean3.cpp:387-395): sequence/gather(Permute)
+	// default to 1e5, stable_sort to 1e4. StableSort is stable and Permute is a
+	// disjoint gather, so all stay bit-identical to the serial result.
 	i12 := make([]int32, len(result.p1q2))
-	parallel.Sequence(parallel.Seq, i12)
-	parallel.StableSort(parallel.Seq, i12, func(x, y int32) bool {
+	parallel.Sequence(parallel.AutoPolicy(len(i12), 100000), i12)
+	parallel.StableSort(parallel.AutoPolicy(len(i12), 10000), i12, func(x, y int32) bool {
 		pa, pb := result.p1q2[x], result.p1q2[y]
 		return pa[index] < pb[index] ||
 			(pa[index] == pb[index] && pa[1-index] < pb[1-index])
 	})
-	result.p1q2 = parallel.Permute(parallel.Seq, result.p1q2, i12)
-	result.x12 = parallel.Permute(parallel.Seq, result.x12, i12)
-	result.v12 = parallel.Permute(parallel.Seq, result.v12, i12)
+	result.p1q2 = parallel.Permute(parallel.AutoPolicy(len(i12), 100000), result.p1q2, i12)
+	result.x12 = parallel.Permute(parallel.AutoPolicy(len(i12), 100000), result.x12, i12)
+	result.v12 = parallel.Permute(parallel.AutoPolicy(len(i12), 100000), result.v12, i12)
 	return result
 }

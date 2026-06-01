@@ -377,12 +377,14 @@ func sizeOutput(outR *outImpl, inP, inQ *mesh, i03, i30, i12, i21 []int, p1q2, p
 	sidesPerFaceP := sidesPerFacePQ[:numTriP]
 	sidesPerFaceQ := sidesPerFacePQ[numTriP:]
 
-	for i := 0; i < numTriP; i++ {
+	// for_each(autoPolicy(halfedge.size()), countAt(0), countAt(halfedge.size()/3), CountVerts)
+	// (boolean_result.cpp:119-123). count[i] is written disjointly per face.
+	parallel.ForEachN(parallel.AutoPolicy(3*numTriP), numTriP, func(i int) {
 		countVerts(inP.halfedge, sidesPerFaceP, i03, i)
-	}
-	for i := 0; i < numTriQ; i++ {
+	})
+	parallel.ForEachN(parallel.AutoPolicy(3*numTriQ), numTriQ, func(i int) {
 		countVerts(inQ.halfedge, sidesPerFaceQ, i30, i)
-	}
+	})
 	for idx := range i12 {
 		countNewVerts(sidesPerFaceP, sidesPerFaceQ, i12, p1q2, inP.halfedge, idx, false)
 	}
@@ -538,10 +540,11 @@ func reorderHalfedges(h halfedges) {
 	numTri := len(h.starts) / 3
 
 	// step 1: rotate within each face so the smallest start vert is first.
-	for tri := 0; tri < numTri; tri++ {
+	// for_each(autoPolicy(numTri), ...) (sort.cpp): each face writes only its own 3 halfedges.
+	parallel.ForEachN(parallel.AutoPolicy(numTri), numTri, func(tri int) {
 		face := [3]Halfedge{h.Get(tri * 3), h.Get(tri*3 + 1), h.Get(tri*3 + 2)}
 		if face[0].StartVert < 0 {
-			continue
+			return
 		}
 		index := 0
 		for _, i := range []int{1, 2} {
@@ -553,10 +556,12 @@ func reorderHalfedges(h halfedges) {
 			f := face[(index+i)%3]
 			h.Set(tri*3+i, f.StartVert, f.PairedHalfedge, f.PropVert)
 		}
-	}
+	})
 
-	// step 2: fix paired halfedges.
-	for tri := 0; tri < numTri; tri++ {
+	// step 2: fix paired halfedges. for_each(autoPolicy(numTri), ...); the ForEachN
+	// barrier above guarantees step 1's reordered starts are visible. Each tri writes
+	// only its own paired halfedges and reads frozen starts.
+	parallel.ForEachN(parallel.AutoPolicy(numTri), numTri, func(tri int) {
 		for _, i := range []int{0, 1, 2} {
 			currIdx := tri*3 + i
 			startVert := h.Start(currIdx)
@@ -572,7 +577,7 @@ func reorderHalfedges(h halfedges) {
 			}
 			h.SetPair(currIdx, oppositeFace*3+index)
 		}
-	}
+	})
 }
 
 // Assembly is the pre-triangulation output of the Boolean assembly — everything
@@ -609,18 +614,19 @@ func (b *Boolean3) assemble(c1, c2, c3 int, invertQ bool) (Assembly, bool) {
 	i21 := make([]int, len(b.xv21.x12))
 	i03 := make([]int, len(b.w03))
 	i30 := make([]int, len(b.w30))
-	for i, v := range b.xv12.x12 {
-		i12[i] = c3 * v
-	}
-	for i, v := range b.xv21.x12 {
-		i21[i] = c3 * v
-	}
-	for i, v := range b.w03 {
-		i03[i] = c1 + c3*v
-	}
-	for i, v := range b.w30 {
-		i30[i] = c2 + c3*v
-	}
+	// transform(autoPolicy(...,1e5)) ×4 (boolean_result.cpp:784-791): disjoint per-index writes.
+	parallel.ForEachN(parallel.AutoPolicy(len(i12), 100000), len(i12), func(i int) {
+		i12[i] = c3 * b.xv12.x12[i]
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(i21), 100000), len(i21), func(i int) {
+		i21[i] = c3 * b.xv21.x12[i]
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(i03), 100000), len(i03), func(i int) {
+		i03[i] = c1 + c3*b.w03[i]
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(i30), 100000), len(i30), func(i int) {
+		i30[i] = c2 + c3*b.w30[i]
+	})
 
 	absSum := func(a, b int) int { return absInt(a) + absInt(b) }
 
@@ -658,20 +664,21 @@ func (b *Boolean3) assemble(c1, c2, c3 int, invertQ bool) (Assembly, bool) {
 
 	outR.vertPos = make([]geom.Vec3, numVertR)
 	// Add vertices, duplicating for inclusion numbers not in [-1, 1].
-	// Retained vertices from P and Q:
-	for v := range inP.vertPos {
+	// for_each_n(autoPolicy(NumVert), DuplicateVerts) ×4 (boolean_result.cpp:830-838).
+	// Each vert scatters into a disjoint [vR[v], vR[v]+|incl|) block (the scans above
+	// give non-overlapping ranges), and the four scan bases are disjoint in turn.
+	parallel.ForEachN(parallel.AutoPolicy(len(inP.vertPos)), len(inP.vertPos), func(v int) {
 		duplicateVerts(outR.vertPos, i03, vP2R, inP.vertPos, v)
-	}
-	for v := range inQ.vertPos {
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(inQ.vertPos)), len(inQ.vertPos), func(v int) {
 		duplicateVerts(outR.vertPos, i30, vQ2R, inQ.vertPos, v)
-	}
-	// New vertices created from intersections:
-	for v := range i12 {
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(i12)), len(i12), func(v int) {
 		duplicateVerts(outR.vertPos, i12, v12R, b.xv12.v12, v)
-	}
-	for v := range i21 {
+	})
+	parallel.ForEachN(parallel.AutoPolicy(len(i21)), len(i21), func(v int) {
 		duplicateVerts(outR.vertPos, i21, v21R, b.xv21.v12, v)
-	}
+	})
 
 	// Level 3
 	// edgesP/edgesQ key on the forward halfedge index of P or Q; edgesNew keys on
