@@ -1,7 +1,5 @@
 package multiset
 
-import "github.com/firstlayer-xyz/manifold/go/internal/stdcpp/pool"
-
 // Multiset is a balanced-BST (AVL) multiset that replicates
 // std::multiset semantics for the ear-clipping triangulator: elements are
 // ordered by a `less` comparator, and EQUAL elements are kept in insertion
@@ -20,7 +18,6 @@ type Multiset[V any] struct {
 	less  func(a, b V) bool
 	seq   uint64
 	size  int
-	nodes pool.FreeList[msNode[V]] // recycles AVL nodes across the insert/erase churn
 }
 
 type msNode[V any] struct {
@@ -81,9 +78,7 @@ func (m *Multiset[V]) Insert(v V) Handle[V] {
 
 func (m *Multiset[V]) insert(n *msNode[V], v V, s uint64) *msNode[V] {
 	if n == nil {
-		nn := m.nodes.Get() // zeroed: left/right nil
-		nn.val, nn.seq, nn.height = v, s, 1
-		return nn
+		return &msNode[V]{val: v, seq: s, height: 1}
 	}
 	if m.before(v, s, n.val, n.seq) {
 		n.left = m.insert(n.left, v, s)
@@ -119,16 +114,11 @@ func (m *Multiset[V]) deleteKey(n *msNode[V], v V, s uint64) (*msNode[V], bool) 
 	default:
 		// n is the target (unique by seq).
 		removed = true
-		// Capture the surviving child BEFORE Put (which zeroes n), then recycle n.
 		if n.left == nil {
-			r := n.right
-			m.nodes.Put(n)
-			return r, true
+			return n.right, true
 		}
 		if n.right == nil {
-			r := n.left
-			m.nodes.Put(n)
-			return r, true
+			return n.left, true
 		}
 		// Two children: pull up the in-order successor, then delete it. The
 		// (val, seq) total order keeps this BST-valid and handle-stable.
