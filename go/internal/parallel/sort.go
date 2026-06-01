@@ -2,7 +2,7 @@ package parallel
 
 import (
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -11,20 +11,38 @@ import (
 // preserving relative order of equal elements.
 //
 // Par branch: parallel chunked sort + parallel pairwise merge. Each
-// worker sorts a contiguous chunk with sort.SliceStable; then a
+// worker sorts a contiguous chunk with slices.SortStableFunc; then a
 // log-P sequence of pairwise merges combines neighboring chunks
 // (each merge level is parallel across the surviving chunk pairs).
 // Mirrors the TBB merge_sort tree in src/parallel.h details::mergeRec.
 //
-// Seq branch is sort.SliceStable directly. Below kSeqThreshold this
+// Seq branch is slices.SortStableFunc directly. Below kSeqThreshold this
 // is what we want — goroutine fan-out is overhead-only for small n.
+//
+// We use the generic slices.SortStableFunc rather than sort.SliceStable:
+// the latter boxes the slice behind reflect.Value and swaps via a
+// reflectlite.Swapper on every move (a measurable cost in the geometry
+// sorts), whereas the generic form is reflection-free and is also the
+// faithful shape for manifold::stable_sort — a template, not a
+// runtime-reflection sort (cf. sortEdgePos in internal/boolean).
 func StableSort[T any](policy ExecutionPolicy, slice []T, less func(a, b T) bool) {
 	n := len(slice)
 	if n <= 1 {
 		return
 	}
+	// Adapt the strict-weak-ordering less to a three-way comparison.
+	cmp := func(a, b T) int {
+		switch {
+		case less(a, b):
+			return -1
+		case less(b, a):
+			return 1
+		default:
+			return 0
+		}
+	}
 	if policy == Seq {
-		sort.SliceStable(slice, func(i, j int) bool { return less(slice[i], slice[j]) })
+		slices.SortStableFunc(slice, cmp)
 		return
 	}
 	nWorkers := runtime.GOMAXPROCS(0)
@@ -47,8 +65,7 @@ func StableSort[T any](policy ExecutionPolicy, slice []T, less func(a, b T) bool
 		wg.Add(1)
 		go func(lo, hi int) {
 			defer wg.Done()
-			sub := slice[lo:hi]
-			sort.SliceStable(sub, func(i, j int) bool { return less(sub[i], sub[j]) })
+			slices.SortStableFunc(slice[lo:hi], cmp)
 		}(s, e)
 	}
 	wg.Wait()
