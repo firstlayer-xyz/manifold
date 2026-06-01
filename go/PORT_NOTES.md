@@ -70,8 +70,9 @@ CMAKE_BUILD_TYPE = -O0, which made C++ look ~15x slower than it is; manifold's o
 -ffp-contract=off / standard-excess-precision determinism flags survive Release, so the
 differential suite still passes at -O3 — verified).
 
-Against -O3 C++, native Go is **~1.7x–3.5x slower**: Union 3.4x, Difference 3.5x, Sphere
-3.3x, Refine 2.4x, Hull 2.1x, Minkowski 2.0x, CalculateNormals 1.7x.
+Against -O3 C++, native Go is **~1.7x–4.3x slower** (at seg64: Union 3.4x, Difference 3.5x,
+Sphere 3.3x, Refine 2.4x, Hull 2.1x, Minkowski 2.0x, CalculateNormals 1.7x; the boolean ratio
+grows with mesh size — see the scaling sweep below).
 
 #### Scratch-buffer pooling: built, measured, REVERTED (2026-06-01)
 
@@ -113,6 +114,38 @@ one-line env var. (3) The native port's value is purity/portability/WASM, not ma
 speed; a cgo binding would beat it for coarse ops. (4) Do NOT re-chase alloc count — only a
 platform with per-allocation-dominated cost or non-concurrent count-scaling GC would benefit,
 which this Go target is not.
+
+#### Scaling: the gap WIDENS with complexity, then plateaus ~3.5–4.5x (perf_scaling_test.go)
+
+Union of two spheres swept over operand size (Sphere(1,seg), ~O(seg^2) tris), Go vs -O3 C++:
+
+| operand tris | Go (10-core) | C++ (-O3) | Go/C++ | Go parallel speedup (1→10 core) |
+| 512    |   1.99 ms |  0.71 ms | 2.8x |  1.04x (none) |
+| 2,048  |   7.07 ms |  2.15 ms | 3.3x |  1.02x (none) |
+| 8,192  |  19.0 ms  |  5.01 ms | 3.8x |  1.39x |
+| 32,768 |  58.8 ms  | 13.6 ms  | 4.3x |  1.36x |
+| 131,072|  194 ms   | 50.8 ms  | 3.8x |  1.55x |
+
+The gap does NOT shrink with complexity (it widens to ~4.3x by 33k tris, then the rising
+parallel payoff pulls it back ~3.8x). Expect a **structural ~3.5–4.5x plateau, not convergence**.
+
+#### Why Go's parallelism underdelivers — Amdahl, not chunking or locks (key finding)
+
+The boolean is **~60–70% serial** (parallel fraction p≈0.30 at seg256, ≈0.42 at seg512, from
+Amdahl on the 1-core vs 10-core times), so multicore speedup is capped at ~1.4–1.7x **regardless
+of cores or chunking** — the serial phases (CSG walk, NewBoolean3 setup, finalize/sort/assembly)
+dominate. The `findRunnable`/`pthread_cond_wait` the profile attributes to "parallelism" is mostly
+idle cores during those serial phases, not load imbalance. Confirmed empirically: replacing
+ForEachN's static equal chunks with **dynamic self-scheduling** (atomic-cursor batch claiming, the
+work-stealing analogue) was differential-green but moved wall-clock ~0% (seg256 57 vs 59 ms, noise)
+— REVERTED. It couldn't help because the parallel fraction it optimizes is already small and
+balanced. Locks are NOT a factor either: the three production mutexes (impl_dedupe / impl_cleanup
+per-worker result merges = tbb::combinable pattern, taken O(GOMAXPROCS) times; subdivide_partition
+memoization cache) are all coarse / off the inner loop; hot loops use atomic CAS or disjoint writes.
+C++ TBB doesn't escape Amdahl either, but its serial sections are ~3–4x faster (codegen + no GC +
+SIMD), so it wins the serial-dominated total. Real (unexercised) levers if speed ever matters:
+(a) audit for C++-parallel-but-Go-serial sections (e.g. splitPinchedVertsSerial) — a faithfulness
+gap AND a parallel-fraction gain; (b) the Go gc compiler emits no SIMD, a per-core throughput gap.
 
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 

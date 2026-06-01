@@ -11,9 +11,12 @@ package manifold
 // excess-precision determinism flags are manifold's own and survive, so the differential
 // suite still passes). An -O0 build makes C++ look ~15x slower than it is.
 //
-// Observed on Apple M4 (10 cores) against -O3 C++: native Go is ~1.7x (CalculateNormals)
-// to ~3.5x (boolean) slower than C++, the gap tracking allocation intensity — booleans
-// allocate ~9.5k objects/op and spend ~36% of their time in GC/madvise.
+// Observed on Apple M4 (10 cores) against -O3 C++: native Go is ~1.7x–4.3x slower. The gap
+// is NOT allocation-count-driven (pooling cut alloc count -35% for ~0 wall-clock — see
+// PORT_NOTES) and WIDENS with mesh complexity before plateauing ~3.5–4.5x (see
+// perf_scaling_test.go). The limiters: a serial-dominated workload (~30% parallel fraction,
+// so Amdahl caps Go's multicore speedup at ~1.4x while C++ TBB scales further), GC byte-churn,
+// and -O3-vs-Go codegen (Go gc emits no SIMD). None closable by faithful scratch pooling.
 
 import (
 	"testing"
