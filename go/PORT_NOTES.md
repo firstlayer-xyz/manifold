@@ -70,15 +70,47 @@ CMAKE_BUILD_TYPE = -O0, which made C++ look ~15x slower than it is; manifold's o
 -ffp-contract=off / standard-excess-precision determinism flags survive Release, so the
 differential suite still passes at -O3 — verified).
 
-Against -O3 C++, native Go is **~1.7x–3.5x slower**, the gap tracking allocation
-intensity: Union 3.4x, Difference 3.5x, Sphere 3.3x, Refine 2.4x, Hull 2.1x, Minkowski
-2.0x, CalculateNormals 1.7x. The dominant Go cost is GC pressure — a Union allocates
-~9.5k objects / 6.3 MB and spends ~36% of its time in runtime madvise + GC stop-the-world.
-Top allocators (by count): internal/triangulate (earClip / HalfedgeTriangulation /
-orderedMultiset / the vertCollider closure), boolean assembly (sortEdgePos /
-assembleHalfedges / appendPartialEdges / pairUp), and the finalize tail (SortGeometry /
-SimplifyTopology / SetTriRefs). Optimization lever = reduce allocations (preallocate,
-reuse buffers, hoist per-iteration closures) — closable without changing results.
+Against -O3 C++, native Go is **~1.7x–3.5x slower**: Union 3.4x, Difference 3.5x, Sphere
+3.3x, Refine 2.4x, Hull 2.1x, Minkowski 2.0x, CalculateNormals 1.7x.
+
+#### Scratch-buffer pooling (stdcpp/vector, 2026-06-01)
+
+Built internal/stdcpp/vector — a Pool[T] (non-boxing free list; NOT sync.Pool, which
+boxes on Put and gives no count reduction), a push_back-faithful Vector[T], and a
+NestedPool[T]+PushInner for std::vector<std::vector<T>> that recycles inner backings.
+A std::vector with a pool allocator is real C++, so this closes the GC gap without
+diverging. Rolled it through the scratch-disjoint allocators the lifetime analysis
+flagged: the earClip vertCollider, pairUp's parted scratch, appendPartialEdges' per-edge
+edgePos copy, and the nested polys/PolygonsIdx in Face2Tri. **Result: Union allocs/op
+7812 → 5104 (−35%), all faithful + differential-green.**
+
+#### But count is the wrong metric — the real cost is bytes, not objects (key finding)
+
+That −35% in alloc COUNT bought only **~3% wall-clock**, because bytes/op barely moved
+(6.28 → 6.17 MB, −1.7%). A CPU profile of Union explains why:
+- **runtime.madvise ~28%** — the GC scavenger returning freed pages to the OS. This
+  tracks allocated **bytes**, not object count. The pooled scratch (tiny edgePos / []int
+  inner slices) was count-heavy but byte-light, so pooling it left madvise untouched. The
+  byte-heavy allocators are entirely different (alloc_space top): Boolean3.assemble,
+  SetTriRefs, face2Tri output, sizeOutput (all **output mesh — escapes, unpoolable**),
+  then newDedupeState / intersect12 / GatherFacesInPlace / collider.New (pipeline scratch
+  spread across the whole op, not the face2tri path). In a tight benchmark loop the
+  output-mesh byte churn dominates madvise and is inherent (it IS the result); a real app
+  that keeps its results churns differently.
+- **runtime.kevent ~24% + pthread_cond/kill ~18% ≈ 42%** — idle worker threads parking,
+  NOT contention: GOMAXPROCS=1 gives the same wall-clock as GOMAXPROCS=10 (7.02 vs
+  7.00 ms), i.e. the parallel package gives ~zero net speedup at these problem sizes and
+  its scheduling churn is off the critical path (the profiler samples parked threads).
+
+GC tuning helps modestly and is the **application's** knob, not the library's: GOGC=400–800
+buys ~7–8% (process-global); GOMEMLIMIT alone (the ballast replacement) does nothing
+unless paired with a high GOGC. The residual gap is byte-churn madvise (much of it the
+unavoidable output mesh) plus genuine -O3-vs-Go codegen — neither closable by faithful
+scratch pooling. **Conclusion: the count-pooling is a real memory-efficiency win (lower
+allocation pressure / GC CPU in steady-state apps) and stays as stdcpp infrastructure, but
+it is NOT the wall-clock lever. The native port's value is purity/portability/WASM, not
+matching -O3 speed; a cgo binding would beat it for coarse ops.** Further pooling for
+count (earClip/HalfedgeTriangulation/multiset structs) is deprioritized as low-ROI.
 
 ### Faithful-form pitfall: conditional C++ expressions must stay conditional
 

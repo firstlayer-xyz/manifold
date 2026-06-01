@@ -1,0 +1,5 @@
+# Go test binaries (produced by go test -c / -cpuprofile / -memprofile)
+*.test
+# Profiles
+*.prof
+*.pprof
