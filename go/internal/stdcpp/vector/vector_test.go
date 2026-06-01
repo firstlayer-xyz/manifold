@@ -63,3 +63,58 @@ func TestVector_PushBackAndRelease(t *testing.T) {
 		t.Errorf("released capacity should be reused, got cap=%d", cap(w.Slice()))
 	}
 }
+
+func TestNestedPool_RecyclesInnerBackings(t *testing.T) {
+	var p NestedPool[int]
+
+	// Empty pool: Get returns nil.
+	if s := p.Get(); s != nil {
+		t.Fatalf("Get on empty pool should return nil")
+	}
+
+	// Build a nested vector with two inner slices, then return it.
+	s := PushInner[int](nil)
+	s[0] = append(s[0], 1, 2, 3)
+	inner0 := &s[0][0]
+	s = PushInner(s)
+	s[1] = append(s[1], 4, 5)
+	p.Put(s)
+
+	// The next Get reuses the outer (len 0) and PushInner reuses the inner
+	// backing (reset to length 0).
+	s2 := p.Get()
+	if len(s2) != 0 {
+		t.Errorf("recycled outer should have len 0, got %d", len(s2))
+	}
+	s2 = PushInner(s2)
+	if len(s2[0]) != 0 {
+		t.Errorf("re-exposed inner should be reset to len 0, got %d", len(s2[0]))
+	}
+	s2[0] = append(s2[0], 9)
+	if &s2[0][0] != inner0 {
+		t.Errorf("PushInner should reuse the recycled inner backing array")
+	}
+}
+
+// TestPushInner_ResetsStaleInnerBeyondPrevLen guards the subtle case: a buffer
+// that once held 3 inners, reused for a cycle using only 1, must reset inner #3
+// when a later cycle re-grows to 3 -- otherwise stale data leaks through.
+func TestPushInner_ResetsStaleInnerBeyondPrevLen(t *testing.T) {
+	var s [][]int
+	for i := 0; i < 3; i++ {
+		s = PushInner(s)
+		s[i] = append(s[i], 100+i)
+	}
+	s = s[:0] // Reset, as NestedPool.Put/Get would leave it.
+
+	s = PushInner(s) // single-inner cycle -- resets index 0 only
+	s[0] = append(s[0], 7)
+	s = s[:0]
+
+	s = PushInner(s) // 0
+	s = PushInner(s) // 1
+	s = PushInner(s) // 2 -- was never reset by the len-1 cycle
+	if len(s[2]) != 0 {
+		t.Errorf("PushInner must reset a re-exposed inner beyond prev len, got len %d", len(s[2]))
+	}
+}

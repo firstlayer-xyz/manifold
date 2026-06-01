@@ -82,3 +82,56 @@ func (v *Vector[T]) Release() {
 	v.pool.Put(v.s)
 	v.s = nil
 }
+
+// NestedPool recycles [][]T buffers — a pool allocator for the C++
+// std::vector<std::vector<T>>. Unlike Pool it retains the INNER backing arrays
+// too: a Put'd buffer keeps its inner slices (beyond the outer length) in the
+// backing array, and PushInner re-exposes and resets them, so building many
+// short-lived nested vectors churns no memory after warmup. The inner slices
+// must be built only via PushInner + append (never reassigned to a foreign
+// slice), so the pool owns every backing it hands out.
+type NestedPool[T any] struct {
+	mu   sync.Mutex
+	free [][][]T
+}
+
+// Get returns a recycled [][]T (outer length 0, inner backings retained beyond
+// it) or nil when the pool is empty.
+func (p *NestedPool[T]) Get() [][]T {
+	p.mu.Lock()
+	n := len(p.free)
+	if n == 0 {
+		p.mu.Unlock()
+		return nil
+	}
+	s := p.free[n-1]
+	p.free[n-1] = nil
+	p.free = p.free[:n-1]
+	p.mu.Unlock()
+	return s[:0]
+}
+
+// Put returns s to the pool for reuse, retaining its inner backings. The caller
+// must not use s (or its inner slices) afterwards.
+func (p *NestedPool[T]) Put(s [][]T) {
+	if cap(s) == 0 {
+		return
+	}
+	p.mu.Lock()
+	p.free = append(p.free, s)
+	p.mu.Unlock()
+}
+
+// PushInner extends s by one empty inner slice, reusing a retained backing array
+// (reset to length 0) when one exists beyond len(s), else appending a fresh nil.
+// Returns the grown outer slice (std::vector::emplace_back of an inner vector).
+func PushInner[T any](s [][]T) [][]T {
+	i := len(s)
+	if i < cap(s) {
+		s = s[:i+1]
+		s[i] = s[i][:0]
+	} else {
+		s = append(s, nil)
+	}
+	return s
+}
