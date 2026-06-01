@@ -83,12 +83,14 @@ func (mi *MutableImpl) IncrementMeshIDs() {
 	originalIDs := make([]int32, len(refs))
 	faceIDs := make([]int32, len(refs))
 	coplanarIDs := make([]int32, len(refs))
-	for i, r := range refs {
+	// for_each_n(autoPolicy(numTri,1e5), ...) (impl.cpp:773): disjoint per-tri ref remap.
+	parallel.ForEachN(parallel.AutoPolicy(len(refs), 100000), len(refs), func(i int) {
+		r := refs[i]
 		meshIDs[i] = old2new[r.MeshID] // UpdateMeshID: only meshID is remapped
 		originalIDs[i] = int32(r.OriginalID)
 		faceIDs[i] = int32(r.FaceID)
 		coplanarIDs[i] = int32(r.CoplanarID)
-	}
+	})
 	mi.SetTriRefs(meshIDs, originalIDs, faceIDs, coplanarIDs)
 }
 

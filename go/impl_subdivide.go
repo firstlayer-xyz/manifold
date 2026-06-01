@@ -289,16 +289,17 @@ func (mi *MutableImpl) Subdivide(edgeDivisions func(geom.Vec3, geom.Vec4, geom.V
 	scanPolicy := parallel.AutoPolicy(numTri, 100000)
 	triOffset := make([]int, numTri)
 	sizes := make([]int, numTri)
-	for t := range subTris {
+	// transform(policy,...) feeding the scan (subdivision.cpp): disjoint per-tri write.
+	parallel.ForEachN(scanPolicy, numTri, func(t int) {
 		sizes[t] = len(subTris[t].triVert)
-	}
+	})
 	parallel.ExclusiveScan(scanPolicy, sizes, triOffset, 0)
 
 	interiorOffset := make([]int, numTri)
 	numInts := make([]int, numTri)
-	for t := range subTris {
+	parallel.ForEachN(scanPolicy, numTri, func(t int) {
 		numInts[t] = subTris[t].numInterior()
-	}
+	})
 	parallel.ExclusiveScan(scanPolicy, numInts, interiorOffset, len(vertBary))
 
 	numOutTri := 0
